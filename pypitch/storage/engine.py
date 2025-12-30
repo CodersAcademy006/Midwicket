@@ -37,7 +37,12 @@ class QueryEngine:
 
         # Registers the Arrow table as a queryable view in DuckDB
         # This is a zero-copy operation (pointers only)
-        self.con.register('ball_events', arrow_table)
+        self.con.register('arrow_view', arrow_table)
+        
+        # Persist to disk
+        self.con.execute("CREATE OR REPLACE TABLE ball_events AS SELECT * FROM arrow_view")
+        self.con.unregister('arrow_view')
+        
         self._snapshot_id = snapshot_tag
 
     def execute_sql(self, sql: str) -> pa.Table:
@@ -57,6 +62,15 @@ class QueryEngine:
         if "sql" in plan:
             return self.execute_sql(plan["sql"])
         raise NotImplementedError("Plan execution without SQL not implemented")
+
+    def table_exists(self, table_name: str) -> bool:
+        """Checks if a table exists in the database."""
+        try:
+            # DuckDB specific query
+            res = self.con.execute(f"SELECT count(*) FROM information_schema.tables WHERE table_name = '{table_name}'").fetchone()
+            return res[0] > 0 if res else False
+        except Exception:
+            return False
 
 # Alias for backward compatibility if needed, but we will update references
 StorageEngine = QueryEngine

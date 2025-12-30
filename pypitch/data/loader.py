@@ -28,10 +28,10 @@ class DataLoader:
         Skips if already exists, unless force=True.
         """
         if self.zip_path.exists() and not force:
-            print(f"\u2705 Data already exists at {self.zip_path}")
+            print(f"[OK] Data already exists at {self.zip_path}")
             return
 
-        print(f"\u2b07\ufe0f Downloading IPL Data from {CRICSHEET_URL}...")
+        print(f"[INFO] Downloading IPL Data from {CRICSHEET_URL}...")
         
         try:
             response = requests.get(CRICSHEET_URL, stream=True)
@@ -50,9 +50,9 @@ class DataLoader:
                     size = f.write(chunk)
                     bar.update(size)
             
-            print("\ud83d\udce6 Extracting files...")
+            print("[INFO] Extracting files...")
             self._extract()
-            print("\u2728 Download Complete.")
+            print("[SUCCESS] Download Complete.")
             
         except Exception as e:
             # Clean up partial downloads
@@ -75,7 +75,7 @@ class DataLoader:
         if not json_files:
             raise FileNotFoundError("No JSON files found. Run loader.download() first.")
             
-        print(f"\ud83d\udd04 Found {len(json_files)} matches in {self.raw_dir}...")
+        print(f"[INFO] Found {len(json_files)} matches in {self.raw_dir}...")
         
         for file_path in json_files:
             try:

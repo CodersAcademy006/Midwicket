@@ -73,7 +73,9 @@ class IdentityRegistry:
         self._cache[cache_key] = entity_id
         return entity_id
 
-    def resolve_player(self, name: str, match_date: date, auto_ingest: bool = False) -> int:
+    def resolve_player(self, name: str, match_date: Optional[date] = None, auto_ingest: bool = False) -> int:
+        if match_date is None:
+            match_date = date.today()
         return self._resolve_generic(name, "player", match_date, auto_ingest)
 
     def resolve_venue(self, name: str, match_date: Optional[date] = None, auto_ingest: bool = False) -> int:
@@ -88,4 +90,7 @@ class IdentityRegistry:
 
     def close(self) -> None:
         self.con.close()
+
+# Alias for cleaner typing
+Registry = IdentityRegistry
 
