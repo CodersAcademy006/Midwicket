@@ -67,8 +67,9 @@ class PyPitchSession:
     def get(cls) -> "PyPitchSession":
         """Singleton Accessor"""
         if cls._instance is None:
-            # Default initialization
-            cls._instance = PyPitchSession()
+            # AUTO-BOOT: If user forgot pp.init(), just do it for them.
+            print("⚙️  Auto-initializing PyPitch (defaulting to ./data)...")
+            cls._instance = PyPitchSession(data_dir="./data")
         return cls._instance
 
 # Helper to expose the executor directly to API modules
@@ -77,4 +78,12 @@ def get_executor() -> RuntimeExecutor:
 
 def get_registry() -> IdentityRegistry:
     return PyPitchSession.get().registry
+
+def init(source: Optional[str] = None) -> PyPitchSession:
+    """
+    Initialize the PyPitch session.
+    """
+    session = PyPitchSession(data_dir=source)
+    PyPitchSession._instance = session
+    return session
 

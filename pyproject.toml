@@ -42,3 +42,7 @@ warn_return_any = false
 [[tool.mypy.overrides]]
 module = ["pyarrow.*", "duckdb.*", "pandas.*", "tqdm.*", "numpy.*"]
 ignore_missing_imports = true
+
+[tool.setuptools.packages.find]
+include = ["pypitch*"]
+exclude = ["data*", "examples*", "tests*"]
