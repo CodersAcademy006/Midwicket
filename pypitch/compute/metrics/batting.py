@@ -1,7 +1,7 @@
 import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
-from typing import Optional
+from typing import Optional, cast
 from pypitch.compute.decorators import requires
 
 def calculate_strike_rate(runs: pa.Array, balls: pa.Array) -> pa.Array:
@@ -34,7 +34,7 @@ def strike_rate(events: pa.Table) -> float:
     # Standard definition: Runs / Legal Balls (excluding wides)
     
     # Total Runs (Batter runs only for SR)
-    total_runs = pc.sum(events['runs_batter']).as_py()
+    total_runs = cast(float, pc.sum(events['runs_batter']).as_py())
     
     # Legal Balls: Not Wide
     # Note: NoBalls count as balls faced. Wides do not.
@@ -68,7 +68,7 @@ def relative_strike_rate(events: pa.Table) -> Optional[float]:
         # For now, return None to indicate missing dependency.
         return None
         
-    expected_sr = pc.mean(events['venue_avg_sr']).as_py()
+    expected_sr = cast(float, pc.mean(events['venue_avg_sr']).as_py())
     
     if expected_sr == 0:
         return 0.0

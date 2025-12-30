@@ -1,4 +1,4 @@
-from typing import Protocol, Union, List
+from typing import Protocol, Union, List, Any
 import pyarrow as pa
 import numpy as np
 
@@ -8,5 +8,5 @@ class ScalarMetric(Protocol):
         ...
 
 class VectorMetric(Protocol):
-    def __call__(self, events: pa.Table) -> Union[np.ndarray, List[float]]:
+    def __call__(self, events: pa.Table) -> Union[np.ndarray[Any, Any], List[float]]:
         ...

@@ -2,7 +2,7 @@ import duckdb
 import pickle
 import pyarrow as pa
 import time
-from typing import Any, Optional
+from typing import Any, Optional, Tuple
 from pypitch.runtime.cache import CacheInterface
 
 class DuckDBCache(CacheInterface):
@@ -10,7 +10,7 @@ class DuckDBCache(CacheInterface):
         self.path = path
         self._init_db()
 
-    def _init_db(self):
+    def _init_db(self) -> None:
         """
         Creates the KV schema if missing.
         Uses a separate connection to avoid threading issues during init.
@@ -40,7 +40,7 @@ class DuckDBCache(CacheInterface):
                 CREATE INDEX IF NOT EXISTS idx_cache_expiry ON cache_store(expires_at);
             """)
 
-    def _serialize(self, value: Any) -> tuple[bytes, bool]:
+    def _serialize(self, value: Any) -> Tuple[bytes, bool]:
         """
         Smart serialization:
         - Arrow Tables -> IPC Stream (Zero-Copy compatible)
@@ -62,7 +62,7 @@ class DuckDBCache(CacheInterface):
         else:
             return pickle.loads(blob)
 
-    def _get_con(self, read_only=False):
+    def _get_con(self, read_only: bool = False) -> duckdb.DuckDBPyConnection:
         if self.path == ":memory:":
             return self.con
         return duckdb.connect(self.path, read_only=read_only)

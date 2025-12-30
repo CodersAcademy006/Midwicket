@@ -4,7 +4,7 @@ from typing import Dict, Any
 from pypitch.schema.v1 import BALL_EVENT_SCHEMA
 
 class QueryEngine:
-    def __init__(self, db_path: str = ":memory:"):
+    def __init__(self, db_path: str = ":memory:") -> None:
         """
         Initializes the DuckDB engine.
         :memory: is fast but volatile. Use a path for persistence.
@@ -16,7 +16,7 @@ class QueryEngine:
         
         # State tracking for deterministic hashing
         self._snapshot_id = "initial_empty"
-        self._derived_versions = {}
+        self._derived_versions: Dict[str, str] = {}
 
     @property
     def snapshot_id(self) -> str:
@@ -26,7 +26,7 @@ class QueryEngine:
     def derived_versions(self) -> Dict[str, str]:
         return self._derived_versions
 
-    def ingest_events(self, arrow_table: pa.Table, snapshot_tag: str):
+    def ingest_events(self, arrow_table: pa.Table, snapshot_tag: str) -> None:
         """
         Ingests strict Schema V1 Arrow Tables.
         Rejects anything that doesn't match the contract.

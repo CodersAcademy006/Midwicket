@@ -1,6 +1,8 @@
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pydantic import Field
 from pypitch.query.base import BaseQuery, MatchupQuery
+
+__all__ = ["FantasyQuery", "WinProbQuery", "MatchupQuery"]
 
 class FantasyQuery(BaseQuery):
     """
@@ -13,7 +15,7 @@ class FantasyQuery(BaseQuery):
     min_matches: int = 10
 
     @property
-    def requires(self):
+    def requires(self) -> Dict[str, Any]:
         return {
             "preferred_tables": ["fantasy_points_avg", "venue_bias"],
             "fallback_table": "ball_events",
@@ -33,7 +35,7 @@ class WinProbQuery(BaseQuery):
     overs_remaining: float
     
     @property
-    def requires(self):
+    def requires(self) -> Dict[str, Any]:
         return {
             "preferred_tables": ["chase_history"],
             "fallback_table": "ball_events",

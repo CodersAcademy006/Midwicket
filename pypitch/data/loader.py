@@ -22,7 +22,7 @@ class DataLoader:
         # Ensure directories exist
         self.raw_dir.mkdir(parents=True, exist_ok=True)
 
-    def download(self, force: bool = False):
+    def download(self, force: bool = False) -> None:
         """
         Downloads the latest dataset from Cricsheet.
         Skips if already exists, unless force=True.
@@ -60,7 +60,7 @@ class DataLoader:
                 self.zip_path.unlink()
             raise ConnectionError(f"Failed to download data: {e}")
 
-    def _extract(self):
+    def _extract(self) -> None:
         """Unzips the downloaded file into the raw directory."""
         with zipfile.ZipFile(self.zip_path, 'r') as z:
             z.extractall(self.raw_dir)
