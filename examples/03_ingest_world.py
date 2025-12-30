@@ -23,8 +23,8 @@ def main():
         return
 
     # 2. Init Session (Connects to Registry)
-    pp.init(source="./data")
-    session = pp.session.PyPitchSession.get()
+    # pp.init() returns the session object directly
+    session = pp.init(source="./data")
 
     # 3. Populate Registry
     # This teaches your engine who "Don Bradman" and "Travis Head" are
