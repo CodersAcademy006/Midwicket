@@ -2,10 +2,10 @@ from typing import Dict, Any, Optional, Callable
 from pypitch.query.base import BaseQuery
 
 class QueryPlanner:
-    def __init__(self, engine):
+    def __init__(self, engine: Any) -> None:
         self.engine = engine
 
-    def create_plan(self, query: BaseQuery, metric_func: Optional[Callable] = None) -> str:
+    def create_plan(self, query: BaseQuery, metric_func: Optional[Callable[..., Any]] = None) -> str:
         """
         Constructs the optimized SQL with all necessary JOINs.
         """

@@ -1,5 +1,5 @@
 import pandas as pd
-from typing import List, Literal
+from typing import List, Literal, Dict, Any
 
 from pypitch.api.session import get_executor, get_registry
 from pypitch.query.defs import FantasyQuery
@@ -17,11 +17,12 @@ def cheat_sheet(venue: str, last_n_years: int = 3) -> pd.DataFrame:
     q = FantasyQuery(
         venue_id=v_id,
         roles=["all"],
-        min_matches=5
+        min_matches=5,
+        snapshot_id="latest"
     )
     
     response = exc.execute(q)
-    df = response['data'].to_pandas()
+    df = response.data.to_pandas()
     
     # Sort by 'fantasy_points_avg' (assuming compute layer produced this)
     if not df.empty and 'avg_points' in df.columns:
@@ -29,7 +30,7 @@ def cheat_sheet(venue: str, last_n_years: int = 3) -> pd.DataFrame:
         
     return df
 
-def venue_bias(venue: str) -> dict:
+def venue_bias(venue: str) -> Dict[str, Any]:
     """
     Returns the bias of a venue (Win % Batting First vs Chasing).
     """

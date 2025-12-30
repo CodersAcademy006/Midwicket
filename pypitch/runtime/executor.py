@@ -69,7 +69,7 @@ class RuntimeExecutor:
             )
         )
 
-    def execute_metric(self, query: BaseQuery, metric_func: Callable) -> ExecutionResult:
+    def execute_metric(self, query: BaseQuery, metric_func: Callable[..., Any]) -> ExecutionResult:
         """
         Executes a specific metric function, handling dependencies.
         """

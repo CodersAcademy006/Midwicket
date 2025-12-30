@@ -2,25 +2,27 @@ import pyarrow as pa
 from pypitch.storage.engine import QueryEngine
 
 class DerivedStore:
-    def __init__(self, engine: QueryEngine):
+    def __init__(self, engine: QueryEngine) -> None:
         self.engine = engine
         self._init_schema()
 
-    def _init_schema(self):
+    def _init_schema(self) -> None:
         """Ensure the 'derived' schema exists in DuckDB."""
         self.engine.con.execute("CREATE SCHEMA IF NOT EXISTS derived;")
 
-    def ensure_materialized(self, table_name: str, snapshot_id: str):
+    def ensure_materialized(self, table_name: str, snapshot_id: str) -> None:
         """
         Ensures the requested derived table exists in the 'derived' schema.
         If not, it computes it and persists it for the session.
         """
         # Check if table exists
-        exists = self.engine.con.execute(f"""
+        res = self.engine.con.execute(f"""
             SELECT count(*) 
             FROM information_schema.tables 
             WHERE table_schema = 'derived' AND table_name = '{table_name}'
-        """).fetchone()[0] > 0
+        """).fetchone()
+        
+        exists = res[0] > 0 if res else False
 
         if exists:
             return
@@ -31,7 +33,7 @@ class DerivedStore:
         else:
             raise ValueError(f"Unknown derived table: {table_name}")
 
-    def _build_venue_baselines(self, snapshot_id: str):
+    def _build_venue_baselines(self, snapshot_id: str) -> None:
         """
         Materializes venue baselines into derived.venue_baselines.
         """

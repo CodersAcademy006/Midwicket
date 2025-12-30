@@ -1,6 +1,6 @@
 import pyarrow as pa
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 from pypitch.schema.v1 import BALL_EVENT_SCHEMA
 from pypitch.storage.registry import IdentityRegistry
@@ -34,7 +34,7 @@ def canonicalize_match(match_data: Dict[str, Any], registry: IdentityRegistry) -
 
     # --- 2. Prepare Columnar Buffers ---
     # We build lists first, then convert to Arrow arrays (Speed optimization)
-    buffers = {
+    buffers: Dict[str, List[Any]] = {
         'match_id': [], 'date': [], 'venue_id': [],
         'inning': [], 'over': [], 'ball': [],
         'batter_id': [], 'bowler_id': [], 'non_striker_id': [],

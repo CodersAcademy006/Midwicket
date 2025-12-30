@@ -9,9 +9,9 @@ from pypitch.runtime.cache_duckdb import DuckDBCache
 from pypitch.data.loader import DEFAULT_DATA_DIR
 
 class PyPitchSession:
-    _instance = None
+    _instance: Optional["PyPitchSession"] = None
 
-    def __init__(self, data_dir: Optional[str] = None):
+    def __init__(self, data_dir: Optional[str] = None) -> None:
         self.data_dir = Path(data_dir) if data_dir else DEFAULT_DATA_DIR
         self.db_path = str(self.data_dir / "pypitch.duckdb")
         self.registry_path = str(self.data_dir / "registry.duckdb")
@@ -24,7 +24,7 @@ class PyPitchSession:
         self.executor = RuntimeExecutor(self.cache, self.engine)
 
     @classmethod
-    def get(cls):
+    def get(cls) -> "PyPitchSession":
         """Singleton Accessor"""
         if cls._instance is None:
             # Default initialization

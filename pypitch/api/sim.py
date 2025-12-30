@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, cast, Any
 from pypitch.api.session import get_executor, get_registry
 from pypitch.query.defs import WinProbQuery
 
@@ -16,10 +16,11 @@ def predict_win(venue: str, target: int, current_runs: int, wickets_down: int, o
         target_score=target,
         current_runs=current_runs,
         current_wickets=wickets_down,
-        overs_remaining=20.0 - overs_done
+        overs_remaining=20.0 - overs_done,
+        snapshot_id="latest"
     )
     
     # For Stage 1, this will likely hit a 'NotImplemented' in executor 
     # until we wire up the actual Sim model, but the API contract is valid.
     response = exc.execute(q)
-    return response['data'] # Expecting {'win_prob': 0.45}
+    return cast(Dict[str, float], response.data) # Expecting {'win_prob': 0.45}

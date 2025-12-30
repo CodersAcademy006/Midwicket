@@ -1,18 +1,18 @@
 import duckdb
 from datetime import date
-from typing import Optional
+from typing import Optional, Dict, cast
 
 class EntityNotFoundError(Exception):
     """Raised when an entity cannot be resolved and auto-ingest is disabled."""
     pass
 
 class IdentityRegistry:
-    def __init__(self, db_path: str = "pypitch_registry.db"):
+    def __init__(self, db_path: str = "pypitch_registry.db") -> None:
         self.path = db_path
         self._init_db()
-        self._cache = {}
+        self._cache: Dict[str, int] = {}
 
-    def _init_db(self):
+    def _init_db(self) -> None:
         if self.path == ":memory:":
             self.con = duckdb.connect(":memory:")
         else:
@@ -51,7 +51,7 @@ class IdentityRegistry:
         """, [name, match_date, match_date]).fetchone()
 
         if res:
-            entity_id = res[0]
+            entity_id = cast(int, res[0])
             self._cache[cache_key] = entity_id
             return entity_id
 
@@ -59,7 +59,10 @@ class IdentityRegistry:
             raise EntityNotFoundError(f"Entity '{name}' of type '{entity_type}' not found for date {match_date}")
 
         # Auto-Ingest
-        entity_id = self.con.execute("SELECT nextval('entity_id_seq')").fetchone()[0]
+        res_seq = self.con.execute("SELECT nextval('entity_id_seq')").fetchone()
+        if not res_seq:
+            raise RuntimeError("Failed to generate entity ID")
+        entity_id = cast(int, res_seq[0])
         
         self.con.execute("INSERT INTO entities VALUES (?, ?, ?)", [entity_id, entity_type, name])
         self.con.execute("""
@@ -83,6 +86,6 @@ class IdentityRegistry:
             match_date = date.today()
         return self._resolve_generic(name, "team", match_date, auto_ingest)
 
-    def close(self):
+    def close(self) -> None:
         self.con.close()
 

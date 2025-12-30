@@ -50,7 +50,7 @@ class MatchupQuery(BaseQuery):
     venue_id: Optional[str] = None
 
     @property
-    def requires(self):
+    def requires(self) -> Dict[str, Any]:
         return {
             "preferred_tables": ["matchup_stats", "phase_stats"],
             "fallback_table": "ball_events",

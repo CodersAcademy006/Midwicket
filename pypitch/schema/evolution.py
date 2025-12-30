@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Dict, Any, Tuple
 
 def validate_compatibility(old_schema_meta: Dict[str, Any], new_schema_meta: Dict[str, Any]) -> bool:
     """
@@ -17,7 +17,7 @@ def validate_compatibility(old_schema_meta: Dict[str, Any], new_schema_meta: Dic
         
     return True
 
-def _parse_version(version_str: str) -> tuple:
+def _parse_version(version_str: str) -> Tuple[int, ...]:
     """Helper to convert '1.2.0' -> (1, 2, 0)"""
     try:
         return tuple(map(int, version_str.split('.')))
