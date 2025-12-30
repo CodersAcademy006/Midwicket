@@ -1,25 +1,20 @@
 import hashlib
 import json
-from typing import Dict, Any
-from pydantic import BaseModel, Field, field_validator
+from typing import Dict, Optional, Any, List
+from pydantic import BaseModel, Field, ConfigDict
 
-class QueryContext(BaseModel):
-    """
-    Represents the state of the system execution environment.
-    Included in the hash to invalidate caches if the system updates.
-    """
-    schema_version: str
-    snapshot_id: str
-    planner_version: str
-    derived_versions: Dict[str, str]
+class ExecutionOptions(BaseModel):
+    """Runtime controls that do NOT affect the data definition."""
+    timeout: int = 30
+    verbose: bool = False
+    mode: str = "exact"  # or "approx"
 
 class BaseQuery(BaseModel):
-    """
-    Abstract base for all Pypitch queries.
-    Enforces deterministic hashing and explicit dependency declaration.
-    """
-    mode: str = Field(default="exact", description="Execution mode: exact, approx, budget")
-    
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    snapshot_id: str
+    execution_opts: ExecutionOptions = Field(default_factory=ExecutionOptions, exclude=True)
+
     @property
     def requires(self) -> Dict[str, Any]:
         """
@@ -32,33 +27,34 @@ class BaseQuery(BaseModel):
             "granularity": "ball" | "match"
         }
         """
-        raise NotImplementedError("Query subclass must implement 'requires' property.")
+        raise NotImplementedError("Query subclass must implement requires property.")
 
-    def to_canonical_dict(self) -> Dict[str, Any]:
+    @property
+    def cache_key(self) -> str:
         """
-        Returns a sorted, clean dictionary of the query intent.
-        Excludes None values to keep hashes stable.
+        Generates a deterministic SHA256 hash of the INTENT only.
+        Crucially, it excludes execution_opts because of the exclude=True above.
         """
-        return self.model_dump(mode='json', exclude_none=True)
-
-    def compute_cache_key(self, context: QueryContext) -> str:
-        """
-        Generates a deterministic SHA-256 hash.
-        Combines: Intent (Query params) + Context (System state).
-        """
-        payload = {
-            "intent": self.to_canonical_dict(),
-            "context": context.model_dump(mode='json'),
-            "query_class": self.__class__.__name__
-        }
+        # 1. Dump model to dict, excluding runtime opts
+        canonical_dict = self.model_dump(exclude={"execution_opts"})
         
-        # sort_keys=True is CRITICAL for determinism
-        canonical_str = json.dumps(payload, sort_keys=True)
-        return hashlib.sha256(canonical_str.encode("utf-8")).hexdigest()
+        # 2. Dump to JSON with sort_keys=True for determinism
+        canonical_json = json.dumps(canonical_dict, sort_keys=True)
+        
+        # 3. Hash it
+        return hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()
 
-    @field_validator('mode')
-    def validate_mode(cls, v):
-        allowed = {'exact', 'approx', 'budget'}
-        if v not in allowed:
-            raise ValueError(f"Invalid execution mode '{v}'. Allowed: {allowed}")
-        return v
+class MatchupQuery(BaseQuery):
+    batter_id: str
+    bowler_id: str
+    venue_id: Optional[str] = None
+
+    @property
+    def requires(self):
+        return {
+            "preferred_tables": ["matchup_stats", "phase_stats"],
+            "fallback_table": "ball_events",
+            "entities": ["batter", "bowler"],
+            "granularity": "ball" 
+        }
+

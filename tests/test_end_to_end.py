@@ -3,11 +3,11 @@ import pyarrow as pa
 from datetime import date
 
 # Import our Stack
-from pypitch.storage.engine import StorageEngine
+from pypitch.storage.engine import QueryEngine
 from pypitch.storage.registry import IdentityRegistry
 from pypitch.core.canonicalize import canonicalize_match
-from pypitch.runtime.executor import Executor
-from pypitch.runtime.cache import InMemoryCache
+from pypitch.runtime.executor import RuntimeExecutor
+from pypitch.runtime.cache_duckdb import DuckDBCache
 from pypitch.query.defs import MatchupQuery
 
 class TestPyPitchPlatform(unittest.TestCase):
@@ -17,9 +17,9 @@ class TestPyPitchPlatform(unittest.TestCase):
         Bootstraps the entire platform in-memory for testing.
         """
         self.registry = IdentityRegistry(":memory:")
-        self.engine = StorageEngine(":memory:")
-        self.cache = InMemoryCache()
-        self.executor = Executor(self.engine, self.cache)
+        self.engine = QueryEngine(":memory:")
+        self.cache = DuckDBCache(":memory:")
+        self.executor = RuntimeExecutor(self.cache, self.engine)
 
     def test_full_lifecycle(self):
         """
@@ -84,9 +84,9 @@ class TestPyPitchPlatform(unittest.TestCase):
 
         # Construct the Intent
         q = MatchupQuery(
-            batter_ids=[kohli_id],
-            bowler_ids=[bumrah_id],
-            phases=["Death"]
+            batter_id=str(kohli_id),
+            bowler_id=str(bumrah_id),
+            snapshot_id="test_snapshot_v1"
         )
 
         # --- 4. EXECUTION (The Runtime) ---
@@ -94,7 +94,7 @@ class TestPyPitchPlatform(unittest.TestCase):
         result = self.executor.execute(q)
         
         # --- 5. ASSERTION (The Truth) ---
-        data = result['data'] # This is an Arrow Table
+        data = result.data # This is an Arrow Table
         rows = data.to_pylist()
         
         print(f"📊 Result: {rows}")
@@ -110,7 +110,7 @@ class TestPyPitchPlatform(unittest.TestCase):
         self.assertEqual(stats['wickets'], 1, "Wickets should sum to 1")
         
         # Verify Metadata
-        self.assertEqual(result['meta']['snapshot_id'], "test_snapshot_v1")
+        self.assertEqual(result.meta.snapshot_id, "test_snapshot_v1")
         print("✅ Test Passed: System Logic holds.")
 
 if __name__ == '__main__':

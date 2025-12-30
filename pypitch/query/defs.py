@@ -1,25 +1,6 @@
 from typing import List, Optional
 from pydantic import Field
-from pypitch.query.base import BaseQuery
-
-class MatchupQuery(BaseQuery):
-    """
-    Intent: Compare Batters vs Bowlers.
-    Used for: Head-to-Head stats, Argument Enders.
-    """
-    batter_ids: List[int]
-    bowler_ids: List[int]
-    phases: List[str] = Field(default_factory=lambda: ["Powerplay", "Middle", "Death"])
-    venue_ids: Optional[List[int]] = None
-    
-    @property
-    def requires(self):
-        return {
-            "preferred_tables": ["matchup_stats", "phase_stats"],
-            "fallback_table": "ball_events",
-            "entities": ["batter", "bowler"],
-            "granularity": "ball" 
-        }
+from pypitch.query.base import BaseQuery, MatchupQuery
 
 class FantasyQuery(BaseQuery):
     """

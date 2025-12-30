@@ -4,20 +4,20 @@ from datetime import date
 import time
 
 # Import our Stack
-from pypitch.storage.engine import StorageEngine
+from pypitch.storage.engine import QueryEngine
 from pypitch.storage.registry import IdentityRegistry
 from pypitch.core.canonicalize import canonicalize_match
-from pypitch.runtime.executor import Executor
-from pypitch.runtime.cache import InMemoryCache
+from pypitch.runtime.executor import RuntimeExecutor
+from pypitch.runtime.cache_duckdb import DuckDBCache
 from pypitch.query.defs import MatchupQuery
 
 class TestRobustness(unittest.TestCase):
     
     def setUp(self):
         self.registry = IdentityRegistry(":memory:")
-        self.engine = StorageEngine(":memory:")
-        self.cache = InMemoryCache()
-        self.executor = Executor(self.engine, self.cache)
+        self.engine = QueryEngine(":memory:")
+        self.cache = DuckDBCache(":memory:")
+        self.executor = RuntimeExecutor(self.cache, self.engine)
 
     def _create_dummy_match(self, match_id, date_str, batter_name, bowler_name, runs, wicket=False):
         return {
@@ -69,9 +69,9 @@ class TestRobustness(unittest.TestCase):
         kohli_id = self.registry.resolve_player("V Kohli", date(2024, 1, 1))
         bumrah_id = self.registry.resolve_player("JJ Bumrah", date(2024, 1, 1))
 
-        q = MatchupQuery(batter_ids=[kohli_id], bowler_ids=[bumrah_id], phases=["Death"])
+        q = MatchupQuery(batter_id=str(kohli_id), bowler_id=str(bumrah_id), snapshot_id="snap_multi_match")
         result = self.executor.execute(q)
-        rows = result['data'].to_pylist()
+        rows = result.data.to_pylist()
 
         self.assertEqual(len(rows), 1)
         stats = rows[0]
@@ -93,10 +93,10 @@ class TestRobustness(unittest.TestCase):
         rohit_id = self.registry.resolve_player("R Sharma", date(2024, 2, 1))
         boult_id = self.registry.resolve_player("T Boult", date(2024, 2, 1))
         
-        q = MatchupQuery(batter_ids=[rohit_id], bowler_ids=[boult_id], phases=["Death"])
+        q = MatchupQuery(batter_id=str(rohit_id), bowler_id=str(boult_id), snapshot_id="snap_v1")
         res1 = self.executor.execute(q)
-        self.assertEqual(res1['meta']['snapshot_id'], "snap_v1")
-        self.assertEqual(res1['data'].to_pylist()[0]['runs'], 1)
+        self.assertEqual(res1.meta.snapshot_id, "snap_v1")
+        self.assertEqual(res1.data.to_pylist()[0]['runs'], 1)
 
         # Snapshot 2 (Add more data)
         m2 = self._create_dummy_match(202, "2024-02-02", "R Sharma", "T Boult", 4)
@@ -109,9 +109,10 @@ class TestRobustness(unittest.TestCase):
         combined = pa.concat_tables([t1, t2])
         self.engine.ingest_events(combined, snapshot_tag="snap_v2")
         
-        res2 = self.executor.execute(q)
-        self.assertEqual(res2['meta']['snapshot_id'], "snap_v2")
-        self.assertEqual(res2['data'].to_pylist()[0]['runs'], 5)
+        q2 = MatchupQuery(batter_id=str(rohit_id), bowler_id=str(boult_id), snapshot_id="snap_v2")
+        res2 = self.executor.execute(q2)
+        self.assertEqual(res2.meta.snapshot_id, "snap_v2")
+        self.assertEqual(res2.data.to_pylist()[0]['runs'], 5)
 
     def test_cache_behavior(self):
         """
@@ -125,7 +126,7 @@ class TestRobustness(unittest.TestCase):
         gill_id = self.registry.resolve_player("S Gill", date(2024, 3, 1))
         rashid_id = self.registry.resolve_player("Rashid Khan", date(2024, 3, 1))
         
-        q = MatchupQuery(batter_ids=[gill_id], bowler_ids=[rashid_id], phases=["Death"])
+        q = MatchupQuery(batter_id=str(gill_id), bowler_id=str(rashid_id), snapshot_id="snap_cache_test")
         
         # First Run
         start_time = time.time()
@@ -138,14 +139,12 @@ class TestRobustness(unittest.TestCase):
         duration2 = time.time() - start_time
         
         # Verify results are identical
-        self.assertEqual(res1['data'].to_pylist(), res2['data'].to_pylist())
+        self.assertEqual(res1.data.to_pylist(), res2.data.to_pylist())
         
         # Verify cache was actually used (Mock check or timing check)
-        # Since we use InMemoryCache, we can check internal store
-        # We need to re-compute the key to check existence
-        # But easier: Executor doesn't expose key easily. 
-        # We can check if duration is super fast, or check cache size.
-        self.assertGreater(len(self.cache._store), 0, "Cache should not be empty")
+        # Check if any rows exist in cache_store
+        count = self.cache._get_con(read_only=True).execute("SELECT COUNT(*) FROM cache_store").fetchone()[0]
+        self.assertGreater(count, 0, "Cache should not be empty")
 
     def test_empty_results(self):
         """
@@ -157,12 +156,12 @@ class TestRobustness(unittest.TestCase):
         self.engine.ingest_events(t1, snapshot_tag="snap_empty")
 
         dhoni_id = self.registry.resolve_player("MS Dhoni", date(2024, 4, 1))
-        # Resolve a bowler who isn't in the match
-        star_id = self.registry.resolve_player("Mitchell Starc", date(2024, 4, 1))
+        # Resolve a bowler who isn't in the match (Force ingest for test)
+        star_id = self.registry.resolve_player("Mitchell Starc", date(2024, 4, 1), auto_ingest=True)
         
-        q = MatchupQuery(batter_ids=[dhoni_id], bowler_ids=[star_id], phases=["Death"])
+        q = MatchupQuery(batter_id=str(dhoni_id), bowler_id=str(star_id), snapshot_id="snap_empty")
         result = self.executor.execute(q)
-        rows = result['data'].to_pylist()
+        rows = result.data.to_pylist()
         
         # Should return 1 row with None/Zero or Empty list depending on SQL aggregation
         # SQL `sum` on empty set returns NULL (None in Python). `count` returns 0.

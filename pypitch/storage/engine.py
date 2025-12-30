@@ -1,9 +1,9 @@
 import duckdb
 import pyarrow as pa
-from typing import Dict
+from typing import Dict, Any
 from pypitch.schema.v1 import BALL_EVENT_SCHEMA
 
-class StorageEngine:
+class QueryEngine:
     def __init__(self, db_path: str = ":memory:"):
         """
         Initializes the DuckDB engine.
@@ -16,7 +16,7 @@ class StorageEngine:
         
         # State tracking for deterministic hashing
         self._snapshot_id = "initial_empty"
-        self._derived_versions = {"phase_stats": "v0"}
+        self._derived_versions = {}
 
     @property
     def snapshot_id(self) -> str:
@@ -49,3 +49,14 @@ class StorageEngine:
         if isinstance(result, pa.RecordBatchReader):
             return result.read_all()
         return result
+
+    def run(self, plan: Dict[str, Any]) -> pa.Table:
+        """
+        Executes the plan.
+        """
+        if "sql" in plan:
+            return self.execute_sql(plan["sql"])
+        raise NotImplementedError("Plan execution without SQL not implemented")
+
+# Alias for backward compatibility if needed, but we will update references
+StorageEngine = QueryEngine

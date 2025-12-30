@@ -30,7 +30,7 @@ def canonicalize_match(match_data: Dict[str, Any], registry: IdentityRegistry) -
 
     # Resolve Venue
     venue_name = info.get('venue', 'Unknown Venue')
-    venue_id = registry.resolve_venue(venue_name)
+    venue_id = registry.resolve_venue(venue_name, match_date=match_date_obj, auto_ingest=True)
 
     # --- 2. Prepare Columnar Buffers ---
     # We build lists first, then convert to Arrow arrays (Speed optimization)
@@ -48,14 +48,14 @@ def canonicalize_match(match_data: Dict[str, Any], registry: IdentityRegistry) -
     # Note: Cricsheet format varies. This assumes the standard new format.
     for inning_idx, inning_data in enumerate(match_data.get('innings', [])):
         batting_team = inning_data.get('team')
-        bat_team_id = registry.resolve_team(batting_team)
+        bat_team_id = registry.resolve_team(batting_team, match_date=match_date_obj, auto_ingest=True)
         
         # We don't easily know bowling team without looking ahead/behind, 
         # so for Stage 2 MVP we use -1 or logic from the *other* inning.
         # Ideally, we parse 'teams' from info first.
         teams = info.get('teams', [])
         bowl_team_name = next((t for t in teams if t != batting_team), "Unknown")
-        bowl_team_id = registry.resolve_team(bowl_team_name)
+        bowl_team_id = registry.resolve_team(bowl_team_name, match_date=match_date_obj, auto_ingest=True)
         
         for over_data in inning_data.get('overs', []):
             over_num = over_data['over'] # 0-indexed in new Cricsheet
@@ -63,9 +63,9 @@ def canonicalize_match(match_data: Dict[str, Any], registry: IdentityRegistry) -
             
             for ball_idx, delivery in enumerate(over_data['deliveries']):
                 # --- A. Resolve Identities ---
-                b_id = registry.resolve_player(delivery['batter'], match_date_obj)
-                bo_id = registry.resolve_player(delivery['bowler'], match_date_obj)
-                ns_id = registry.resolve_player(delivery['non_striker'], match_date_obj)
+                b_id = registry.resolve_player(delivery['batter'], match_date_obj, auto_ingest=True)
+                bo_id = registry.resolve_player(delivery['bowler'], match_date_obj, auto_ingest=True)
+                ns_id = registry.resolve_player(delivery['non_striker'], match_date_obj, auto_ingest=True)
 
                 # --- B. Fill Buffers ---
                 buffers['match_id'].append(match_id)

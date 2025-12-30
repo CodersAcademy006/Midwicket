@@ -1,101 +1,88 @@
-import sqlite3
+import duckdb
 from datetime import date
-from typing import Optional, Tuple
+from typing import Optional
+
+class EntityNotFoundError(Exception):
+    """Raised when an entity cannot be resolved and auto-ingest is disabled."""
+    pass
 
 class IdentityRegistry:
     def __init__(self, db_path: str = "pypitch_registry.db"):
-        self.conn = sqlite3.connect(db_path)
+        self.path = db_path
         self._init_db()
-        # Cache to avoid millions of SQL hits during ingestion
         self._cache = {}
 
     def _init_db(self):
-        """Schema for Identity Management"""
-        self.conn.executescript("""
-            CREATE TABLE IF NOT EXISTS players (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                primary_name TEXT UNIQUE
+        if self.path == ":memory:":
+            self.con = duckdb.connect(":memory:")
+        else:
+            self.con = duckdb.connect(self.path)
+            
+        self.con.execute("""
+            CREATE TABLE IF NOT EXISTS entities (
+                id INTEGER PRIMARY KEY,
+                type VARCHAR, -- "player", "team", "venue"
+                primary_name VARCHAR
             );
-            CREATE TABLE IF NOT EXISTS teams (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                primary_name TEXT UNIQUE
-            );
-            CREATE TABLE IF NOT EXISTS venues (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                primary_name TEXT UNIQUE
-            );
-            -- Aliases handle "R Pant" -> "Rishabh Pant"
+            CREATE SEQUENCE IF NOT EXISTS entity_id_seq START 1;
+            
             CREATE TABLE IF NOT EXISTS aliases (
-                name TEXT PRIMARY KEY,
+                alias VARCHAR,
                 entity_id INTEGER,
-                entity_type TEXT -- 'player', 'team', 'venue'
+                valid_from DATE,
+                valid_to DATE,
+                PRIMARY KEY (alias, valid_from)
             );
         """)
-        self.conn.commit()
 
-    def _get_cached_id(self, key: str) -> Optional[int]:
-        return self._cache.get(key)
-
-    def resolve_player(self, name: str, match_date: date) -> int:
-        """
-        Resolves a player name to an ID.
-        If the player is new, creates a new ID (Auto-Ingest).
-        """
-        # 1. Check Memory Cache
-        cache_key = f"P:{name}"
+    def _resolve_generic(self, name: str, entity_type: str, match_date: date, auto_ingest: bool = False) -> int:
+        prefix = entity_type[0].upper()
+        cache_key = f"{prefix}:{name}:{match_date}"
         if cache_key in self._cache:
             return self._cache[cache_key]
 
-        cursor = self.conn.cursor()
-        
-        # 2. Check Aliases/Exact Match (Simplified for Stage 2)
-        # In a full system, we'd check the 'aliases' table first.
-        cursor.execute("SELECT id FROM players WHERE primary_name = ?", (name,))
-        row = cursor.fetchone()
-        
-        if row:
-            p_id = row[0]
-        else:
-            # 3. Create New (Write on Read for Ingestion)
-            cursor.execute("INSERT INTO players (primary_name) VALUES (?)", (name,))
-            p_id = cursor.lastrowid
-            self.conn.commit()
-        
-        # 4. Update Cache
-        self._cache[cache_key] = p_id
-        return p_id
+        # Check Aliases
+        res = self.con.execute("""
+            SELECT entity_id 
+            FROM aliases 
+            WHERE alias = ? 
+              AND valid_from <= ? 
+              AND (valid_to IS NULL OR valid_to >= ?)
+        """, [name, match_date, match_date]).fetchone()
 
-    def resolve_team(self, name: str) -> int:
-        cache_key = f"T:{name}"
-        if cache_key in self._cache: return self._cache[cache_key]
+        if res:
+            entity_id = res[0]
+            self._cache[cache_key] = entity_id
+            return entity_id
+
+        if not auto_ingest:
+            raise EntityNotFoundError(f"Entity '{name}' of type '{entity_type}' not found for date {match_date}")
+
+        # Auto-Ingest
+        entity_id = self.con.execute("SELECT nextval('entity_id_seq')").fetchone()[0]
         
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT id FROM teams WHERE primary_name = ?", (name,))
-        row = cursor.fetchone()
+        self.con.execute("INSERT INTO entities VALUES (?, ?, ?)", [entity_id, entity_type, name])
+        self.con.execute("""
+            INSERT INTO aliases (alias, entity_id, valid_from, valid_to)
+            VALUES (?, ?, ?, NULL)
+        """, [name, entity_id, match_date])
         
-        if row:
-            t_id = row[0]
-        else:
-            cursor.execute("INSERT INTO teams (primary_name) VALUES (?)", (name,))
-            t_id = cursor.lastrowid
-            self.conn.commit()
-            
-        self._cache[cache_key] = t_id
-        return t_id
+        self._cache[cache_key] = entity_id
+        return entity_id
 
-    def resolve_venue(self, name: str) -> int:
-        cache_key = f"V:{name}"
-        if cache_key in self._cache: return self._cache[cache_key]
+    def resolve_player(self, name: str, match_date: date, auto_ingest: bool = False) -> int:
+        return self._resolve_generic(name, "player", match_date, auto_ingest)
 
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT id FROM venues WHERE primary_name = ?", (name,))
-        row = cursor.fetchone()
+    def resolve_venue(self, name: str, match_date: Optional[date] = None, auto_ingest: bool = False) -> int:
+        if match_date is None:
+            match_date = date.today()
+        return self._resolve_generic(name, "venue", match_date, auto_ingest)
 
-        if row:
-            v_id = row[0]
-        else:
-            cursor.execute("INSERT INTO venues (primary_name) VALUES (?)", (name,))
-            v_id = cursor.lastrowid
-            self.conn.commit()
-        self._cache[cache_key] = v_id
-        return v_id
+    def resolve_team(self, name: str, match_date: Optional[date] = None, auto_ingest: bool = False) -> int:
+        if match_date is None:
+            match_date = date.today()
+        return self._resolve_generic(name, "team", match_date, auto_ingest)
+
+    def close(self):
+        self.con.close()
+
