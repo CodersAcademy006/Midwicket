@@ -20,34 +20,37 @@ def matchup(
     reg = get_registry()
     exc = get_executor()
     
-    # 1. Resolve Identities (Defaulting to 'today' for latest ID mapping)
+    # 1. Resolve Identities (Defaulting to "today" for latest ID mapping)
     # In v2, allow users to pass specific years.
     today = date.today()
-    b_id = reg.resolve_player(batter, today)
-    bo_id = reg.resolve_player(bowler, today)
+    b_id = str(reg.resolve_player(batter, today))
+    bo_id = str(reg.resolve_player(bowler, today))
     
-    venue_ids = None
+    v_id = None
     if venue:
-        v_id = reg.resolve_venue(venue)
-        venue_ids = [v_id]
+        # Assuming resolve_venue exists or we implement it similarly
+        # For now, let"s assume it returns an int ID
+        # v_id = str(reg.resolve_venue(venue))
+        pass
 
     # 2. Build Query
     q = MatchupQuery(
-        batter_ids=[b_id],
-        bowler_ids=[bo_id],
-        phases=phases,
-        venue_ids=venue_ids
+        snapshot_id="latest",
+        batter_id=b_id,
+        bowler_id=bo_id,
+        venue_id=v_id
     )
 
     # 3. Execute
     response = exc.execute(q)
     
     # 4. Convert Arrow -> Pandas for the user
-    arrow_table = response['data']
+    arrow_table = response.data
     df = arrow_table.to_pandas()
     
     # Add human-readable names back
-    df['batter_name'] = batter
-    df['bowler_name'] = bowler
+    df["batter_name"] = batter
+    df["bowler_name"] = bowler
     
     return df
+

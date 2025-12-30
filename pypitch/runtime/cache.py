@@ -1,33 +1,30 @@
-from typing import Optional, Any, Dict
 from abc import ABC, abstractmethod
+from typing import Any, Optional
 
 class CacheInterface(ABC):
-    @abstractmethod
-    def get(self, key: str) -> Optional[Dict[str, Any]]:
-        pass
-
-    @abstractmethod
-    def set(self, key: str, value: Dict[str, Any], ttl: int = 3600):
-        pass
-
-    @abstractmethod
-    def exists(self, key: str) -> bool:
-        pass
-
-class InMemoryCache(CacheInterface):
     """
-    Simple dict-based cache for single-process use.
-    Not thread-safe or persistent.
+    The Protocol for valid storage backends.
     """
-    def __init__(self):
-        self._store = {}
+    
+    @abstractmethod
+    def get(self, key: str) -> Optional[Any]:
+        """
+        Retrieve data if it exists and hasn't expired.
+        Must return None if expired.
+        """
+        pass
 
-    def get(self, key: str) -> Optional[Dict[str, Any]]:
-        return self._store.get(key)
+    @abstractmethod
+    def set(self, key: str, value: Any, ttl: int = 3600) -> None:
+        """
+        Persist data with a Time-To-Live (seconds).
+        """
+        pass
 
-    def set(self, key: str, value: Dict[str, Any], ttl: int = 3600):
-        # TTL ignored in simple dict implementation
-        self._store[key] = value
+    @abstractmethod
+    def clear(self) -> None:
+        """
+        Nuke the cache (maintenance/debugging).
+        """
+        pass
 
-    def exists(self, key: str) -> bool:
-        return key in self._store

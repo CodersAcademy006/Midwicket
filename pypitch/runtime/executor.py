@@ -1,86 +1,152 @@
 import time
-from typing import Dict, Any
+from typing import Any, Dict, Optional, Callable
+import pyarrow as pa
+from pydantic import BaseModel, Field, ConfigDict
 
-from pypitch.query.base import BaseQuery, QueryContext
-from pypitch.runtime.modes import ExecutionMode
+# Internal imports (mocked for structure, you must implement these interfaces)
+from pypitch.query.base import BaseQuery
 from pypitch.runtime.cache import CacheInterface
-from pypitch.storage.engine import StorageEngine
+from pypitch.storage.engine import QueryEngine
+from pypitch.runtime.planner import QueryPlanner
+from pypitch.compute.derived import DerivedStore
 
-# Constants for context construction
-PLANNER_VERSION = "1.0.0"
-SCHEMA_VERSION = "1.0.0"
+class ResultMetadata(BaseModel):
+    """
+    The "Nutrition Label" for your data.
+    Every result MUST carry this. No naked numbers.
+    """
+    query_hash: str
+    snapshot_id: str
+    execution_time_ms: float
+    source: str = Field(..., description="cache or compute")
+    engine_version: str = "v1.0.0"
 
-class Executor:
-    def __init__(self, engine: StorageEngine, cache: CacheInterface):
-        self.engine = engine
+class ExecutionResult(BaseModel):
+    data: Any  # In production, this is a pyarrow.Table or specific Metric object
+    meta: ResultMetadata
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+class RuntimeExecutor:
+    def __init__(self, cache: CacheInterface, engine: QueryEngine):
         self.cache = cache
+        self.engine = engine
+        self.planner = QueryPlanner(engine)
+        self.derived = DerivedStore(engine)
 
-    def execute(self, query: BaseQuery) -> Dict[str, Any]:
+    def execute(self, query: BaseQuery) -> ExecutionResult:
         """
-        The Master Logic Flow:
-        1. Contextualize -> 2. Hash -> 3. Cache Check -> 4. Execute -> 5. Wrap
+        Legacy execute for simple queries (returns Arrow Table).
         """
+        start_time = time.perf_counter()
+        query_hash = query.cache_key
         
-        # 1. Build Context (The State of the World)
-        ctx = QueryContext(
-            schema_version=SCHEMA_VERSION,
-            snapshot_id=self.engine.snapshot_id,
-            planner_version=PLANNER_VERSION,
-            derived_versions=self.engine.derived_versions
+        cached_data = self.cache.get(query_hash)
+        if cached_data is not None:
+            return ExecutionResult(
+                data=cached_data,
+                meta=ResultMetadata(
+                    query_hash=query_hash,
+                    snapshot_id=query.snapshot_id,
+                    execution_time_ms=(time.perf_counter() - start_time) * 1000,
+                    source="cache"
+                )
+            )
+
+        # Use legacy plan for now to maintain backward compatibility with existing tests
+        plan = self.planner.create_legacy_plan(query)
+        result_table = self.engine.execute_sql(plan["sql"])
+        
+        self.cache.set(query_hash, result_table)
+        
+        return ExecutionResult(
+            data=result_table,
+            meta=ResultMetadata(
+                query_hash=query_hash,
+                snapshot_id=query.snapshot_id,
+                execution_time_ms=(time.perf_counter() - start_time) * 1000,
+                source="compute"
+            )
         )
 
-        # 2. Generate Deterministic Hash
-        cache_key = query.compute_cache_key(ctx)
-
-        # 3. Check Cache
-        if self.cache.exists(cache_key):
-            # In production, you might log a "CACHE_HIT" metric here
-            return self.cache.get(cache_key)
-
-        # 4. Enforce Budget / Planning (Basic Logic for Stage 1)
-        if query.mode == ExecutionMode.BUDGET:
-             # Placeholder: logic to reject expensive queries
-             # if 'ball_events' in query.requires['fallback_table']: raise BudgetExceeded(...)
-             pass
-
-        # 5. Execute (Delegated to private runner)
-        # Note: A real Planner would inject the SQL generation strategy here.
-        # For Stage 1, we assume a simple raw scan.
-        result_arrow = self._run_computation(query)
-
-        # 6. Wrap & Store
-        response = {
-            "data": result_arrow,
-            "meta": {
-                "execution_mode": query.mode,
-                "snapshot_id": ctx.snapshot_id,
-                "timestamp": time.time(),
-                "confidence": 1.0 # Placeholder for Stage 1
-            }
-        }
+    def execute_metric(self, query: BaseQuery, metric_func: Callable) -> ExecutionResult:
+        """
+        Executes a specific metric function, handling dependencies.
+        """
+        start_time = time.perf_counter()
         
-        self.cache.set(cache_key, response)
-        return response
+        # 1. Hash & Cache Check (Standard)
+        # We include the metric name in the hash to differentiate results
+        metric_name = getattr(metric_func, "__name__", "unknown_metric")
+        query_hash = f"{query.cache_key}:{metric_name}"
+        
+        if cached := self.cache.get(query_hash):
+            return ExecutionResult(
+                data=cached,
+                meta=ResultMetadata(
+                    query_hash=query_hash,
+                    snapshot_id=query.snapshot_id,
+                    execution_time_ms=(time.perf_counter() - start_time) * 1000,
+                    source="cache"
+                )
+            )
 
-    def _run_computation(self, query: BaseQuery):
-        """
-        Private method to actually run the logic.
-        This will eventually be replaced by the Planner routing logic.
-        """
-        # TEMP: Simple hardcoded SQL generation for MatchupQuery testing
-        if query.__class__.__name__ == "MatchupQuery":
-            batter_tuple = tuple(query.batter_ids) if len(query.batter_ids) > 1 else f"({query.batter_ids[0]})"
-            bowler_tuple = tuple(query.bowler_ids) if len(query.bowler_ids) > 1 else f"({query.bowler_ids[0]})"
-            
-            sql = f"""
-                SELECT 
-                    sum(runs_batter) as runs, 
-                    count(*) as balls, 
-                    sum(case when is_wicket=true then 1 else 0 end) as wickets
-                FROM ball_events 
-                WHERE batter_id IN {batter_tuple}
-                  AND bowler_id IN {bowler_tuple}
-            """
-            return self.engine.execute_sql(sql)
-            
-        raise NotImplementedError(f"No execution strategy for {query.__class__.__name__}")
+        # 2. Pre-Flight: Ensure Dependencies Exist
+        if hasattr(metric_func, "_pypitch_spec"):
+            for req in metric_func._pypitch_spec.requirements:
+                # This ensures 'derived.venue_baselines' exists in DuckDB
+                self.derived.ensure_materialized(
+                    req["table"], 
+                    snapshot_id=query.snapshot_id
+                )
+
+        # 3. Plan: Generate the Complex SQL
+        sql_plan = self.planner.create_plan(query, metric_func)
+
+        # 4. Execute: Let DuckDB do the heavy lifting (JOIN)
+        # This returns an Arrow Table with 'runs' AND 'venue_avg_sr' columns
+        enriched_events = self.engine.execute_sql(sql_plan)
+
+        # 5. Compute: Run the Pure Function
+        # The metric simply expects column 'venue_avg_sr' to exist
+        result_value = metric_func(enriched_events)
+
+        # 6. Cache & Return
+        self.cache.set(query_hash, result_value)
+        
+        return ExecutionResult(
+            data=result_value,
+            meta=ResultMetadata(
+                query_hash=query_hash,
+                snapshot_id=query.snapshot_id,
+                execution_time_ms=(time.perf_counter() - start_time) * 1000,
+                source="compute"
+            )
+        )
+
+        # 3. Planning (The Optimizer)
+        # Never send raw logic to the engine. Send a Plan.
+        # This allows you to reject "Scan Full History" queries before they run.
+        plan = self.planner.create_plan(query)
+        
+        # 4. Execution (The Heavy Lift)
+        try:
+            result_data = self.engine.run(plan)
+        except Exception as e:
+            # You must log the query_hash here for debugging
+            raise RuntimeError(f"Query {query_hash} failed: {str(e)}") from e
+
+        # 5. Persistence (The Memory)
+        # We only cache if execution succeeded.
+        self.cache.set(query_hash, result_data, ttl=query.execution_opts.timeout)
+
+        return ExecutionResult(
+            data=result_data,
+            meta=ResultMetadata(
+                query_hash=query_hash,
+                snapshot_id=query.snapshot_id,
+                execution_time_ms=(time.perf_counter() - start_time) * 1000,
+                source="compute"
+            )
+        )
+
