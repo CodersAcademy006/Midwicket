@@ -103,5 +103,19 @@ class QueryPlanner:
                 WHERE batter_id = {batter_id}
                   AND bowler_id = {bowler_id}
             """
+        
+        if query.__class__.__name__ == "FantasyQuery":
+            venue_id = getattr(query, "venue_id")
+            # Simple fantasy points: 1 run = 1 pt, 1 wicket = 20 pts
+            return f"""
+                SELECT 
+                    batter_id as player_id,
+                    SUM(runs_batter) + SUM(CASE WHEN is_wicket THEN 20 ELSE 0 END) as avg_points
+                FROM {table}
+                WHERE venue_id = {venue_id}
+                GROUP BY batter_id
+                ORDER BY avg_points DESC
+            """
+
         raise NotImplementedError(f"No SQL generation for {query.__class__.__name__}")
 

@@ -18,8 +18,15 @@ def canonicalize_match(match_data: Dict[str, Any], registry: IdentityRegistry) -
     info = match_data.get('info', {})
     
     # --- 1. Extract Global Match Metadata ---
-    # Fallback: Use filename ID if not in JSON (logic handled by caller usually)
-    match_id = str(info.get('match_type_number', 0)) 
+    # Use a hash of date + teams as a fallback unique ID if 'match_type_number' is missing/zero
+    # Cricsheet JSONs usually have 'registry.people' but not always a clear match ID in 'info'
+    teams = sorted(info.get('teams', []))
+    date_str = info.get('dates', ['1970-01-01'])[0]
+    
+    # Try to find a unique ID in the JSON
+    # Some Cricsheet files have 'meta.data_version' but not a match ID.
+    # We'll construct a deterministic ID.
+    match_id = f"{date_str}_{teams[0]}_{teams[1]}" if len(teams) >= 2 else f"{date_str}_unknown"
     
     # Parse Date (Handle ISO strings: '2023-05-21')
     date_str = info.get('dates', ['1970-01-01'])[0]
