@@ -114,6 +114,7 @@ dmypy.json
 .pyre/
 
 # Data files (irrelevant for version control)
+data/
 data/cache.duckdb
 data/registry.duckdb
 data/bundled/
