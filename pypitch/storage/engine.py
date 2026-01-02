@@ -92,6 +92,41 @@ class QueryEngine:
             return self.execute_sql(plan["sql"])
         raise NotImplementedError("Plan execution without SQL not implemented")
 
+    def insert_live_delivery(self, delivery_data: Dict[str, Any]) -> None:
+        """
+        Insert live delivery data.
+        """
+        # Ensure table exists
+        if not self.table_exists("ball_events"):
+            # Create table if not exists (simplified schema for demo)
+            # Note: In real app, use full schema
+            self.con.execute("""
+            CREATE TABLE IF NOT EXISTS ball_events (
+                match_id VARCHAR, inning INTEGER, over INTEGER, ball INTEGER,
+                runs_total INTEGER, wickets_fallen INTEGER, target INTEGER,
+                venue VARCHAR, timestamp DOUBLE,
+                runs_batter INTEGER DEFAULT 0, runs_extras INTEGER DEFAULT 0,
+                is_wicket BOOLEAN DEFAULT FALSE, batter VARCHAR DEFAULT '', bowler VARCHAR DEFAULT ''
+            )
+            """)
+
+        self.con.execute("""
+            INSERT INTO ball_events (
+                match_id, inning, over, ball, runs_total,
+                wickets_fallen, target, venue, timestamp
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, [
+            delivery_data['match_id'],
+            delivery_data['inning'],
+            delivery_data['over'],
+            delivery_data['ball'],
+            delivery_data['runs_total'],
+            delivery_data['wickets_fallen'],
+            delivery_data.get('target'),
+            delivery_data.get('venue'),
+            delivery_data.get('timestamp')
+        ])
+
     def table_exists(self, table_name: str) -> bool:
         """Checks if a table exists in the database."""
         try:
