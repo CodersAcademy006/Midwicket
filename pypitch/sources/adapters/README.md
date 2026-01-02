@@ -168,18 +168,26 @@ print(f"Available adapters: {adapters}")
 ### Check Adapter Availability
 
 ```python
-# Check if adapter is registered
-if AdapterRegistry.has("my_source"):
+from pypitch.sources.adapters.registry import AdapterRegistry
+
+# Check if adapter is registered (using try/except pattern)
+try:
     adapter = AdapterRegistry.get("my_source")()
-else:
+    # Use the adapter
+except KeyError:
     print("Adapter not available")
 ```
 
-### Unregister Adapter
+### Clear Registry (Advanced)
 
 ```python
-# Remove an adapter from registry
-AdapterRegistry.unregister("my_source")
+# Note: Unregister functionality not currently implemented
+# The registry is designed to be write-once for adapter registration
+# For testing purposes, you can clear the entire registry:
+from pypitch.sources.adapters.registry import AdapterRegistry
+
+# Clear all registrations (use with caution)
+AdapterRegistry._registry.clear()
 ```
 
 ## Advanced Usage
