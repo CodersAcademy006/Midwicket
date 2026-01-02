@@ -1,6 +1,6 @@
 import duckdb
 import pyarrow as pa
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from pypitch.schema.v1 import BALL_EVENT_SCHEMA
 
 class QueryEngine:
@@ -26,7 +26,7 @@ class QueryEngine:
     def derived_versions(self) -> Dict[str, str]:
         return self._derived_versions
 
-    def ingest_events(self, arrow_table: pa.Table, snapshot_tag: str) -> None:
+    def ingest_events(self, arrow_table: pa.Table, snapshot_tag: str, append: bool = False) -> None:
         """
         Ingests strict Schema V1 Arrow Tables.
         Rejects anything that doesn't match the contract.
@@ -34,22 +34,51 @@ class QueryEngine:
         if not arrow_table.schema.equals(BALL_EVENT_SCHEMA):
             # In a real system, we might diff the schemas to give a better error
             raise ValueError("Schema Violation: Input does not match BALL_EVENT_SCHEMA v1")
+        # Debug: log incoming table info
+        try:
+            incoming_rows = getattr(arrow_table, 'num_rows', None)
+        except Exception:
+            incoming_rows = None
+        print(f"[QueryEngine.ingest_events] snapshot_tag={snapshot_tag} append={append} incoming_rows={incoming_rows}")
 
         # Registers the Arrow table as a queryable view in DuckDB
         # This is a zero-copy operation (pointers only)
         self.con.register('arrow_view', arrow_table)
-        
-        # Persist to disk
-        self.con.execute("CREATE OR REPLACE TABLE ball_events AS SELECT * FROM arrow_view")
-        self.con.unregister('arrow_view')
-        
+        try:
+            exists = self.table_exists("ball_events")
+            print(f"[QueryEngine.ingest_events] ball_events exists={exists}")
+
+            # Persist to disk
+            if append and exists:
+                print("[QueryEngine.ingest_events] Performing INSERT INTO ball_events FROM arrow_view")
+                self.con.execute("INSERT INTO ball_events SELECT * FROM arrow_view")
+            else:
+                print("[QueryEngine.ingest_events] Creating or replacing ball_events from arrow_view")
+                self.con.execute("CREATE OR REPLACE TABLE ball_events AS SELECT * FROM arrow_view")
+
+            # Check resulting row count for quick verification
+            try:
+                res = self.con.execute("SELECT COUNT(*) FROM ball_events").fetchone()
+                print(f"[QueryEngine.ingest_events] ball_events row_count_after_write={res[0] if res else 'unknown'}")
+            except Exception as e:
+                print(f"[QueryEngine.ingest_events] Failed to fetch row count after write: {e}")
+        finally:
+            try:
+                self.con.unregister('arrow_view')
+            except Exception:
+                pass
+
         self._snapshot_id = snapshot_tag
 
-    def execute_sql(self, sql: str) -> pa.Table:
+    def execute_sql(self, sql: str, params: Optional[list] = None) -> pa.Table:
         """
         Executes raw SQL and returns an Arrow Table.
+        Supports parameterized queries for safety.
         """
-        result = self.con.execute(sql).arrow()
+        if params is None:
+            params = []
+            
+        result = self.con.execute(sql, params).arrow()
         # Ensure we return a Table, not a RecordBatchReader
         if isinstance(result, pa.RecordBatchReader):
             return result.read_all()

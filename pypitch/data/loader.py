@@ -65,6 +65,20 @@ class DataLoader:
         with zipfile.ZipFile(self.zip_path, 'r') as z:
             z.extractall(self.raw_dir)
 
+    def get_match(self, match_id: str) -> Dict[str, Any]:
+        """
+        Fetches a specific match by ID.
+        """
+        # Try direct JSON
+        file_path = self.raw_dir / f"{match_id}.json"
+        if not file_path.exists():
+            # Try finding it if the ID format is different or just to be safe
+            # But for now, assume ID matches filename
+            raise FileNotFoundError(f"Match {match_id} not found in {self.raw_dir}")
+            
+        with open(file_path, 'r') as f:
+            return json.load(f)
+
     def iter_matches(self) -> Iterator[Dict[str, Any]]:
         """
         Yields match data one by one.

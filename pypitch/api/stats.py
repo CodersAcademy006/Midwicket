@@ -3,19 +3,23 @@ from datetime import date
 from typing import List, Optional, Union
 
 from pypitch.api.session import get_executor, get_registry
-from pypitch.query.defs import MatchupQuery
+from pypitch.api.models import MatchupResult
+from pypitch.query.base import MatchupQuery
 
 def matchup(
     batter: str, 
     bowler: str, 
     venue: Optional[str] = None,
     phases: List[str] = ["Powerplay", "Middle", "Death"]
-) -> pd.DataFrame:
+) -> MatchupResult:
     """
     Analyzes the Head-to-Head record between a batter and bowler.
     
+    Returns a MatchupResult object with aggregated statistics.
+    
     Example:
-        >>> df = pp.stats.matchup("V Kohli", "JJ Bumrah")
+        >>> result = pp.stats.matchup("V Kohli", "JJ Bumrah")
+        >>> print(f"Average: {result.average}")
     """
     reg = get_registry()
     exc = get_executor()
@@ -44,13 +48,10 @@ def matchup(
     # 3. Execute
     response = exc.execute(q)
     
-    # 4. Convert Arrow -> Pandas for the user
+    # 4. Convert Arrow -> Pandas for processing
     arrow_table = response.data
     df = arrow_table.to_pandas()
     
-    # Add human-readable names back
-    df["batter_name"] = batter
-    df["bowler_name"] = bowler
-    
-    return df
+    # 5. Convert to public model (hides internal columns)
+    return MatchupResult.from_dataframe(df, batter, bowler, venue)
 

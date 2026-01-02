@@ -14,23 +14,18 @@ def main():
     print(f"Analyzing {batter} vs {bowler}...")
     
     try:
-        df = matchup(batter, bowler)
+        result = matchup(batter, bowler)
         
-        if df.empty:
+        if result is None:
             print("No matchup data found.")
         else:
-            print(df)
-            
-            # You can calculate aggregate stats from the dataframe
-            # Note: The default MatchupQuery returns aggregated stats directly
-            total_runs = df['runs'].iloc[0]
-            balls_faced = df['balls'].iloc[0]
-            outs = df['wickets'].iloc[0]
-            
-            print("\nSummary:")
-            print(f"Runs: {total_runs}")
-            print(f"Balls: {balls_faced}")
-            print(f"Outs: {outs}")
+            print(f"Batter: {result.batter_name}")
+            print(f"Bowler: {result.bowler_name}")
+            print(f"Runs: {result.runs_scored}")
+            print(f"Balls: {result.balls_faced}")
+            print(f"Wickets: {result.dismissals}")
+            print(f"Average: {result.average}")
+            print(f"Strike Rate: {result.strike_rate}")
             
     except Exception as e:
         print(f"An error occurred: {e}")

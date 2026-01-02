@@ -11,7 +11,7 @@ def _determine_phase(over_num: int) -> str:
     if over_num < 15: return "Middle"
     return "Death"
 
-def canonicalize_match(match_data: Dict[str, Any], registry: IdentityRegistry) -> pa.Table:
+def canonicalize_match(match_data: Dict[str, Any], registry: IdentityRegistry, match_id: str = None) -> pa.Table:
     """
     Transform Raw Cricsheet JSON -> Strict V1 Arrow Table.
     """
@@ -26,7 +26,8 @@ def canonicalize_match(match_data: Dict[str, Any], registry: IdentityRegistry) -
     # Try to find a unique ID in the JSON
     # Some Cricsheet files have 'meta.data_version' but not a match ID.
     # We'll construct a deterministic ID.
-    match_id = f"{date_str}_{teams[0]}_{teams[1]}" if len(teams) >= 2 else f"{date_str}_unknown"
+    if match_id is None:
+        match_id = f"{date_str}_{teams[0]}_{teams[1]}" if len(teams) >= 2 else f"{date_str}_unknown"
     
     # Parse Date (Handle ISO strings: '2023-05-21')
     date_str = info.get('dates', ['1970-01-01'])[0]

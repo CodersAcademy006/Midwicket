@@ -1,6 +1,6 @@
 import duckdb
 from datetime import date
-from typing import Optional, Dict, cast
+from typing import Optional, Dict, cast, Any
 
 class EntityNotFoundError(Exception):
     """Raised when an entity cannot be resolved and auto-ingest is disabled."""
@@ -33,7 +33,81 @@ class IdentityRegistry:
                 valid_to DATE,
                 PRIMARY KEY (alias, valid_from)
             );
+            
+            -- Light Data: Player Career Stats
+            CREATE TABLE IF NOT EXISTS player_stats (
+                entity_id INTEGER PRIMARY KEY,
+                matches INTEGER,
+                runs INTEGER,
+                balls_faced INTEGER,
+                wickets INTEGER,
+                balls_bowled INTEGER,
+                runs_conceded INTEGER
+            );
+
+            -- Light Data: Venue Stats
+            CREATE TABLE IF NOT EXISTS venue_stats (
+                entity_id INTEGER PRIMARY KEY,
+                matches INTEGER,
+                total_runs INTEGER,
+                first_innings_runs INTEGER,
+                first_innings_count INTEGER
+            );
         """)
+
+    def get_player_stats(self, player_id: int) -> Optional[Dict[str, Any]]:
+        res = self.con.execute("SELECT * FROM player_stats WHERE entity_id = ?", [player_id]).fetchone()
+        if res:
+            return {
+                "matches": res[1],
+                "runs": res[2],
+                "balls_faced": res[3],
+                "wickets": res[4],
+                "balls_bowled": res[5],
+                "runs_conceded": res[6]
+            }
+        return None
+
+    def get_venue_stats(self, venue_id: int) -> Optional[Dict[str, Any]]:
+        res = self.con.execute("SELECT * FROM venue_stats WHERE entity_id = ?", [venue_id]).fetchone()
+        if res:
+            return {
+                "matches": res[1],
+                "total_runs": res[2],
+                "avg_first_innings": res[3] / res[4] if res[4] > 0 else 0
+            }
+        return None
+
+    def upsert_player_stats(self, stats: Dict[int, Dict[str, int]]) -> None:
+        """Bulk upsert player stats."""
+        # DuckDB doesn't have a simple UPSERT for batch, so we'll delete and insert
+        # In a real high-concurrency app, this would be a transaction.
+        ids = list(stats.keys())
+        if not ids:
+            return
+            
+        self.con.execute(f"DELETE FROM player_stats WHERE entity_id IN ({','.join(map(str, ids))})")
+        
+        data = []
+        for pid, s in stats.items():
+            data.append((pid, s['matches'], s['runs'], s['balls_faced'], s['wickets'], s['balls_bowled'], s['runs_conceded']))
+            
+        self.con.executemany("INSERT INTO player_stats VALUES (?, ?, ?, ?, ?, ?, ?)", data)
+
+    def upsert_venue_stats(self, stats: Dict[int, Dict[str, int]]) -> None:
+        """Bulk upsert venue stats."""
+        ids = list(stats.keys())
+        if not ids:
+            return
+
+        self.con.execute(f"DELETE FROM venue_stats WHERE entity_id IN ({','.join(map(str, ids))})")
+        
+        data = []
+        for vid, s in stats.items():
+            data.append((vid, s['matches'], s['total_runs'], s['first_innings_runs'], s['first_innings_count']))
+            
+        self.con.executemany("INSERT INTO venue_stats VALUES (?, ?, ?, ?, ?)", data)
+
 
     def _resolve_generic(self, name: str, entity_type: str, match_date: date, auto_ingest: bool = False) -> int:
         prefix = entity_type[0].upper()
