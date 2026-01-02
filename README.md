@@ -12,6 +12,32 @@ PyPitch is a comprehensive Python library for cricket analytics, providing a rob
 - **High Performance**: Vectorized operations using PyArrow and analytical queries via DuckDB.
 - **Time-Aware Identity**: Consistent player/team/venue resolution across historical data.
 
+## Stability Contract
+
+### Q1: Is the API stable?
+
+**Official Answer:**
+
+"As of version 0.1.0, the Core Engine APIs (`pypitch.engine`, `pypitch.session`) are structurally stable. We do not anticipate changing the fundamental 'Session -> Match -> Delivery' hierarchy. However, until the v1.0.0 release, high-level helper functions in `pypitch.stats` may be renamed or refactored for clarity based on user feedback."
+
+### Q2: What breaks between versions?
+
+**Official Answer:**
+
+"We strictly follow Semantic Versioning (SemVer).
+
+- **Major (1.x -> 2.x):** Fundamental architecture changes (e.g., dropping DuckDB support).
+- **Minor (0.1 -> 0.2):** New features (e.g., adding a 'Win Probability' model). These are backward compatible.
+- **Patch (0.1.1 -> 0.1.2):** Bug fixes only.
+
+Note: During the 0.x.x Alpha phase, we reserve the right to modify function arguments if necessary, but will provide Deprecation Warnings for at least one cycle before removal."
+
+### Q3: Do minor versions introduce breaking changes?
+
+**Official Answer:**
+
+"No. Once we hit v1.0, minor versions will never break existing code. New parameters will always be optional (with default values), and return types will remain consistent. If you write a script on v1.2, it is guaranteed to run on v1.9."
+
 ## Installation
 
 ### From PyPI (Recommended)

@@ -9,6 +9,7 @@ from pypitch.runtime.cache import CacheInterface
 from pypitch.storage.engine import QueryEngine
 from pypitch.runtime.planner import QueryPlanner
 from pypitch.compute.derived import DerivedStore
+from . import modes
 
 class ResultMetadata(BaseModel):
     """
@@ -36,13 +37,15 @@ class RuntimeExecutor:
 
     def execute(self, query: BaseQuery) -> ExecutionResult:
         """
-        Legacy execute for simple queries (returns Arrow Table).
+        Main execute for all queries, including WinProbQuery (win probability model).
         """
         start_time = time.perf_counter()
         query_hash = query.cache_key
-        
+
         cached_data = self.cache.get(query_hash)
         if cached_data is not None:
+            if modes.debug_mode and hasattr(cached_data, 'collect'):
+                cached_data = cached_data.collect()
             return ExecutionResult(
                 data=cached_data,
                 meta=ResultMetadata(
@@ -53,12 +56,34 @@ class RuntimeExecutor:
                 )
             )
 
+        # Special handling for WinProbQuery: call robust model, not SQL
+        from pypitch.query.defs import WinProbQuery
+        if isinstance(query, WinProbQuery):
+            from pypitch.compute.winprob import win_probability
+            result = win_probability(
+                target=query.target_score,
+                current_runs=query.current_runs,
+                wickets_down=query.current_wickets,
+                overs_done=20.0 - query.overs_remaining,
+                venue=None  # Optionally pass venue name/id if model supports
+            )
+            self.cache.set(query_hash, result)
+            return ExecutionResult(
+                data=result,
+                meta=ResultMetadata(
+                    query_hash=query_hash,
+                    snapshot_id=query.snapshot_id,
+                    execution_time_ms=(time.perf_counter() - start_time) * 1000,
+                    source="compute"
+                )
+            )
+
         # Use legacy plan for now to maintain backward compatibility with existing tests
         plan = self.planner.create_legacy_plan(query)
         result_table = self.engine.execute_sql(plan["sql"])
-        
+        if modes.debug_mode and hasattr(result_table, 'collect'):
+            result_table = result_table.collect()
         self.cache.set(query_hash, result_table)
-        
         return ExecutionResult(
             data=result_table,
             meta=ResultMetadata(

@@ -1,0 +1,730 @@
+PyPitch Core
+
+
+Lazy Loading for loading of the match data:-
+
+
+    The "Heavy" Data (Lazy Load): Download the detailed ball-by-ball data only for the requested match. This drives your worm graphs, wagon wheels, and pitch maps.
+    The "Light" Data (Pre-fetched): A tiny, locally cached summary table (The Registry). It doesn't have balls, just summary stats:
+        Venue Averages: (e.g., "Wankhede: Avg 1st Innings Score = 180")
+        Player Career Stats: (e.g., "Bumrah: Avg Economy = 6.5")
+
+Result: Your RAM usage stays very low (Match Data + Tiny Summary Table), but your insights are deep.
+
+
+
+Visualization:-
+
+
+Implement few pre-built custom functions which users will import directly and will feed the match data, and eventually get the visualizations from the pre-built functions just by calling those functions.
+
+
+Always use None. def add_player(player, list=None): if list is None: list = [].
+
+Use "Forward Declarations" (typing only) or move the import inside the function/method, not at the top of the file.
+
+Explicitly define __all__ = ['PublicClass']. Hide the dirty laundry
+
+Always use timezone.utc. Store data in UTC. Convert to local time only when printing to the user.
+
+You need a Lock File (via poetry or pip-tools). This ensures that if pandas releases a breaking update tomorrow, your library doesn't instantly crash for every new user.
+
+0.0.x = "I am breaking things daily."
+
+1.0.0 = "I promise not to change the public API names."
+
+Unconscious Rule: If you rename a function, you MUST bump the MAJOR version (e.g., 1.x -> 2.0).
+
+A .pre-commit-config.yaml file runs automatically before you can even git commit. It runs black (formatting), ruff (linting), and checks for large files. It prevents garbage code from ever entering the repo.
+
+Parameterized queries ALWAYS. Never f-string a database query
+
+pypitch.exceptions.MatchDataMissing: Match ID 12345 does not have ball-by-ball data
+
+Docstrings are mandatory. If you get hit by a bus tomorrow, can someone else understand why you used a Geometric Meaninstead of an Arithmetic Mean? If not, the code is useless
+
+
+
+
+I. The Core: Data & Logic (The Engine)
+
+1. DO: Treat the "Ball" as the Atomic Unit of Truth
+
+    The Concept: Never store "Kohli: 50 runs." Store "Ball 1: 4 runs", "Ball 2: 0 runs."
+    Why: If you store aggregates, you cannot answer new questions like "How many runs did Kohli score against Spin in the Powerplay?"
+    The Implementation: Your base table is deliveries. Every other stat (Strike Rate, Economy, Average) is a Viewderived from this table.
+
+2. DON'T: Hardcode Rules (The "Over" Trap)
+
+    The Trap: balls_in_over = 6 or innings_length = 20.
+    The Reality: The Hundred has 5-ball sets. Test cricket once had 8-ball overs. Rain reduces overs.
+    The Fix: Use a Configuration Object for every match.
+    Python
+
+    # BAD
+    runs_required = 120 / 20 
+
+    # GOOD
+    runs_required = target / match.config.total_overs
+
+
+
+3. DO: Handle the "Extras" Nightmare Explicitly
+
+    The Concept: Cricket extras are the biggest source of bugs.
+    The Rules:
+        Wides/No-balls: Count to the Team score and Bowler runs, but NOT Batter balls faced.
+        Byes/Leg Byes: Count to the Team score, but NOT Bowler runs or Batter runs.
+    Senior Move: Create a RunComponent class.
+    Python
+
+    class RunScore:
+        batter_runs: int  # 0
+        extras: int       # 1 (Wide)
+        is_ball_faced: bool # False (because it was wide)
+        bowler_charged: bool # True
+
+
+
+4. DO: Use Enums for "Categorical" Data
+
+    The Concept: Strings like "lbw", "LBW", "L.B.W." will destroy your database.
+    The Fix:
+    Python
+
+    from enum import Enum, auto
+
+    class DismissalType(Enum):
+        BOWLED = auto()
+        CAUGHT = auto()
+        LBW = auto()
+        # "Obstructing the field" handles rare cases
+
+
+
+
+II. The Crust: API & User Experience (The Interface)
+
+The goal here is "Stability." If this changes, you break the user's code.
+
+5. DO: The "Input Sanitization" Layer (The Registry)
+
+    The Problem: User inputs "Bangalore" or "Bengaluru" or "Chinnaswamy".
+    The Fix: Never let the core engine see raw strings. Use a Fuzzy Matching Registry.
+    Python
+
+    # User types this:
+    pypitch.get_stats(venue="Bangalore")
+
+    # Your Library does this internally:
+    venue_id = registry.resolve_venue("Bangalore") # Returns 'ven_8291' (M. Chinnaswamy)
+    engine.query(venue_id)
+
+
+
+6. DON'T: Expose Internal Column Names
+
+    The Problem: You name a column bat_avg in v1. In v2, you rename it to batting_average. Every user script breaks.
+    The Fix: Return Dataclasses or Pydantic Models, not raw DataFrames/Dictionaries.
+    Python
+
+    @dataclass
+    class PlayerStats:
+        runs: int
+        average: float
+
+        # If you rename internal columns, you map them here. 
+        # The user ALWAYS sees .average
+
+
+
+7. DO: Implement "Lazy Evaluation" (Elasticity)
+
+    The Problem: A user loads pypitch.load_history(). It tries to load 1.5GB of data into RAM. The kernel crashes.
+    The Fix: Use DuckDB's Lazy Execution.
+        The library prepares the query but executes it only when the user asks for the result (.collect() or .show()).
+        This allows a user to query a 100GB dataset on a 8GB RAM laptop.
+
+
+III. The Infrastructure: Deployment & Future Proofing
+
+8. DO: The "Adapter Pattern" for Data Sources
+
+    The Problem: Today you use Cricsheet. Tomorrow you might get access to a commercial API.
+    The Fix: Write an Interface.
+    Python
+
+    class DataSource(ABC):
+        @abstractmethod
+        def get_ball_by_ball(self, match_id):
+            pass
+
+    class CricsheetAdapter(DataSource):
+        # Implementation for JSON files
+
+    class SportmonksAdapter(DataSource):
+        # Implementation for Live API
+
+
+
+
+    This makes your library "Elastic." It can stretch to fit any data source.
+
+9. DON'T: Versioning "Surprises"
+
+    The Rule: If you change the behavior of a function, you MUST warn the user first.
+    The Senior Move: Use Python's warnings module.
+    Python
+
+    def old_function():
+        warnings.warn(
+            "old_function is deprecated and will be removed in v2.0. Use new_function instead.",
+            DeprecationWarning
+        )
+
+
+
+
+Summary Checklist
+
+Feature
+	
+
+The Junior Way (Don't)
+	
+
+The Senior Way (Do)
+
+Logic
+	
+
+if runs == 4: boundary = True
+	
+
+if runs >= 4 and not all_run: boundary = True
+
+Names
+	
+
+if name == "Kohli"
+	
+
+if player_id == registry.get_id("Kohli")
+
+Storage
+	
+
+Store Averages directly
+	
+
+Store Balls, Calculate Average on fly
+
+Memory
+	
+
+Load all CSVs into Pandas
+	
+
+Use DuckDB Lazy Frames
+
+Errors
+	
+
+KeyError: 'Wides'
+	
+
+InvalidMetricError: 'Wides' not found for format T20
+
+Senior Advice:
+
+Before you write a single line of code, write the README.md.
+
+
+
+
+Counterpoint A: The "Configuration Hell" (The Adapter Risk)
+
+    Your Assumption: Users will happily plug in their own data sources using the Adapter system.
+    The Skeptic's View: Writing an adapter is hard. If I am a Junior Analyst, I don't know how to map a JSON field runs_off_bat to your specific AtomicBallSchema.
+    The Risk: If you don't ship with pre-built, perfect adapters for the top 3 free sources (Cricsheet, Retrosheet, CricAPI), users will stare at an empty "MatchLoader" and quit.
+    Correction: The library must ship with pypitch.sources.CricsheetLoader working out of the box. The interface exists for custom sources, but the default must be zero-configuration.
+
+Counterpoint B: The "Lazy Evaluation" Debugging Nightmare
+
+    Your Assumption: Lazy loading is better because it saves RAM.
+    The Skeptic's View: Lazy evaluation is great until it breaks. When a query fails, it doesn't fail at line 10 (where I wrote the query); it fails at line 50 (where I tried to print the result). This makes debugging incredibly frustrating for Python beginners who are used to Pandas (Eager execution).
+    The Risk: Users will post issues saying "Your library is buggy" because the error trace points to internal DuckDB code, not their own script.
+    Correction: You need a verbose debug=True mode that forces Eager execution during development so users can catch errors immediately.
+
+Counterpoint C: The "Empty Box" Problem (Models)
+
+    Your Assumption: Users want to bring their own Machine Learning models (BYO Model).
+    The Skeptic's View: 95% of your users are Cricket Analysts, not Data Scientists. They don't have a pre-trained XGBoost model lying around. They want your model.
+    The Risk: If pypitch.models.WinPredictor requires me to upload a .json model file that I don't have, the feature is dead on arrival.
+    Correction: You must provide a "Baseline Model" (e.g., a pre-trained logistic regression) included in the library. Let experts swap it out, but give beginners a default that works.
+
+
+
+Scenario: A user wants to analyze the "Impact Player" rule introduced in IPL 2023.
+
+    The Problem: This rule allows a 12th player to bat/bowl.
+    Your Architecture Test:
+        Does your AtomicBallSchema assume only 11 players per side?
+        Does your MatchState simulator crash if a 12th unique playerID appears in the batting order?
+        Does your download() utility know how to handle the schema change in Cricsheet files post-2023?
+
+If your architecture requires a Code Change to handle the Impact Player rule, you failed the flexibility test. If it only requires a Data/Config Change (e.g., updating the allowed players limit in the Registry), then you have succeeded.
+
+
+Section A: The Stability Contract
+
+These answers belong in your README.md or governance.md.
+
+Q1: Is the API stable?
+
+Official Answer:
+
+"As of version 0.1.0, the Core Engine APIs (pypitch.engine, pypitch.session) are structurally stable. We do not anticipate changing the fundamental 'Session -> Match -> Delivery' hierarchy. However, until the v1.0.0release, high-level helper functions in pypitch.stats may be renamed or refactored for clarity based on user feedback."
+
+Q2: What breaks between versions?
+
+Official Answer:
+
+"We strictly follow Semantic Versioning (SemVer).
+
+    Major (1.x -> 2.x): Fundamental architecture changes (e.g., dropping DuckDB support).
+    Minor (0.1 -> 0.2): New features (e.g., adding a 'Win Probability' model). These are backward compatible.
+    Patch (0.1.1 -> 0.1.2): Bug fixes only.
+
+Note: During the 0.x.x Alpha phase, we reserve the right to modify function arguments if necessary, but will provide Deprecation Warnings for at least one cycle before removal."
+
+Q3: Do minor versions introduce breaking changes?
+
+Official Answer:
+
+"No. Once we hit v1.0, minor versions will never break existing code. New parameters will always be optional (with default values), and return types will remain consistent. If you write a script on v1.2, it is guaranteed to run on v1.9."
+
+
+Section B: Failure Modes & Data Integrity
+
+These answers belong in your ARCHITECTURE.md.
+
+Q4: What happens if data is missing?
+
+(e.g., A match has no ball-by-ball data, or a player has no birthdate)
+
+Official Answer:
+
+"PyPitch prefers silence over guessing.
+
+    Queries: If a requested attribute (e.g., control_percentage) is missing from the source, the query returns null (or NaN in DataFrames). We do not interpolate or impute values implicitly.
+    Aggregations: Missing data is excluded from averages (standard SQL behavior). If a player has 'unknown' dismissal data, they are not counted in the average, rather than treated as 'not out'.
+    User Warning: The session.validate() method allows users to explicitly check for data gaps (e.g., 'Warning: 5% of matches in this dataset are incomplete')."
+
+Q5: Are aggregations deterministic?
+
+(If I run the same query today and tomorrow, do I get the exact same float?)
+
+Official Answer:
+
+"Yes.
+
+    Sorting: All internal queries enforce a strict sort order (match_id, inning, over, ball) before aggregation to prevent non-deterministic floating-point summation errors.
+    Simulations: The MatchSimulator and Model classes accept a random_state (seed) argument. Running a Monte Carlo simulation with seed=42 will produce bit-exact results across different machines and OS environments."
+
+Q6: Does ingestion mutate existing data?
+
+(If I load new matches, do I risk corrupting my old history?)
+
+Official Answer:
+
+"No. PyPitch uses an Append-Only / Immutable write strategy.
+
+    Parquet Storage: When you run engine.ingest(), we do not modify existing Parquet files. We write new partitions.
+    Identity Resolution: If a player is renamed (e.g., SCD Type 2 update), we insert a new row in the entity_registry with a new effective date range. We never overwrite the old row. This ensures that a report generated for 2015 remains historically accurate to 2015, even if the data is re-ingested in 2025."
+
+
+
+Here are the targets for your v0.1.0 release:
+
+    Unit Tests: ~50 (Covering every stat function: Avg, SR, Economy, etc.)
+    Integration Tests: ~5 (One for Ingest, One for Filtering, One for Export)
+    Data Files: 2 (One T20 JSON, one Test Match JSON). Do not include 1,000 files.
+    Coverage: Aim for 90%+ on engine.py and stats.py.
+
+
+When you present this to a quant, say this:
+
+"We treat data ingestion as a deterministic process. Our CI pipeline runs property-based tests to ensure that edge cases—like 0-ball innings or DLS revisions—don't produce NaN values in your downstream models."
+
+
+When you open a Pull Request in PyPitch, here is what happens automatically:
+
+    Pre-Commit (Local): Formats your code. If you forgot to format, the commit fails.
+    Lint (Cloud): Checks for unused imports, bad variables, and complexity.
+    Test Matrix (Cloud): Runs 300 tests on Python 3.10, 3.11, and 3.12.
+    Coverage (Cloud): If you wrote code but didn't write a test (Coverage < 90%), the PR fails.
+
+Senior Engineer Note: This is a "Strict" setup. It will feel annoying at first. You will try to commit and it will scream at you about whitespace. Good. That is how you keep a codebase clean for 5 years.
+
+
+
+Gap 1: The "Feature Store" Layer (Crucial for ML)
+
+The Problem:
+
+A Data Scientist doesn't feed "raw ball-by-ball data" into a model. They feed features.
+
+If 5 different analysts all write their own code to calculate "Batter's Strike Rate in last 5 overs," you get 5 different answers. That is a disaster.
+
+The Fix:
+
+Introduce a FeatureGenerator class. This standardized calculation logic.
+
+Python
+
+
+# pypitch/features.py
+
+
+class RollingFeature:
+
+    def __init__(self, window=10, metric="strike_rate"):
+
+        self.window = window
+
+        self.metric = metric
+
+
+    def compute(self, session, player_id):
+
+        # Optimized Window Function in DuckDB
+
+        return session.query(f"""
+
+            SELECT avg(runs) over (
+
+                PARTITION BY player_id 
+
+                ORDER BY match_date 
+
+                ROWS BETWEEN {self.window} PRECEDING AND CURRENT ROW
+
+            ) ...
+
+        """)
+
+Why this sells: "PyPitch provides a Standardized Feature Store, ensuring that 'Rolling Average' means the exact same thing to the Strategy Team as it does to the Backtesting Team."
+
+
+Gap 2: Schema Evolution Strategy
+
+The Problem:
+
+You release v1.0. Users download 5GB of data.
+
+In v1.1, you decide to add a new column: is_impact_player.
+
+Crash. The old Parquet files don't have this column. The user's local database is now corrupt/incompatible.
+
+The Fix:
+
+You need a Schema Migration Utility.
+
+    Automatic: When engine.connect() is called, check the Parquet metadata.
+    Action: If the schema is old, trigger a "Heal" operation (Add missing columns with null values).
+
+Add to README: "PyPitch includes Auto-Schema Migration. Update the library without fear; your existing local data lake is automatically patched to match the new schema version."
+
+
+Gap 3: Performance Regression Testing
+
+The Problem:
+
+You write a cool new feature in v0.2. It works, but it accidentally makes every query take 500ms instead of 100ms. Unit tests pass (the answer is right), but the performance is broken.
+
+The Fix:
+
+Add pytest-benchmark to your CI pipeline.
+
+Python
+
+
+# tests/performance/test_latency.py
+
+
+def test_query_speed(benchmark, session):
+
+    # If this takes > 150ms, FAIL the build.
+
+    result = benchmark(session.get_match, "IND vs PAK")
+
+    assert result is not None
+
+Why this sells: "We treat Latency as a Bug. Our CI/CD pipeline rejects any code that slows down the engine by more than 5%."
+
+
+Gap 4: Video Synchronization (The "Killer App")
+
+The Problem:
+
+A coach sees a stat: "Kohli struggles vs Outswing." They immediately ask: "Show me."
+
+If your library can't link data to video timestamps, it's useless to a franchise.
+
+The Fix:
+
+You don't need to host video. You just need a Time-Mapper.
+
+Add a simple field or utility that maps ball_index to video_timestamp_seconds.
+
+Python
+
+
+# The "Wow" Feature
+
+ball = match.get_ball(14.2)
+
+print(f"YouTube Timestamp: {ball.video_timestamp}s")
+
+# Output: 4520s (Allows one-click jump to video)
+
+
+Gap 5: Legal & Attribution (The "Official" Stuff)
+
+The Problem:
+
+If a Hedge Fund uses your library and gets sued for IP violation because your library obscured the license, they will blame you.
+
+The Fix:
+
+    Metadata: Every Match object should have a .license attribute.
+    Citation: When engine.ingest() runs, print a mandatory acknowledgment:
+    "Data provided by Cricsheet.org (ODbL). Please attribute correctly in public work."
+
+
+Summary of the "Forgotten" Items
+
+Feature
+	
+
+Why it matters
+	
+
+Difficulty
+
+Feature Store
+	
+
+Standardizes math across teams.
+	
+
+⭐⭐⭐
+
+Schema Migration
+	
+
+Prevents users from deleting data on updates.
+	
+
+⭐⭐⭐⭐
+
+Perf Benchmarks
+	
+
+Proves you are serious about speed.
+	
+
+⭐⭐
+
+Video Sync
+	
+
+Bridges the gap between Quant & Coach.
+	
+
+⭐⭐⭐
+
+Legal/License
+	
+
+Risk management for enterprise users.
+	
+
+⭐
+
+The "Broadcaster" Plugin: pypitch.live (or .obs)
+
+Target Audience: Local Leagues, YouTubers, Streamers.
+
+The Problem: Small tournaments stream on YouTube but have terrible graphics. They can't afford TV-grade graphics engines (Vizrt/Chyron).
+
+The Solution: A plugin that outputs a real-time JSON/HTML file that OBS (Open Broadcaster Software) can read to display live stats overlays.
+
+    Features:
+        Live Loop: Watches a JSON file for updates (simulating a live feed).
+        Overlay Generation: Generates a transparent .png or HTML page for "Current Run Rate" or "Batter Comparison."
+        Usage:
+
+        from pypitch.live import OverlayServer
+
+        # Starts a local webserver at localhost:8000/overlay
+        # OBS Browser Source points to this URL.
+        OverlayServer.serve(match_id="live_match")
+    Senior Engineer Review: 🟢 Green Light. Excellent niche. It turns your library into a production tool for media, not just analysts.
+
+
+
+The "Deployment" Plugin: pypitch.serve
+
+Target Audience: Enterprise Engineers, Startups.
+
+The Problem: You built a great model in a Jupyter Notebook. Now your boss says: "Put it in the API so the mobile app can use it." Analysts struggle to wrap their code in FastAPI/Docker.
+
+The Solution: A one-line command to expose the PyPitch engine as a REST API.
+
+    Features:
+        FastAPI Wrapper: Automatically creates endpoints like /stats/player/{id}.
+        Usage:
+        Bash
+        # Command Line Interface
+        pypitch serve --port 8080 --model ./my_win_predictor.json
+        Result: A Swagger UI documentation page is instantly live.
+    Senior Engineer Review: 🟢 Green Light. This is "Infrastructure as Code." It makes PyPitch "Production-Ready" out of the box.
+
+
+
+The "Manager" Plugin: pypitch.report
+
+Target Audience: Performance Analysts, Scouts, Coaches.
+
+The Problem: An analyst finds a great insight ("Kohli is weak vs spin"). The Coach says: "Great, put it in a PDF so I can print it for the team meeting." Currently, generating PDFs in Python is painful (ReportLab/WeasyPrint).
+
+The Solution: A Jinja2-based report generator that turns DataFrames/Plots into professional scouting cards.
+
+    Features:
+        Templates: Ships with match_report.html, player_profile.html.
+        Usage:
+        Python
+
+        from pypitch.report import PDFGenerator
+        # Generates a 2-page PDF with Wagon Wheels and Stats
+        PDFGenerator.create_scouting_report(
+            player_id="p_123", 
+            template="t20_batter", 
+            output="kohli_scouting.pdf"
+    Senior Engineer Review: 🟢 Green Light. Keeps the core library free of heavy PDF dependencies. Essential for real-world usage.
+
+
+
+How to implement the facade:
+
+    Auto-Detect Cache: If user doesn't provide a cache_dir, default to ~/.pypitch_data.
+    Bundled Data: Ship the library with a tiny SQLite/Parquet file containing just the last World Cup, so quick_loadworks instantly without downloading 500MB.
+    Eager Debugging: When pypitch.debug_mode(True) is set, force every query to execute immediately so beginners see errors instantly.
+
+
+Part 3: The New Custom Graphs (The "Wow" Factor)
+
+Standard libraries (Matplotlib/Seaborn) have Bar Charts and Line Charts. Cricket has specific charts that don't exist in standard libraries. If PyPitch provides these out-of-the-box, it becomes indispensable.
+
+Here are the 4 Custom Graphs you must build:
+
+A. The "Manhattan" (The Better Worm)
+
+    What it is: A bar chart showing runs per over, but the bars are color-coded by events (Wicket = Red, Boundary = Green, Dot = Grey).
+    Why custom? Standard bar charts don't handle the multi-color conditional logic ("If wicket fell, make bar red") easily.
+    Code: match.plot.manhattan()
+
+B. The "Beehive" (Pitch Map)
+
+    What it is: A scatter plot of where the ball pitched, viewed from the bowler's perspective.
+    The Custom Twist:
+        Interactive Hover: Hover over a dot to see "Kohli, Cover Drive, 4 runs."
+        Zone Overlay: Draw the "Good Length" and "Yorker" boxes transparently on top to show accuracy.
+    Code: bowler.plot.beehive(against="Left Handers")
+
+C. The "Wagon Wheel" (Polar Coordinates)
+
+    What it is: Shows where shots were hit.
+    The Problem: Standard Polar plots assume degrees (0-360). Cricket uses sectors ("Cover", "Mid-wicket").
+    The Solution: You need a custom mapping function angle_to_cricket_zone(degrees).
+    Code: batter.plot.wagon_wheel()
+
+D. The "Partnership Snake" (Flow Chart)
+
+    What it is: A ribbon chart showing how a partnership evolved.
+    The Custom Twist: The width of the ribbon represents the run rate. The color represents who is dominating the scoring.
+    Code: partnership.plot.flow()
+
+
+The Visualization Audit
+
+You asked: "Are they working fine? Can we introduce custom graphs?"
+
+Status: Your current strategy (returning Plotly objects) is Technically Sound but Visually Generic. The Problem: A standard scatter plot of "PitchMap" looks like dots on a white background. That doesn't look like cricket. It looks like Excel.
+
+The Fix: You need Domain-Specific Backgrounds.
+
+1. The "Cricket Field" Canvas
+
+You cannot just plot X/Y coordinates. You need to draw the stumps, the crease, the inner circle (30 yards), and the boundary.
+
+The Implementation: You need a helper class draw_field() that adds these shapes to the Plotly layout before plotting the data.
+
+Python
+
+
+def _add_cricket_pitch_layout(fig):
+
+    # Draw the pitch rectangle (22 yards long)
+
+    fig.add_shape(type="rect", x0=-1.5, y0=0, x1=1.5, y1=20.12, fillcolor="#E3D0A8")
+
+    
+
+    # Draw the stumps
+
+    fig.add_shape(type="line", x0=-0.11, y0=0, x1=0.11, y1=0, line=dict(color="black", width=5))
+
+    
+
+    return fig
+
+
+
+Part 1: Fixing the Loading Complexity ("So now what?")
+
+You admitted: We made it complex to load. The fix is not to change the architecture. The architecture (DuckDB + Loader) is correct for scale. The fix is to hide it behind a "Facade" for beginners.
+
+We will introduce a new module: pypitch.express (inspired by Plotly Express).
+
+The "One-Liner" Solution
+
+Create a wrapper that automates the boring stuff (downloading, caching, connecting) with sensible defaults.
+
+
+Old (Power User)
+	
+
+New (Express User)
+
+Import Loader → Create Engine → Ingest → Connect
+	
+
+import pypitch.express as px
+
+4 lines of setup code
+	
+
+ipl = px.load_competition("ipl", 2023)
+
+Good for: Custom databases, private data
+	
+
+Good for: "I just want to analyze the IPL"
+
+Verdict: This solves your simplicity problem without removing the power features for the pros.
+
+
+These are the current level-perfect features to be added to the main library package for v1. Let's continue to build the library for the future.

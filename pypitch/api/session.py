@@ -9,6 +9,7 @@ from pypitch.storage.registry import IdentityRegistry
 from pypitch.runtime.executor import RuntimeExecutor
 from pypitch.runtime.cache_duckdb import DuckDBCache
 from pypitch.data.loader import DEFAULT_DATA_DIR, DataLoader
+from pypitch.data.pipeline import build_registry_stats
 from pypitch.core.canonicalize import canonicalize_match
 
 class PyPitchSession:
@@ -27,41 +28,44 @@ class PyPitchSession:
         self.engine = QueryEngine(self.db_path)
         self.cache = DuckDBCache(self.cache_path)
         self.executor = RuntimeExecutor(self.cache, self.engine)
+        self.loader = DataLoader(str(self.data_dir))
         
         # Auto-Setup
-        if not self.engine.table_exists("ball_events"):
-            print("[PyPitch] First time setup detected. Initializing database...")
-            self._setup_db()
+        # Check if registry is populated (simple check: do we have any players?)
+        # If not, run the "Light" ingestion.
+        if not self.registry.get_player_stats(1): # Dummy check, or better check if table exists/has rows
+             # Actually, let's just check if we have data downloaded.
+             if not (self.loader.raw_dir.exists() and list(self.loader.raw_dir.glob("*.json"))):
+                 print("[PyPitch] First time setup detected. Downloading data...")
+                 self.loader.download()
+             
+             # Now check if we need to build stats
+             # We can check if the 'player_stats' table is empty or missing
+             try:
+                 self.registry.con.execute("SELECT count(*) FROM player_stats")
+                 count = self.registry.con.fetchone()[0]
+                 if count == 0:
+                     raise Exception("Empty")
+             except:
+                 print("[PyPitch] Building Registry & Summary Stats...")
+                 build_registry_stats(self.loader, self.registry)
+
+    def load_match(self, match_id: str) -> None:
+        """
+        Lazy loads a specific match into the 'Heavy' engine.
+        """
+        print(f"Loading match {match_id}...")
+        try:
+            data = self.loader.get_match(match_id)
+            table = canonicalize_match(data, self.registry, match_id)
+            self.engine.ingest_events(table, snapshot_tag=f"match_{match_id}", append=True)
+            print(f"Match {match_id} loaded successfully.")
+        except Exception as e:
+            print(f"Failed to load match {match_id}: {e}")
 
     def _setup_db(self) -> None:
-        """Downloads and ingests data automatically."""
-        loader = DataLoader(str(self.data_dir))
-        
-        # 1. Download
-        try:
-            loader.download()
-        except Exception as e:
-            print(f"[PyPitch] Failed to download data: {e}")
-            return
-
-        # 2. Process
-        print("[PyPitch] Processing matches (this may take a minute)...")
-        tables = []
-        matches = list(loader.iter_matches())
-        
-        for match_data in tqdm(matches, desc="Ingesting"):
-            try:
-                table = canonicalize_match(match_data, self.registry)
-                tables.append(table)
-            except Exception:
-                continue
-
-        if tables:
-            full_table = pa.concat_tables(tables)
-            self.engine.ingest_events(full_table, snapshot_tag="latest")
-            print("[PyPitch] Setup complete. Database ready.")
-        else:
-            print("[PyPitch] Warning: No data found to ingest.")
+        """Deprecated: Use lazy loading."""
+        pass
 
     @classmethod
     def get(cls) -> "PyPitchSession":
