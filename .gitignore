@@ -20,6 +20,11 @@ parts/
 sdist/
 var/
 wheels/
+<<<<<<< HEAD
+=======
+pip-wheel-metadata/
+share/python-wheels/
+>>>>>>> 9ce6f86219c06bae7b057fceca2a3254ef30169f
 *.egg-info/
 .installed.cfg
 *.egg
@@ -45,6 +50,10 @@ htmlcov/
 nosetests.xml
 coverage.xml
 *.cover
+<<<<<<< HEAD
+=======
+*.py,cover
+>>>>>>> 9ce6f86219c06bae7b057fceca2a3254ef30169f
 .hypothesis/
 .pytest_cache/
 
@@ -56,6 +65,10 @@ coverage.xml
 *.log
 local_settings.py
 db.sqlite3
+<<<<<<< HEAD
+=======
+db.sqlite3-journal
+>>>>>>> 9ce6f86219c06bae7b057fceca2a3254ef30169f
 
 # Flask stuff:
 instance/
@@ -80,8 +93,24 @@ ipython_config.py
 # pyenv
 .python-version
 
+<<<<<<< HEAD
 # celery beat schedule file
 celerybeat-schedule
+=======
+# pipenv
+#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
+#   However, in case of collaboration, if having platform-specific dependencies or dependencies
+#   having no cross-platform support, pipenv may install dependencies that don't work, or not
+#   install all needed dependencies.
+#Pipfile.lock
+
+# PEP 582; used by e.g. github.com/David-OConnor/pyflow
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+>>>>>>> 9ce6f86219c06bae7b057fceca2a3254ef30169f
 
 # SageMath parsed files
 *.sage.py
@@ -113,16 +142,37 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+<<<<<<< HEAD
 # Data files (irrelevant for version control)
 data/
 data/cache.duckdb
 data/registry.duckdb
 data/bundled/
 data/raw/
+=======
+# Project specific
+# Data files
+*.db
+*.duckdb
+*.sqlite
+*.sqlite3
+data/
+raw/
+registry.sqlite
+
+# Logs
+*.log
+logs/
+>>>>>>> 9ce6f86219c06bae7b057fceca2a3254ef30169f
 
 # IDE
 .vscode/
 .idea/
+<<<<<<< HEAD
+=======
+*.swp
+*.swo
+>>>>>>> 9ce6f86219c06bae7b057fceca2a3254ef30169f
 
 # OS
 .DS_Store
