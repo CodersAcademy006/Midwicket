@@ -1,60 +1,95 @@
 # PyPitch
 
-<<<<<<< HEAD
-## Architecture Overview
-
-```mermaid
-flowchart LR
-    A[Cricsheet JSON] --> B[Ingestion]
-    B --> C[DuckDB Cache]
-    C --> D[PyArrow Table]
-    D --> E[Pandas]
-```
-
-The "Squash & Rename" Operation:
-
-Do this: Run an interactive rebase (git rebase -i). Squash all those "swear" commits into one clean commit: feat: Implement core DuckDB ingestion pipeline.
-
-Why: It erases the panic from history and makes you look like a pro who got it right the first time.
-
-### Why Architecture Diagram
-
-Add a diagram in your README showing: Cricsheet JSON -> Ingestion -> DuckDB (Cache) -> PyArrow Table -> Pandas.
-
-* This visual proves you understand the *system*, not just the syntax.
-
-### Modularization
-
-Modularize the "God Object":
-
-Break that 181-file change into distinct modules: pypitch.ingest, pypitch.storage, pypitch.metrics.
-
-Senior Engineer Take: "I would fork this for the DuckDB logic, but I would be terrified to contribute to it because the Git history suggests the maintainer codes in a frenzy."
-=======
-The Open Source Cricket Intelligence SDK
+**The Open Source Cricket Intelligence SDK**
 
 PyPitch is a comprehensive Python library for cricket analytics, providing a robust, agent-based architecture for querying, processing, and analyzing cricket data. Built on top of PyArrow, DuckDB, and Pydantic, it offers deterministic, cacheable queries with strict schema enforcement.
 
+## Table of Contents
+
+- [Introduction](#introduction)
+- [Features](#features)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Usage](#usage)
+  - [API Overview](#api-overview)
+  - [Key Capabilities](#key-capabilities)
+- [Examples](#examples)
+- [Architecture Overview](#architecture-overview)
+- [Data Sources](#data-sources)
+- [Documentation](#documentation)
+- [Performance](#performance)
+- [Stability & Compatibility](#stability--compatibility)
+- [Contributing](#contributing)
+- [License](#license)
+- [Support](#support)
+- [Roadmap](#roadmap)
+
+## Introduction
+
+PyPitch is a powerful cricket analytics SDK designed for developers, data scientists, and cricket enthusiasts. It provides a complete solution for ingesting, querying, and analyzing cricket data with a focus on performance, reliability, and ease of use.
+
+The library leverages modern data engineering tools (PyArrow, DuckDB) and architectural patterns (agent-based design, deterministic queries) to deliver a professional-grade analytics platform. Whether you're building a fantasy cricket application, conducting statistical research, or creating interactive dashboards, PyPitch provides the tools you need.
+
+### Target Audience
+
+- **Data Scientists**: Perform advanced cricket analytics with Python
+- **Application Developers**: Build cricket-related applications with robust APIs
+- **Cricket Enthusiasts**: Explore and analyze cricket data programmatically
+- **Researchers**: Conduct statistical analysis on cricket matches
+
 ## Features
 
-- **Agent-Based Architecture**: Specialized agents (Gatekeeper, Planner, Archivist, Identity Manager, Analyst) handle different aspects of data processing.
-- **Deterministic Queries**: All queries are hashed for reproducible results and caching.
-- **Schema V1 Contract**: Immutable data schema with evolution rules for backward compatibility.
-- **High Performance**: Vectorized operations using PyArrow and analytical queries via DuckDB.
-- **Time-Aware Identity**: Consistent player/team/venue resolution across historical data.
-- **Express API**: One-liner access to common operations with sensible defaults.
-- **Bundled Data**: Instant setup with sample cricket data (no download required).
-- **Win Probability Model**: ML-powered match outcome predictions.
-- **Rich Visualizations**: Charts, reports, and interactive dashboards.
+- **Agent-Based Architecture**: Specialized agents (Gatekeeper, Planner, Archivist, Identity Manager, Analyst) handle different aspects of data processing
+- **Deterministic Queries**: All queries are hashed for reproducible results and caching
+- **Schema V1 Contract**: Immutable data schema with evolution rules for backward compatibility
+- **High Performance**: Vectorized operations using PyArrow and analytical queries via DuckDB
+- **Time-Aware Identity**: Consistent player/team/venue resolution across historical data
+- **Express API**: One-liner access to common operations with sensible defaults
+- **Bundled Data**: Instant setup with sample cricket data (no download required)
+- **Win Probability Model**: ML-powered match outcome predictions
+- **Rich Visualizations**: Charts, reports, and interactive dashboards
+
+## Installation
+
+### Prerequisites
+
+- Python 3.9 or higher
+- pip package manager
+
+### Install from PyPI
+
+```bash
+pip install pypitch
+```
+
+### Install from Source
+
+For development or to get the latest features:
+
+```bash
+git clone https://github.com/yourusername/pypitch.git
+cd pypitch
+pip install -r requirements.txt
+pip install -e .
+```
+
+### Verify Installation
+
+```python
+import pypitch as pp
+print(pp.__version__)  # Should print: 0.1.0
+```
 
 ## Quick Start
+
+The fastest way to get started is using the Express API with bundled sample data:
 
 ### Instant Setup with Bundled Data
 
 ```python
 import pypitch.express as px
 
-# Load with sample data instantly (no download!)
+# Load with sample data instantly (no download required)
 session = px.quick_load()
 
 # Get player statistics
@@ -66,7 +101,9 @@ prob = px.predict_win("Wankhede", 180, 120, 5, 15.0)
 print(f"🎯 Win probability: {prob['win_prob']:.1%}")
 ```
 
-### Full Installation & Setup
+### Full Setup with Custom Data
+
+For production use or custom datasets:
 
 ```bash
 pip install pypitch
@@ -75,7 +112,7 @@ pip install pypitch
 ```python
 import pypitch as pp
 
-# Initialize session
+# Initialize session with data directory
 session = pp.api.session.PyPitchSession("./data")
 
 # Download sample data (IPL 2023)
@@ -89,7 +126,9 @@ print(f"Player: {stats.name}")
 print(f"Matches: {stats.matches}, Runs: {stats.runs}")
 ```
 
-## API Overview
+## Usage
+
+### API Overview
 
 PyPitch provides multiple API levels for different use cases:
 
@@ -158,6 +197,14 @@ results = pp.storage.engine.QueryEngine("./data").execute_query(sql)
 
 ## Architecture Overview
 
+PyPitch uses a modular, agent-based architecture with clear separation of concerns:
+
+```
+Data Flow: Cricsheet JSON → Ingestion → DuckDB Cache → PyArrow Table → Pandas
+```
+
+### Module Structure
+
 ```
 pypitch/
 ├── api/             # User-Facing APIs (Express, Core, Plugins)
@@ -176,38 +223,62 @@ pypitch/
 └── tests/           # Comprehensive Test Suite
 ```
 
+For detailed architecture information, see [Agents.md](Agents.md).
+
 ## Data Sources
 
-PyPitch uses [Cricsheet](https://cricsheet.org/) as its primary data source, providing comprehensive ball-by-ball data for international and domestic cricket matches. The library also supports custom data ingestion and includes bundled sample data for instant setup.
+PyPitch uses [Cricsheet](https://cricsheet.org/) as its primary data source, providing comprehensive ball-by-ball data for international and domestic cricket matches. The library also supports:
+
+- **Custom Data Ingestion**: Import your own cricket data in JSON format
+- **Bundled Sample Data**: Pre-packaged IPL 2023 matches for instant setup
+- **Live Data Streaming**: Real-time match data (upcoming feature)
 
 ## Documentation
 
+### Core Documentation
+
 - **[Complete API Reference](pypitch/docs/api.md)**: Detailed function documentation with examples
-- **[Architecture Guide](Agents.md)**: Agent-based system design
-- **[Win Probability Model](pypitch/docs/winprob_model.md)**: ML model details
-- **[Debug Mode](pypitch/docs/debug_mode.md)**: Troubleshooting guide
-- **[Examples](examples/)**: Jupyter notebooks and sample scripts
+- **[Architecture Guide](Agents.md)**: Agent-based system design and philosophy
+- **[Win Probability Model](pypitch/docs/winprob_model.md)**: ML model implementation details
+- **[Debug Mode](pypitch/docs/debug_mode.md)**: Troubleshooting and debugging guide
+
+### Additional Resources
+
+- **[Examples](examples/)**: Jupyter notebooks and sample scripts (25+ examples)
+- **[Adapters](pypitch/docs/adapters.md)**: Custom data source integration guide
+- **[Impact Player](pypitch/docs/impact_player.md)**: Player impact analysis documentation
 
 ## Examples
 
+PyPitch includes a comprehensive collection of examples to help you get started. All examples are located in the [examples/](examples/) directory.
+
 ### Basic Analysis
+
+Analyze player statistics across multiple players:
+
 ```python
 import pypitch.express as px
 
 # Quick analysis with bundled data
 session = px.quick_load()
 
-# Top run scorers
+# Compare top run scorers
 players = ["V Kohli", "S Dhawan", "RG Sharma", "DA Warner", "AB de Villiers"]
 for player in players:
     stats = px.get_player_stats(player)
-    avg = stats.runs / stats.matches
-    print(f"{player}: {stats.runs} runs ({avg:.1f} avg)")
+    if stats:
+        avg = stats.runs / stats.matches if stats.matches > 0 else 0
+        print(f"{player}: {stats.runs} runs ({avg:.1f} avg)")
 ```
 
-### Match Prediction
+### Match Win Prediction
+
+Predict match outcomes using real-time data:
+
 ```python
-# Real-time win probability
+import pypitch.express as px
+
+# Real-time win probability calculation
 venue = "Wankhede Stadium"
 target = 180
 current_score = 120
@@ -219,11 +290,14 @@ print(f"Current win probability: {prob['win_prob']:.1%}")
 print(f"Model confidence: {prob['confidence']:.1%}")
 ```
 
-### Fantasy Cricket
+### Fantasy Cricket Points
+
+Calculate fantasy cricket points for players:
+
 ```python
 from pypitch.api.fantasy import fantasy_points
 
-# Calculate points for a player in a match
+# Calculate points for a player in a specific match
 points = fantasy_points("Virat Kohli", "980959")
 print("Fantasy Points Breakdown:")
 for category, pts in points.items():
@@ -232,20 +306,55 @@ for category, pts in points.items():
 print(f"  Total: {points['total']}")
 ```
 
+### Advanced Analytics
+
+Perform custom analytics using direct SQL queries:
+
+```python
+from pypitch.storage.engine import QueryEngine
+
+# Initialize query engine
+engine = QueryEngine("./data/pypitch.duckdb")
+
+# Custom SQL query for detailed analysis
+query = """
+    SELECT batsman, SUM(batsman_runs) as total_runs, COUNT(*) as balls_faced
+    FROM balls
+    WHERE match_id = ?
+    GROUP BY batsman
+    ORDER BY total_runs DESC
+    LIMIT 10
+"""
+results = engine.execute_query(query, ["980959"])
+print(results)
+```
+
+For more examples, see the [examples/](examples/) directory which contains 25+ scripts covering various use cases.
+
 ## Performance
 
-PyPitch is designed for high performance:
+PyPitch is engineered for high performance with modern data processing technologies:
 
-- **Vectorized Operations**: PyArrow for fast data processing
-- **Analytical Queries**: DuckDB for sub-second aggregations
-- **Smart Caching**: Deterministic query hashing and result caching
-- **Memory Efficient**: Lazy loading and streaming for large datasets
+### Performance Features
 
-Benchmark results (on sample IPL 2023 data):
-- Player stats query: ~400μs
-- Match loading: ~6.5ms
-- Registry resolution: ~800μs
-- Win probability prediction: ~50μs
+- **Vectorized Operations**: Leverages PyArrow for fast columnar data processing
+- **Analytical Queries**: Uses DuckDB for sub-second analytical queries on large datasets
+- **Smart Caching**: Implements deterministic query hashing for efficient result caching
+- **Memory Efficient**: Employs lazy loading and streaming for handling large datasets
+- **Optimized I/O**: Parquet file format for fast reads and minimal storage
+
+### Benchmark Results
+
+Performance metrics on sample IPL 2023 dataset:
+
+| Operation | Execution Time |
+|-----------|---------------|
+| Player stats query | ~400μs |
+| Match loading | ~6.5ms |
+| Registry resolution | ~800μs |
+| Win probability prediction | ~50μs |
+
+*Note: Benchmarks performed on standard hardware. Actual performance may vary based on dataset size and hardware specifications.*
 
 ## Stability & Compatibility
 
@@ -263,53 +372,130 @@ PyPitch follows [Semantic Versioning](https://semver.org/):
 
 ## Contributing
 
-We welcome contributions! See our [Contributing Guide](CONTRIBUTING.md) for details on:
-- Setting up development environment
-- Running tests and benchmarks
-- Code style and documentation
-- Submitting pull requests
+We welcome contributions from the community! PyPitch is an open-source project and we appreciate help in the following areas:
+
+- Bug fixes and issue reporting
+- Feature development and enhancements
+- Documentation improvements
+- Test coverage expansion
+- Performance optimizations
+
+### How to Contribute
+
+1. **Fork the Repository**: Create your own fork of the PyPitch repository
+2. **Create a Branch**: Make a feature branch for your changes
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+3. **Make Changes**: Implement your changes with clear, documented code
+4. **Write Tests**: Add tests for new features or bug fixes
+5. **Run Tests**: Ensure all tests pass
+   ```bash
+   pytest
+   ```
+6. **Submit Pull Request**: Create a PR with a clear description of your changes
 
 ### Development Setup
+
 ```bash
+# Clone the repository
 git clone https://github.com/yourusername/pypitch.git
 cd pypitch
+
+# Install dependencies
 pip install -r requirements.txt
+
+# Install in editable mode
 pip install -e .
-pytest  # Run test suite
+
+# Run tests
+pytest
+
+# Run with coverage
+pytest --cov=pypitch
 ```
+
+### Code Style Guidelines
+
+- Follow PEP 8 Python style guidelines
+- Use type hints for function signatures
+- Write docstrings for all public functions and classes
+- Keep functions focused and modular
+- Add comments for complex logic
+
+### Reporting Issues
+
+When reporting issues, please include:
+- Python version and operating system
+- PyPitch version
+- Minimal code example to reproduce the issue
+- Expected vs. actual behavior
+- Error messages and stack traces
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+PyPitch is released under the **MIT License**. This means you are free to use, modify, and distribute the software, subject to the terms and conditions of the MIT License.
+
+For full license details, see the [LICENSE](LICENSE) file in the repository.
 
 ## Support
 
-- **Documentation**: [docs.pypitch.org](https://docs.pypitch.org)
-- **Issues**: [GitHub Issues](https://github.com/yourusername/pypitch/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/pypitch/discussions)
-- **Discord**: [PyPitch Community](https://discord.gg/pypitch)
+### Getting Help
+
+If you need assistance or have questions about PyPitch:
+
+- **Documentation**: Comprehensive guides available in the [docs](pypitch/docs/) directory
+- **GitHub Issues**: [Report bugs or request features](https://github.com/CodersAcademy006/PyPitch/issues)
+- **GitHub Discussions**: [Ask questions and share ideas](https://github.com/CodersAcademy006/PyPitch/discussions)
+- **Examples**: Browse [25+ example scripts](examples/) for common use cases
+
+### Community
+
+Join the PyPitch community to connect with other users and contributors:
+
+- Share your cricket analytics projects
+- Get help from experienced users
+- Contribute to the project's development
+- Stay updated on new features and releases
 
 ## Roadmap
 
-### v1.0 (Current)
-- ✅ Express API with one-liner access
+PyPitch is under active development with a clear roadmap for future enhancements.
+
+### Current Version: v0.1.0
+
+**Completed Features:**
+- ✅ Express API with one-liner access patterns
 - ✅ Bundled sample data for instant setup
-- ✅ Win probability ML model
+- ✅ Win probability ML model implementation
 - ✅ Comprehensive test suite (47% coverage)
-- ✅ Performance benchmarks
-- ✅ PDF report generation
-- ✅ Live broadcasting overlays
+- ✅ Performance benchmarks and optimizations
+- ✅ PDF report generation capabilities
+- ✅ Live broadcasting overlay support
+- ✅ Agent-based architecture with clear separation of concerns
 
-### v1.1 (Next)
-- Enhanced ML models (player impact, pitch analysis)
-- Real-time data streaming
-- Advanced visualizations
-- Plugin ecosystem
-- REST API server improvements
+### Upcoming: v1.1
 
-### Future
-- Multi-sport support
-- Cloud deployment options
-- Mobile SDK
-- Advanced AI analytics
->>>>>>> 9ce6f86219c06bae7b057fceca2a3254ef30169f
+**Planned Features:**
+- 🔄 Enhanced ML models (player impact analysis, pitch condition predictions)
+- 🔄 Real-time data streaming capabilities
+- 🔄 Advanced data visualizations and interactive charts
+- 🔄 Plugin ecosystem for extensibility
+- 🔄 REST API server improvements and optimizations
+- 🔄 Expanded test coverage (target: 75%+)
+
+### Future Releases
+
+**Long-term Goals:**
+- Multi-sport support (extending beyond cricket)
+- Cloud deployment options and scalability
+- Mobile SDK for iOS and Android
+- Advanced AI-powered analytics and insights
+- Enhanced caching strategies
+- Support for additional data sources
+
+We welcome community input on the roadmap. Feel free to suggest features or vote on priorities in our [GitHub Discussions](https://github.com/CodersAcademy006/PyPitch/discussions).
+
+---
+
+**Built with ❤️ for the cricket analytics community**
