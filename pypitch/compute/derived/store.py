@@ -8,7 +8,11 @@ class DerivedStore:
 
     def _init_schema(self) -> None:
         """Ensure the 'derived' schema exists in DuckDB."""
-        self.engine.con.execute("CREATE SCHEMA IF NOT EXISTS derived;")
+        if hasattr(self.engine, 'con'):
+            self.engine.con.execute("CREATE SCHEMA IF NOT EXISTS derived;")
+        else:
+            # Assume ThreadSafeQueryEngine
+            self.engine.execute_sql("CREATE SCHEMA IF NOT EXISTS derived;", read_only=False)
 
     def ensure_materialized(self, table_name: str, snapshot_id: str) -> None:
         """
@@ -16,13 +20,19 @@ class DerivedStore:
         If not, it computes it and persists it for the session.
         """
         # Check if table exists
-        res = self.engine.con.execute(f"""
-            SELECT count(*) 
+        sql = f"""
+            SELECT count(*) as count
             FROM information_schema.tables 
             WHERE table_schema = 'derived' AND table_name = '{table_name}'
-        """).fetchone()
+        """
         
-        exists = res[0] > 0 if res else False
+        if hasattr(self.engine, 'con'):
+            res = self.engine.con.execute(sql).fetchone()
+            exists = res[0] > 0 if res else False
+        else:
+            # ThreadSafeQueryEngine returns Arrow Table
+            table = self.engine.execute_sql(sql, read_only=True)
+            exists = table['count'][0].as_py() > 0
 
         if exists:
             return
@@ -46,7 +56,10 @@ class DerivedStore:
         FROM ball_events 
         GROUP BY venue_id
         """
-        self.engine.con.execute(query)
+        if hasattr(self.engine, 'con'):
+            self.engine.con.execute(query)
+        else:
+            self.engine.execute_sql(query, read_only=False)
 
     def get_venue_baselines(self, snapshot_id: str) -> pa.Table:
         """

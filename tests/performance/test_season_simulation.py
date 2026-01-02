@@ -8,6 +8,7 @@ operations like full season data ingestion and analysis.
 import pytest
 import pandas as pd
 import numpy as np
+import pyarrow as pa
 from pathlib import Path
 import tempfile
 import time
@@ -121,7 +122,7 @@ class TestSeasonSimulation:
 
         # Verify data was ingested
         result = thread_safe_session.engine.execute_sql("SELECT COUNT(*) as total_deliveries FROM ball_events")
-        total_deliveries = result['total_deliveries'][0]
+        total_deliveries = result['total_deliveries'][0].as_py()
 
         assert total_deliveries > 0, "No data was ingested"
         assert total_deliveries == len(season_data), f"Expected {len(season_data)} deliveries, got {total_deliveries}"

@@ -167,7 +167,8 @@ class TestValidationModels:
 
     def test_win_prediction_request_invalid_overs(self):
         """Test WinPredictionRequest with invalid overs."""
-        with pytest.raises(ValueError, match="overs_done must be between 0 and 20"):
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError, match="Input should be less than or equal to 20"):
             WinPredictionRequest(
                 target=150,
                 current_runs=50,
@@ -177,7 +178,8 @@ class TestValidationModels:
 
     def test_win_prediction_request_invalid_wickets(self):
         """Test WinPredictionRequest with invalid wickets."""
-        with pytest.raises(ValueError, match="wickets_down must be between 0 and 10"):
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError, match="Input should be less than or equal to 10"):
             WinPredictionRequest(
                 target=150,
                 current_runs=50,
