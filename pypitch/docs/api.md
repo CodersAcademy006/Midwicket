@@ -514,56 +514,50 @@ boundary_count = len(filtered)
 
 ## Migration Guide
 
-### From v0.x to v1.0
+### Future Version Planning
 
-PyPitch v1.0 introduces several improvements and changes to the API.
+PyPitch is currently at version 0.1.0. When v1.0 is released, the following changes are planned:
 
-#### Key Changes
+#### Planned Changes for v1.0
 
-1. **Express API is Recommended**: The new Express API (`pypitch.express`) is now the recommended interface for most use cases
+1. **Express API Enhancement**: The Express API (`pypitch.express`) will become the primary recommended interface
    ```python
-   # Old (still supported)
+   # Current (v0.1.0)
    from pypitch.api.session import PyPitchSession
    session = PyPitchSession("./data")
    
-   # New (recommended)
+   # Planned (v1.0)
    import pypitch.express as px
-   session = px.quick_load()
+   session = px.quick_load()  # Enhanced features
    ```
 
-2. **Session Management**: Sessions now require explicit cleanup or use of context managers
+2. **Session Management**: Enhanced session lifecycle management
    ```python
-   # Recommended approach
+   # Recommended approach (already supported)
    with PyPitchSession("./data") as session:
        stats = session.get_player_stats("V Kohli")
    # Session automatically closed
    ```
 
-3. **Bundled Sample Data**: Instant setup without downloads
+3. **Bundled Sample Data**: Currently available, will be expanded in v1.0
    ```python
-   # No download required
+   # Already available in v0.1.0
    session = px.quick_load()
    ```
 
-4. **Function Signature Changes**: Some functions have updated signatures for consistency
-   - `get_player_stats()` now returns `Optional[PlayerStats]` instead of raising exceptions
-   - `predict_win()` returns a dictionary with both `win_prob` and `confidence`
+4. **Function Signature Improvements**: Some functions may have updated signatures for consistency
+   - `get_player_stats()` returns `Optional[PlayerStats]` (current behavior)
+   - `predict_win()` returns dictionary with `win_prob` and `confidence` (current behavior)
 
-#### Breaking Changes
+#### Current Features (v0.1.0)
 
-- Removed deprecated `get_stats()` function (use `get_player_stats()` instead)
-- Changed default data directory from `./cricket_data` to `~/.pypitch_data`
-- Updated `fantasy_points()` to return structured dictionary instead of single value
-
-#### New Features in v1.0
-
-- ✅ Express API with one-liner access
-- ✅ Bundled sample data
+- ✅ Express API available and functional
+- ✅ Bundled sample data support
 - ✅ Win probability ML model
 - ✅ Enhanced caching system
-- ✅ Improved error messages
+- ✅ Comprehensive error messages
 
-For detailed migration steps and code examples, refer to the full migration documentation.
+For migration assistance when v1.0 is released, refer to the release notes and updated documentation.
 
 ---
 
