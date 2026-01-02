@@ -18,6 +18,10 @@ import pypitch.api as api
 # This lets users do: pp.visuals.plot_worm_graph
 import pypitch.visuals as visuals
 
+# 5. Expose the Serve Module
+# This lets users do: pp.serve()
+from pypitch.serve import serve
+
 # 5. Expose Debug Mode
 from .runtime.modes import set_debug_mode
 

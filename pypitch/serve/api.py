@@ -4,12 +4,32 @@ PyPitch Serve Plugin: REST API Deployment
 One-command deployment of PyPitch as a REST API.
 Perfect for enterprise engineers and startups.
 """
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import json
 from pathlib import Path
+
+from pypitch.live.ingestor import StreamIngestor
+
+# Pydantic models for request validation
+class LiveMatchRegistration(BaseModel):
+    match_id: str
+    source: str
+    metadata: Optional[Dict[str, Any]] = None
+
+class DeliveryData(BaseModel):
+    match_id: str
+    inning: int
+    over: int
+    ball: int
+    runs_total: int
+    wickets_fallen: int
+    target: Optional[int] = None
+    venue: Optional[str] = None
+    timestamp: Optional[float] = None
 
 class PyPitchAPI:
     """
@@ -41,7 +61,131 @@ class PyPitchAPI:
         else:
             self.session = session
 
+        # Initialize Live Ingestor
+        self.ingestor = StreamIngestor(self.session.engine)
+        # Start the ingestor background threads
+        self.ingestor.start()
+
         self._setup_routes()
+
+    def __del__(self):
+        """Cleanup resources."""
+        if hasattr(self, 'ingestor'):
+            self.ingestor.stop()
+
+    def predict_win_probability(self, request):
+        """Calculate win probability for current match state."""
+        try:
+            from pypitch.compute.winprob import win_probability as wp_func
+            result = wp_func(
+                target=request.target,
+                current_runs=request.current_runs,
+                wickets_down=request.wickets_down,
+                overs_done=request.overs_done
+            )
+            return result
+        except Exception as e:
+            raise Exception(f"Win probability calculation failed: {str(e)}")
+
+    def lookup_player(self, request):
+        """Lookup player information."""
+        try:
+            # This would need to be implemented based on your registry
+            # For now, return a placeholder
+            return {"player_name": request.name, "found": False}
+        except Exception as e:
+            raise Exception(f"Player lookup failed: {str(e)}")
+
+    def lookup_venue(self, request):
+        """Lookup venue information."""
+        try:
+            # This would need to be implemented based on your data
+            # For now, return a placeholder
+            return {"venue_name": request.name, "found": False}
+        except Exception as e:
+            raise Exception(f"Venue lookup failed: {str(e)}")
+
+    def get_matchup_stats(self, request):
+        """Get matchup statistics between batter and bowler."""
+        try:
+            # This would need to be implemented based on your data
+            # For now, return a placeholder
+            return {
+                "batter": request.batter,
+                "bowler": request.bowler,
+                "matches": 0,
+                "stats": {}
+            }
+        except Exception as e:
+            raise Exception(f"Matchup stats retrieval failed: {str(e)}")
+
+    def get_fantasy_points(self, request):
+        """Calculate fantasy points for a player."""
+        try:
+            # This would need to be implemented based on your fantasy logic
+            # For now, return a placeholder
+            return {"player": request.player_name, "points": 0}
+        except Exception as e:
+            raise Exception(f"Fantasy points calculation failed: {str(e)}")
+
+    def get_player_stats(self, request):
+        """Get player statistics with filters."""
+        try:
+            # This would need to be implemented based on your stats logic
+            # For now, return a placeholder
+            return {"player": request.player_name, "stats": {}}
+        except Exception as e:
+            raise Exception(f"Player stats retrieval failed: {str(e)}")
+
+    def register_live_match(self, request):
+        """Register a match for live tracking."""
+        try:
+            # This would need to be implemented based on your live tracking
+            # For now, return a placeholder
+            return {"match_id": request.match_id, "registered": True}
+        except Exception as e:
+            raise Exception(f"Live match registration failed: {str(e)}")
+
+    def ingest_delivery_data(self, request):
+        """Ingest live delivery data."""
+        try:
+            # This would need to be implemented based on your live ingestion
+            # For now, return a placeholder
+            return {"match_id": request.match_id, "ingested": True}
+        except Exception as e:
+            raise Exception(f"Delivery data ingestion failed: {str(e)}")
+
+    def get_live_matches(self):
+        """Get list of currently live matches."""
+        try:
+            # This would need to be implemented based on your live tracking
+            # For now, return a placeholder
+            return {"matches": []}
+        except Exception as e:
+            raise Exception(f"Live matches retrieval failed: {str(e)}")
+
+    def get_health_status(self):
+        """Get health status of the API."""
+        try:
+            # Check database connectivity
+            db_status = "healthy"
+            active_connections = 0
+            try:
+                # Simple query to test DB connection
+                self.session.engine.execute_sql("SELECT 1")
+                active_connections = getattr(self.session.engine, '_active_connections', 0)
+            except Exception:
+                db_status = "unhealthy"
+
+            return {
+                "status": "healthy",
+                "version": "1.0.0",
+                "uptime_seconds": 0,  # Would need to track actual uptime
+                "database_status": db_status,
+                "active_connections": active_connections
+            }
+        except Exception as e:
+            raise Exception(f"Health check failed: {str(e)}")
 
     def _setup_routes(self):
         """Setup all API routes."""
@@ -54,6 +198,7 @@ class PyPitchAPI:
                 "version": "1.0.0",
                 "endpoints": {
                     "GET /": "This help message",
+                    "GET /health": "Health check endpoint",
                     "GET /matches": "List available matches",
                     "GET /matches/{match_id}": "Get match details",
                     "GET /players/{player_id}": "Get player statistics",
@@ -62,6 +207,30 @@ class PyPitchAPI:
                     "GET /win_probability": "Calculate win probability"
                 }
             }
+
+        @self.app.get("/health")
+        async def health_check():
+            """Health check endpoint."""
+            try:
+                # Check database connectivity
+                db_status = "healthy"
+                active_connections = 0
+                try:
+                    # Simple query to test DB connection
+                    self.session.engine.execute_sql("SELECT 1")
+                    active_connections = getattr(self.session.engine, '_active_connections', 0)
+                except Exception:
+                    db_status = "unhealthy"
+
+                return {
+                    "status": "healthy",
+                    "version": "1.0.0",
+                    "uptime_seconds": 0,  # Would need to track actual uptime
+                    "database_status": db_status,
+                    "active_connections": active_connections
+                }
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Health check failed: {str(e)}")
 
         @self.app.get("/matches")
         async def list_matches():
@@ -160,6 +329,47 @@ class PyPitchAPI:
                     "data": df.to_dict('records')[:100]  # Limit to 100 rows
                 }
 
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.post("/live/register")
+        async def register_live_match(request: LiveMatchRegistration):
+            """Register a match for live tracking."""
+            try:
+                success = self.ingestor.register_match(
+                    match_id=request.match_id,
+                    source=request.source,
+                    metadata=request.metadata
+                )
+                
+                if not success:
+                    raise HTTPException(status_code=400, detail=f"Match {request.match_id} already registered")
+                
+                return {"success": True, "match_id": request.match_id}
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.post("/live/ingest")
+        async def ingest_delivery(data: DeliveryData):
+            """Ingest live delivery data."""
+            try:
+                # Convert Pydantic model to dict
+                delivery_dict = data.model_dump(exclude_none=True)
+                match_id = delivery_dict.pop('match_id')
+                
+                self.ingestor.update_match_data(match_id, delivery_dict)
+                
+                return {"success": True}
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.get("/live/matches")
+        async def get_live_matches():
+            """Get list of currently live matches."""
+            try:
+                return self.ingestor.get_live_matches()
             except Exception as e:
                 raise HTTPException(status_code=500, detail=str(e))
 
