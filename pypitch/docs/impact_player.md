@@ -64,7 +64,7 @@ loader = DataLoader("./data")
 loader.download_competition("ipl", 2023)
 
 # Impact player data is automatically ingested
-# No special configuration needed
+# Note: Impact player tracking depends on Cricsheet data format
 ```
 
 ### Analyzing Impact Player Performance
@@ -89,12 +89,13 @@ from pypitch.storage.engine import QueryEngine
 
 engine = QueryEngine("./data/pypitch.duckdb")
 
-# Query to identify impact player substitutions
+# Example query to identify potential impact player scenarios
+# Note: The exact schema fields depend on the Cricsheet data format
 query = """
-    SELECT match_id, player_id, MIN(ball_number) as first_ball
+    SELECT match_id, player_id, MIN(over) as first_over
     FROM balls
-    WHERE is_impact_player = true
     GROUP BY match_id, player_id
+    HAVING first_over > 0
     ORDER BY match_id
 """
 results = engine.execute_query(query)

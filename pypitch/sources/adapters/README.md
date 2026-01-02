@@ -181,14 +181,17 @@ except KeyError:
 ### Clear Registry (Advanced)
 
 ```python
-# Note: Unregister functionality not currently implemented
-# The registry is designed to be write-once for adapter registration
-# For testing purposes, you can clear the entire registry:
+# Note: Direct access to internal attributes is for testing only
+# The registry is designed to be write-once for production use
+
 from pypitch.sources.adapters.registry import AdapterRegistry
 
-# Clear all registrations (use with caution)
-AdapterRegistry._registry.clear()
+# Clear all registrations (testing/development only)
+# WARNING: This modifies internal state and should not be used in production
+AdapterRegistry._registry.clear()  # Internal use only
 ```
+
+**Important**: Direct manipulation of `_registry` is not recommended for production code. This is documented only for testing and development scenarios where you need to reset the registry state.
 
 ## Advanced Usage
 
