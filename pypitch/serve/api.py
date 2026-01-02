@@ -1,0 +1,476 @@
+"""
+PyPitch Serve Plugin: REST API Deployment
+
+One-command deployment of PyPitch as a REST API.
+Perfect for enterprise engineers and startups.
+"""
+from typing import Dict, Any, Optional, List
+import uvicorn
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+import json
+from pathlib import Path
+
+from pypitch.live.ingestor import StreamIngestor
+
+# Pydantic models for request validation
+class LiveMatchRegistration(BaseModel):
+    match_id: str
+    source: str
+    metadata: Optional[Dict[str, Any]] = None
+
+class DeliveryData(BaseModel):
+    match_id: str
+    inning: int
+    over: int
+    ball: int
+    runs_total: int
+    wickets_fallen: int
+    target: Optional[int] = None
+    venue: Optional[str] = None
+    timestamp: Optional[float] = None
+
+class PyPitchAPI:
+    """
+    FastAPI wrapper for PyPitch deployment.
+
+    Automatically creates endpoints for common operations.
+    """
+
+    def __init__(self, session=None):
+        self.app = FastAPI(
+            title="PyPitch API",
+            description="Cricket Analytics API powered by PyPitch",
+            version="1.0.0"
+        )
+
+        # Enable CORS for web applications
+        self.app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
+        # Initialize session
+        if session is None:
+            from pypitch.api.session import PyPitchSession
+            self.session = PyPitchSession.get()
+        else:
+            self.session = session
+
+        # Initialize Live Ingestor
+        self.ingestor = StreamIngestor(self.session.engine)
+        # Start the ingestor background threads
+        self.ingestor.start()
+
+        self._setup_routes()
+
+    def __del__(self):
+        """Cleanup resources."""
+        if hasattr(self, 'ingestor'):
+            self.ingestor.stop()
+
+    def predict_win_probability(self, request):
+        """Calculate win probability for current match state."""
+        try:
+            from pypitch.compute.winprob import win_probability as wp_func
+            result = wp_func(
+                target=request.target,
+                current_runs=request.current_runs,
+                wickets_down=request.wickets_down,
+                overs_done=request.overs_done
+            )
+            return result
+        except Exception as e:
+            raise Exception(f"Win probability calculation failed: {str(e)}")
+
+    def lookup_player(self, request):
+        """Lookup player information."""
+        try:
+            # This would need to be implemented based on your registry
+            # For now, return a placeholder
+            return {"player_name": request.name, "found": False}
+        except Exception as e:
+            raise Exception(f"Player lookup failed: {str(e)}")
+
+    def lookup_venue(self, request):
+        """Lookup venue information."""
+        try:
+            # This would need to be implemented based on your data
+            # For now, return a placeholder
+            return {"venue_name": request.name, "found": False}
+        except Exception as e:
+            raise Exception(f"Venue lookup failed: {str(e)}")
+
+    def get_matchup_stats(self, request):
+        """Get matchup statistics between batter and bowler."""
+        try:
+            # This would need to be implemented based on your data
+            # For now, return a placeholder
+            return {
+                "batter": request.batter,
+                "bowler": request.bowler,
+                "matches": 0,
+                "stats": {}
+            }
+        except Exception as e:
+            raise Exception(f"Matchup stats retrieval failed: {str(e)}")
+
+    def get_fantasy_points(self, request):
+        """Calculate fantasy points for a player."""
+        try:
+            # This would need to be implemented based on your fantasy logic
+            # For now, return a placeholder
+            return {"player": request.player_name, "points": 0}
+        except Exception as e:
+            raise Exception(f"Fantasy points calculation failed: {str(e)}")
+
+    def get_player_stats(self, request):
+        """Get player statistics with filters."""
+        try:
+            # This would need to be implemented based on your stats logic
+            # For now, return a placeholder
+            return {"player": request.player_name, "stats": {}}
+        except Exception as e:
+            raise Exception(f"Player stats retrieval failed: {str(e)}")
+
+    def register_live_match(self, request):
+        """Register a match for live tracking."""
+        try:
+            # This would need to be implemented based on your live tracking
+            # For now, return a placeholder
+            return {"match_id": request.match_id, "registered": True}
+        except Exception as e:
+            raise Exception(f"Live match registration failed: {str(e)}")
+
+    def ingest_delivery_data(self, request):
+        """Ingest live delivery data."""
+        try:
+            # This would need to be implemented based on your live ingestion
+            # For now, return a placeholder
+            return {"match_id": request.match_id, "ingested": True}
+        except Exception as e:
+            raise Exception(f"Delivery data ingestion failed: {str(e)}")
+
+    def get_live_matches(self):
+        """Get list of currently live matches."""
+        try:
+            # This would need to be implemented based on your live tracking
+            # For now, return a placeholder
+            return {"matches": []}
+        except Exception as e:
+            raise Exception(f"Live matches retrieval failed: {str(e)}")
+
+    def get_health_status(self):
+        """Get health status of the API."""
+        try:
+            # Check database connectivity
+            db_status = "healthy"
+            active_connections = 0
+            try:
+                # Simple query to test DB connection
+                self.session.engine.execute_sql("SELECT 1")
+                active_connections = getattr(self.session.engine, '_active_connections', 0)
+            except Exception:
+                db_status = "unhealthy"
+
+            return {
+                "status": "healthy",
+                "version": "1.0.0",
+                "uptime_seconds": 0,  # Would need to track actual uptime
+                "database_status": db_status,
+                "active_connections": active_connections
+            }
+        except Exception as e:
+            raise Exception(f"Health check failed: {str(e)}")
+
+    def _setup_routes(self):
+        """Setup all API routes."""
+
+        @self.app.get("/")
+        async def root():
+            """API root with available endpoints."""
+            return {
+                "message": "PyPitch API is running",
+                "version": "1.0.0",
+                "endpoints": {
+                    "GET /": "This help message",
+                    "GET /health": "Health check endpoint",
+                    "GET /matches": "List available matches",
+                    "GET /matches/{match_id}": "Get match details",
+                    "GET /players/{player_id}": "Get player statistics",
+                    "GET /teams/{team_id}": "Get team statistics",
+                    "POST /analyze": "Run custom analysis",
+                    "GET /win_probability": "Calculate win probability"
+                }
+            }
+
+        @self.app.get("/health")
+        async def health_check():
+            """Health check endpoint."""
+            try:
+                # Check database connectivity
+                db_status = "healthy"
+                active_connections = 0
+                try:
+                    # Simple query to test DB connection
+                    self.session.engine.execute_sql("SELECT 1")
+                    active_connections = getattr(self.session.engine, '_active_connections', 0)
+                except Exception:
+                    db_status = "unhealthy"
+
+                return {
+                    "status": "healthy",
+                    "version": "1.0.0",
+                    "uptime_seconds": 0,  # Would need to track actual uptime
+                    "database_status": db_status,
+                    "active_connections": active_connections
+                }
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Health check failed: {str(e)}")
+
+        @self.app.get("/matches")
+        async def list_matches():
+            """List all available matches."""
+            try:
+                # This would need to be implemented based on your data structure
+                # For now, return a placeholder
+                return {"matches": [], "count": 0}
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.get("/matches/{match_id}")
+        async def get_match(match_id: str):
+            """Get details for a specific match."""
+            try:
+                # Load match data
+                self.session.load_match(match_id)
+
+                # Query basic match info
+                query = f"""
+                    SELECT
+                        inning,
+                        MAX(over) as overs,
+                        SUM(runs_batter + runs_extras) as runs,
+                        SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END) as wickets
+                    FROM ball_events
+                    WHERE match_id = ?
+                    GROUP BY inning
+                """
+
+                result = self.session.engine.execute_sql(query, [match_id])
+                df = result.to_pandas()
+
+                return {
+                    "match_id": match_id,
+                    "innings": df.to_dict('records')
+                }
+
+            except Exception as e:
+                raise HTTPException(status_code=404, detail=f"Match {match_id} not found: {str(e)}")
+
+        @self.app.get("/players/{player_id}")
+        async def get_player_stats(player_id: int):
+            """Get statistics for a specific player."""
+            try:
+                stats = self.session.registry.get_player_stats(player_id)
+                if stats:
+                    return stats
+                else:
+                    raise HTTPException(status_code=404, detail=f"Player {player_id} not found")
+
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.get("/win_probability")
+        async def win_probability(
+            target: int = 150,
+            current_runs: int = 50,
+            wickets_down: int = 2,
+            overs_done: float = 10.0
+        ):
+            """Calculate win probability for current match state."""
+            try:
+                from pypitch.compute.winprob import win_probability as wp_func
+                result = wp_func(
+                    target=target,
+                    current_runs=current_runs,
+                    wickets_down=wickets_down,
+                    overs_done=overs_done
+                )
+                return result
+
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.post("/analyze")
+        async def custom_analysis(query: Dict[str, Any]):
+            """Run custom analysis query."""
+            try:
+                # Execute custom query (with safety checks)
+                sql = query.get("sql")
+                if not sql:
+                    raise HTTPException(status_code=400, detail="SQL query required")
+
+                # Basic safety check (very basic - in production use proper SQL injection prevention)
+                dangerous_keywords = ["DROP", "DELETE", "UPDATE", "INSERT"]
+                if any(keyword in sql.upper() for keyword in dangerous_keywords):
+                    raise HTTPException(status_code=403, detail="Dangerous SQL keywords not allowed")
+
+                result = self.session.engine.execute_sql(sql)
+                df = result.to_pandas()
+
+                return {
+                    "query": sql,
+                    "rows": len(df),
+                    "data": df.to_dict('records')[:100]  # Limit to 100 rows
+                }
+
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.post("/live/register")
+        async def register_live_match(request: LiveMatchRegistration):
+            """Register a match for live tracking."""
+            try:
+                success = self.ingestor.register_match(
+                    match_id=request.match_id,
+                    source=request.source,
+                    metadata=request.metadata
+                )
+                
+                if not success:
+                    raise HTTPException(status_code=400, detail=f"Match {request.match_id} already registered")
+                
+                return {"success": True, "match_id": request.match_id}
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.post("/live/ingest")
+        async def ingest_delivery(data: DeliveryData):
+            """Ingest live delivery data."""
+            try:
+                # Convert Pydantic model to dict
+                delivery_dict = data.model_dump(exclude_none=True)
+                match_id = delivery_dict.pop('match_id')
+                
+                self.ingestor.update_match_data(match_id, delivery_dict)
+                
+                return {"success": True}
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.get("/live/matches")
+        async def get_live_matches():
+            """Get list of currently live matches."""
+            try:
+                return self.ingestor.get_live_matches()
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+
+    def run(self, host: str = "0.0.0.0", port: int = 8000, reload: bool = False):
+        """Run the API server."""
+        print(f"🚀 Starting PyPitch API server at http://{host}:{port}")
+        print(f"📚 API documentation at http://{host}:{port}/docs")
+
+        uvicorn.run(
+            self.app,
+            host=host,
+            port=port,
+            reload=reload
+        )
+
+def create_app(session=None) -> FastAPI:
+    """
+    Create and return a FastAPI application instance.
+
+    This is the main entry point for creating the PyPitch API app.
+    Useful for testing, deployment, and integration with other ASGI apps.
+    """
+    api = PyPitchAPI(session=session)
+    return api.app
+
+def serve(host: str = "0.0.0.0", port: int = 8000, reload: bool = False):
+    """
+    One-command API deployment.
+
+    Usage:
+        from pypitch.serve import serve
+        serve()  # Starts API at http://localhost:8000
+    """
+    api = PyPitchAPI()
+    api.run(host=host, port=port, reload=reload)
+
+def create_dockerfile(output_dir: str = "."):
+    """
+    Generate Dockerfile for containerized deployment.
+
+    Creates a production-ready Docker setup.
+    """
+    dockerfile_content = '''
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \\
+    gcc \\
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and install
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application
+COPY . .
+
+# Expose port
+EXPOSE 8000
+
+# Run the API
+CMD ["python", "-c", "from pypitch.serve.api import serve; serve()"]
+'''
+
+    dockerignore_content = '''
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env
+venv
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+.tox
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git
+.mypy_cache
+.pytest_cache
+.hypothesis
+'''
+
+    output_path = Path(output_dir)
+
+    # Write Dockerfile
+    with open(output_path / "Dockerfile", "w") as f:
+        f.write(dockerfile_content.strip())
+
+    # Write .dockerignore
+    with open(output_path / ".dockerignore", "w") as f:
+        f.write(dockerignore_content.strip())
+
+    print(f"🐳 Docker files created in {output_path}")
+    print("Build with: docker build -t pypitch-api .")
+    print("Run with: docker run -p 8000:8000 pypitch-api")
