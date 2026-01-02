@@ -81,15 +81,15 @@ Adapter for live cricket data from cricket APIs.
 
 ## Custom Adapter Interface
 
-Create your own adapter by implementing the `DataSource` interface:
+Create your own adapter by implementing the `BaseAdapter` interface:
 
 ### Interface Definition
 
 ```python
-from pypitch.sources.adapters.base import DataSource
+from pypitch.sources.adapters.base import BaseAdapter
 from typing import List, Dict, Any
 
-class DataSource:
+class BaseAdapter:
     """Base interface for all data source adapters."""
     
     def get_match_ids(self) -> List[str]:
@@ -126,10 +126,10 @@ class DataSource:
 ### Implementation Example
 
 ```python
-from pypitch.sources.adapters.base import DataSource
+from pypitch.sources.adapters.base import BaseAdapter
 import requests
 
-class MyCustomAdapter(DataSource):
+class MyCustomAdapter(BaseAdapter):
     """Custom adapter for proprietary cricket data API."""
     
     def __init__(self, api_key: str, base_url: str):
@@ -258,8 +258,9 @@ Implement robust error handling in your adapter:
 
 ```python
 from pypitch.exceptions import DataNotFoundError, InvalidQueryError
+from pypitch.sources.adapters.base import BaseAdapter
 
-class MyCustomAdapter(DataSource):
+class MyCustomAdapter(BaseAdapter):
     def get_match_data(self, match_id: str) -> Dict[str, Any]:
         try:
             response = requests.get(f"{self.base_url}/matches/{match_id}")
@@ -279,8 +280,9 @@ Implement caching for better performance:
 
 ```python
 from functools import lru_cache
+from pypitch.sources.adapters.base import BaseAdapter
 
-class MyCustomAdapter(DataSource):
+class MyCustomAdapter(BaseAdapter):
     @lru_cache(maxsize=100)
     def get_match_data(self, match_id: str) -> Dict[str, Any]:
         """Cached match data retrieval."""
@@ -292,7 +294,7 @@ class MyCustomAdapter(DataSource):
 
 ```python
 import unittest
-from pypitch.data.sources.adapter import DataSource
+from pypitch.sources.adapters.base import BaseAdapter
 
 class TestMyCustomAdapter(unittest.TestCase):
     def setUp(self):
@@ -324,7 +326,9 @@ class TestMyCustomAdapter(unittest.TestCase):
 ### Use Case 1: Private League Data
 
 ```python
-class PrivateLeagueAdapter(DataSource):
+from pypitch.sources.adapters.base import BaseAdapter
+
+class PrivateLeagueAdapter(BaseAdapter):
     """Adapter for private cricket league database."""
     
     def __init__(self, db_connection):
@@ -341,7 +345,10 @@ class PrivateLeagueAdapter(DataSource):
 ### Use Case 2: CSV Files
 
 ```python
-class CSVAdapter(DataSource):
+from pypitch.sources.adapters.base import BaseAdapter
+from pathlib import Path
+
+class CSVAdapter(BaseAdapter):
     """Adapter for CSV cricket data files."""
     
     def __init__(self, csv_directory):
