@@ -67,7 +67,7 @@ pip install pypitch
 For development or to get the latest features:
 
 ```bash
-git clone https://github.com/yourusername/pypitch.git
+git clone https://github.com/CodersAcademy006/PyPitch.git
 cd pypitch
 pip install -r requirements.txt
 pip install -e .
@@ -366,9 +366,10 @@ PyPitch follows [Semantic Versioning](https://semver.org/):
 - **Patch (0.1.1 → 0.1.2)**: Bug fixes only
 
 ### API Stability
-- **Express API**: Stable for v1.0+ with backward compatibility
-- **Core API**: Structurally stable, parameter additions only
-- **Internal APIs**: May change between minor versions
+
+- **Express API**: Designed to be stable with backward compatibility maintained in future versions
+- **Core API**: Structurally stable, with parameter additions only in minor versions
+- **Internal APIs**: May change between minor versions (use at your own risk)
 
 ## Contributing
 
@@ -399,7 +400,7 @@ We welcome contributions from the community! PyPitch is an open-source project a
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/pypitch.git
+git clone https://github.com/CodersAcademy006/PyPitch.git
 cd pypitch
 
 # Install dependencies
