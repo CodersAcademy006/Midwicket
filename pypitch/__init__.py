@@ -46,6 +46,10 @@ import pypitch.api.sim as sim
 # This lets users do: q = pp.MatchupQuery(...)
 from pypitch.query.matchups import MatchupQuery
 
+# 9. Expose Express Module
+# This lets users do: pp.express.load_competition()
+import pypitch.express as express
+
 # Version info
 __version__ = "0.1.0"
 

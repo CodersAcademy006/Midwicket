@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>{{ report_type }} - {{ match.team1 }} vs {{ match.team2 }}</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #ffffff; }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            margin: -20px -20px 30px -20px;
+        }
+        .title { font-size: 28px; margin: 0; font-weight: bold; }
+        .subtitle { font-size: 16px; margin-top: 6px; opacity: 0.9; }
+
+        .match-header {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+
+        .teams {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .team { text-align: center; flex: 1; }
+        .team-name { font-size: 22px; font-weight: bold; }
+        .team-score { font-size: 32px; color: #667eea; font-weight: bold; }
+        .vs { font-size: 20px; color: #666; margin: 0 20px; }
+
+        .match-details {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+        }
+
+        .detail-item { text-align: center; }
+        .detail-label {
+            font-size: 11px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .detail-value { font-size: 16px; font-weight: bold; }
+
+        .section { margin-bottom: 35px; }
+        .section-title {
+            font-size: 20px;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 6px;
+            margin-bottom: 15px;
+        }
+
+        .chart-container {
+            padding: 20px;
+            border-radius: 8px;
+            background: #ffffff;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .top-performers {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .performer-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-left: 4px solid #28a745;
+            border-radius: 5px;
+        }
+
+        .performer-name { font-weight: bold; margin-bottom: 4px; }
+        .performer-stats { font-size: 14px; color: #555; }
+
+        .footer {
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            font-size: 12px;
+            color: #666;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div class="title">{{ report_type }}</div>
+    <div class="subtitle">
+        {{ match.team1 }} vs {{ match.team2 }} —
+        {{ match.date.strftime("%d %b %Y") }}
+    </div>
+</div>
+
+<div class="match-header">
+    <div class="teams">
+        <div class="team">
+            <div class="team-name">{{ match.team1 }}</div>
+            <div class="team-score">{{ match.team1_score }}/{{ match.team1_wickets }}</div>
+        </div>
+        <div class="vs">VS</div>
+        <div class="team">
+            <div class="team-name">{{ match.team2 }}</div>
+            <div class="team-score">{{ match.team2_score }}/{{ match.team2_wickets }}</div>
+        </div>
+    </div>
+
+    <div class="match-details">
+        <div class="detail-item">
+            <div class="detail-label">Venue</div>
+            <div class="detail-value">{{ match.venue }}</div>
+        </div>
+        <div class="detail-item">
+            <div class="detail-label">Winner</div>
+            <div class="detail-value">{{ match.winner }}</div>
+        </div>
+        <div class="detail-item">
+            <div class="detail-label">Margin</div>
+            <div class="detail-value">{{ match.margin }}</div>
+        </div>
+    </div>
+</div>
+
+<div class="section">
+    <div class="section-title">Match Analysis</div>
+    <div class="chart-container">
+        <img src="{{ comparison_chart }}" alt="Comparison Chart" style="width:100%;max-width:800px;">
+    </div>
+</div>
+
+<div class="section">
+    <div class="section-title">Top Performers</div>
+    <div class="top-performers">
+        {% for p in match.top_performers %}
+        <div class="performer-card">
+            <div class="performer-name">{{ p.name }}</div>
+            <div class="performer-stats">
+                {{ p.runs }} runs · {{ p.wickets }} wickets
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="section">
+    <div class="section-title">Match Summary</div>
+    <div class="match-details">
+        <div class="detail-item">
+            <div class="detail-label">Overs</div>
+            <div class="detail-value">{{ match.overs }}</div>
+        </div>
+        <div class="detail-item">
+            <div class="detail-label">Run Rate</div>
+            <div class="detail-value">{{ "%.2f"|format(match.run_rate) }}</div>
+        </div>
+        <div class="detail-item">
+            <div class="detail-label">Partnerships</div>
+            <div class="detail-value">{{ match.partnerships }}</div>
+        </div>
+    </div>
+</div>
+
+<div class="footer">
+    Generated on {{ generated_at }} · PyPitch Analytics<br>
+    Match ID: {{ match.match_id }}
+</div>
+
+</body>
+</html>

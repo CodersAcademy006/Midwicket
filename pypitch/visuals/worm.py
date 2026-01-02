@@ -2,6 +2,100 @@ from typing import Any, Optional
 
 __all__ = ['plot_match_worm', 'plot_run_pressure', 'plot_batter_pacing', 'plot_momentum_swings', 'plot_manhattan', 'plot_beehive', 'plot_wagon_wheel', 'plot_partnership_flow']
 
+def _add_cricket_pitch_layout(ax: Any, view: str = "pitch") -> None:
+    """
+    Add cricket pitch/field layout to plots.
+
+    Args:
+        ax: Matplotlib axis
+        view: "pitch" for pitch map, "field" for full field, "wagon" for wagon wheel
+    """
+    import matplotlib.patches as patches
+
+    if view == "pitch":
+        # Draw the pitch rectangle (22 yards long)
+        pitch = patches.Rectangle((-1.5, 0), 3, 22, linewidth=2, edgecolor='green', facecolor='lightgreen', alpha=0.3)
+        ax.add_patch(pitch)
+
+        # Draw creases (3 yards wide)
+        crease_width = 3
+        popping_crease = patches.Rectangle((-crease_width/2, 0), crease_width, 0.1, color='white')
+        ax.add_patch(popping_crease)
+
+        return_crease = patches.Rectangle((-crease_width/2, 22), crease_width, 0.1, color='white')
+        ax.add_patch(return_crease)
+
+        # Draw wickets (stumps)
+        ax.plot([-0.1, 0.1], [0, 0], color='black', linewidth=3)  # Bowler's end
+        ax.plot([-0.1, 0.1], [22, 22], color='black', linewidth=3)  # Batsman's end
+
+        # Add zone labels
+        ax.text(0, 2, 'Yorker', ha='center', va='center', fontsize=8, alpha=0.7)
+        ax.text(0, 6, 'Good\nLength', ha='center', va='center', fontsize=8, alpha=0.7)
+        ax.text(0, 12, 'Short', ha='center', va='center', fontsize=8, alpha=0.7)
+        ax.text(0, 18, 'Bouncer', ha='center', va='center', fontsize=8, alpha=0.7)
+
+        ax.set_xlim(-4, 4)
+        ax.set_ylim(-2, 24)
+        ax.set_xlabel('Line (off-side to leg-side)')
+        ax.set_ylabel('Length (yards)')
+        ax.set_title('Cricket Pitch Map')
+        ax.grid(True, alpha=0.3)
+
+    elif view == "field":
+        # Full cricket field with boundaries
+        # Draw boundary circle (radius ~65-70 yards for ODI)
+        boundary = patches.Circle((0, 0), 65, fill=False, edgecolor='black', linewidth=2, alpha=0.5)
+        ax.add_patch(boundary)
+
+        # Draw 30-yard circle
+        thirty_yard = patches.Circle((0, 0), 30, fill=False, edgecolor='blue', linewidth=1, alpha=0.3)
+        ax.add_patch(thirty_yard)
+
+        # Draw pitch
+        pitch = patches.Rectangle((-1.5, 0), 3, 22, linewidth=2, edgecolor='green', facecolor='lightgreen', alpha=0.5)
+        ax.add_patch(pitch)
+
+        # Add fielding positions (simplified)
+        positions = {
+            'WK': (0, -2),
+            'Slip': (5, 1),
+            'Gully': (10, 3),
+            'Point': (15, 8),
+            'Cover': (20, 15),
+            'Mid-off': (25, 20),
+            'Mid-on': (-25, 20),
+            'Square Leg': (-20, 10),
+            'Fine Leg': (-15, 5)
+        }
+
+        for pos, (x, y) in positions.items():
+            ax.plot(x, y, 'ro', markersize=8, alpha=0.7)
+            ax.text(x, y+2, pos, ha='center', fontsize=8)
+
+        ax.set_xlim(-70, 70)
+        ax.set_ylim(-10, 80)
+        ax.set_aspect('equal')
+        ax.set_xlabel('Width (yards)')
+        ax.set_ylabel('Depth (yards)')
+        ax.set_title('Cricket Field Layout')
+
+    elif view == "wagon":
+        # Wagon wheel polar plot setup
+        ax.set_thetamin(0)
+        ax.set_thetamax(360)
+        ax.set_rlim(0, 70)  # Distance from wicket
+
+        # Add fielding arcs
+        thetas = [0, 45, 90, 135, 180, 225, 270, 315]
+        labels = ['Straight', 'Fine Leg', 'Square Leg', 'Backward Square', 'Fine', 'Third Man', 'Point', 'Cover']
+
+        for theta, label in zip(thetas, labels):
+            ax.plot([theta, theta], [0, 70], 'r--', alpha=0.3)
+            ax.text(theta, 75, label, ha='center', va='center', fontsize=8, rotation=theta-90)
+
+        ax.set_title('Wagon Wheel')
+
 def _add_cricket_grid(ax: Any) -> None:
     """Add cricket-aware grid: thick vertical every over, light per ball, phase shading."""
     import matplotlib.patches as patches
@@ -674,6 +768,9 @@ def plot_beehive(match_id: str, bowler_id: int, session: Any, ax: Optional[Any] 
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 8))
 
+    # Add cricket pitch layout
+    _add_cricket_pitch_layout(ax, view="pitch")
+
     # Simulate pitch locations (length and line)
     # In real implementation, this would come from ball trajectory data
     np.random.seed(42)  # For reproducible demo
@@ -696,13 +793,17 @@ def plot_beehive(match_id: str, bowler_id: int, session: Any, ax: Optional[Any] 
 
     scatter = ax.scatter(lines, lengths, c=colors, s=50, alpha=0.7, edgecolors='black')
 
-    # Add cricket pitch zones
-    # Good length: 5-9 yards
-    ax.axhspan(5, 9, alpha=0.1, color='green', label='Good Length')
-    # Yorker: 0-2 yards  
-    ax.axhspan(0, 2, alpha=0.1, color='red', label='Yorker')
-    # Short: 10-15 yards
-    ax.axhspan(10, 15, alpha=0.1, color='orange', label='Short')
+    # Add legend
+    legend_elements = [
+        plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='green', markersize=10, label='Dot Ball'),
+        plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='blue', markersize=10, label='Normal'),
+        plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='red', markersize=10, label='Boundary')
+    ]
+    ax.legend(handles=legend_elements, loc='upper right')
+
+    ax.set_title(f"Beehive: Pitch Map for Bowler {bowler_id} (Match {match_id})")
+    
+    return ax
     
     # Stumps at 0 yards
     ax.axhline(0, color='black', linewidth=3, label='Stumps')
@@ -766,12 +867,23 @@ def plot_wagon_wheel(match_id: str, batsman_id: int, session: Any, ax: Optional[
     if ax is None:
         fig, ax = plt.subplots(figsize=(8, 8), subplot_kw={'projection': 'polar'})
 
+    # Add cricket field layout for wagon wheel
+    _add_cricket_pitch_layout(ax, view="wagon")
+
     # Simulate directions
     angles = np.random.uniform(0, 2*np.pi, len(df))
     radii = np.ones(len(df)) * 10
     colors = ['blue' if r == 4 else 'red' for r in df['runs_batter']]
     ax.scatter(angles, radii, c=colors, s=100, alpha=0.7)
-    ax.set_title(f"Wagon Wheel: Boundaries (Match {match_id})")
+
+    # Add legend
+    legend_elements = [
+        plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='blue', markersize=10, label='4 runs'),
+        plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='red', markersize=10, label='6 runs')
+    ]
+    ax.legend(handles=legend_elements, loc='upper right')
+
+    ax.set_title(f"Wagon Wheel: Boundaries by Batsman {batsman_id} (Match {match_id})")
     ax.set_rlim(0, 15)
     
     return ax

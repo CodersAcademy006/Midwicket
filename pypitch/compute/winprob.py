@@ -33,10 +33,10 @@ def win_probability(
         snapshot: Data snapshot (not used in baseline)
 
     Returns:
-        Dict with 'win_prob' key
+        Dict with 'win_prob' and 'confidence' keys
     """
-    prob = _default_model.predict(target, current_runs, wickets_down, overs_done, venue)
-    return {"win_prob": prob}
+    prob, conf = _default_model.predict(target, current_runs, wickets_down, overs_done, venue)
+    return {"win_prob": prob, "confidence": conf}
 
 def set_win_model(model: WinPredictor):
     """
