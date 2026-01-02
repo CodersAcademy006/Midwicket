@@ -86,7 +86,7 @@ Create your own adapter by implementing the `DataSource` interface:
 ### Interface Definition
 
 ```python
-from pypitch.data.sources.adapter import DataSource
+from pypitch.sources.adapters.base import DataSource
 from typing import List, Dict, Any
 
 class DataSource:
@@ -126,7 +126,7 @@ class DataSource:
 ### Implementation Example
 
 ```python
-from pypitch.data.sources.adapter import DataSource
+from pypitch.sources.adapters.base import DataSource
 import requests
 
 class MyCustomAdapter(DataSource):

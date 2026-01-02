@@ -148,12 +148,11 @@ for i, situation in enumerate(situations, 1):
 
 ### Match Timeline Analysis
 
-Track win probability throughout a match (conceptual example - requires custom implementation):
+Track win probability throughout a match (conceptual example):
 
 ```python
-# Note: This is an advanced example showing how you might implement
-# win probability tracking. The calculate_win_probability function
-# would need to be implemented based on your requirements.
+# Note: This is an advanced example showing how you might track
+# win probability throughout a match using the win_probability function.
 
 from pypitch.compute.winprob import win_probability
 import pypitch as pp
