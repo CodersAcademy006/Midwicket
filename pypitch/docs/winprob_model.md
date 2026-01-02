@@ -148,22 +148,41 @@ for i, situation in enumerate(situations, 1):
 
 ### Match Timeline Analysis
 
-Track win probability throughout a match:
+Track win probability throughout a match (conceptual example - requires custom implementation):
 
 ```python
-from pypitch.compute.winprob import calculate_win_probability
+# Note: This is an advanced example showing how you might implement
+# win probability tracking. The calculate_win_probability function
+# would need to be implemented based on your requirements.
+
+from pypitch.compute.winprob import win_probability
 import pypitch as pp
 
 # Load match data
 session = pp.api.session.PyPitchSession("./data")
 match = session.load_match("980959")
 
-# Calculate win probability for each ball
-probabilities = calculate_win_probability(match)
+# Calculate win probability for different match states
+probabilities = []
+for over in range(1, 21):
+    # Simulate different match states (example values)
+    current_runs = over * 9  # Example calculation
+    wickets = min(over // 4, 8)  # Example calculation
+    
+    prob = win_probability(
+        target=180,
+        current_runs=current_runs,
+        wickets_down=wickets,
+        overs_done=float(over)
+    )
+    probabilities.append({'over': over, 'win_prob': prob['win_prob']})
 
 # Visualize the timeline
 import matplotlib.pyplot as plt
-plt.plot(probabilities['overs'], probabilities['win_prob'])
+overs = [p['over'] for p in probabilities]
+probs = [p['win_prob'] for p in probabilities]
+
+plt.plot(overs, probs)
 plt.xlabel('Overs')
 plt.ylabel('Win Probability')
 plt.title('Win Probability Timeline')

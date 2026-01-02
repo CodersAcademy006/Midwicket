@@ -180,22 +180,23 @@ class MyCustomAdapter(DataSource):
 ### Register and Use
 
 ```python
-from pypitch.data.pipeline import DataPipeline
-
 # Create custom adapter instance
 my_adapter = MyCustomAdapter(
     api_key="your_api_key",
     base_url="https://api.example.com"
 )
 
-# Use with PyPitch data pipeline
-pipeline = DataPipeline(adapter=my_adapter)
-pipeline.ingest_all()
+# Register with the adapter registry
+from pypitch.sources.adapters.registry import AdapterRegistry
+AdapterRegistry.register("custom", MyCustomAdapter)
 
-# Query ingested data
-import pypitch.express as px
-session = px.quick_load()
-stats = px.get_player_stats("Player Name")
+# Use the adapter directly
+match_ids = my_adapter.get_match_ids()
+match_data = my_adapter.get_match_data(match_ids[0])
+
+# Or retrieve from registry
+adapter_class = AdapterRegistry.get("custom")
+adapter_instance = adapter_class(api_key="your_api_key", base_url="https://api.example.com")
 ```
 
 ### Integration with DataLoader
@@ -204,8 +205,13 @@ stats = px.get_player_stats("Player Name")
 from pypitch.data.loader import DataLoader
 
 # Use custom adapter with DataLoader
-loader = DataLoader("./data", adapter=MyCustomAdapter(api_key="key"))
-loader.download()
+# Note: Direct adapter integration may require custom implementation
+my_adapter = MyCustomAdapter(api_key="key", base_url="https://api.example.com")
+
+# Use adapter methods to fetch and process data
+for match_id in my_adapter.get_match_ids():
+    match_data = my_adapter.get_match_data(match_id)
+    # Process match data as needed
 ```
 
 ## Advanced Topics

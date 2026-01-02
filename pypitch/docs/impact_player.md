@@ -116,14 +116,15 @@ If new fields are required:
 
 ### Step 2: Update Registry Configuration (optional)
 
-For special player role tracking:
+For special player role tracking (note: This is a conceptual example):
 
 ```python
-# Update registry to recognize new player types
-from pypitch.core.registry import PlayerRegistry
+# The registry automatically handles new player participation patterns
+# No manual configuration typically needed for impact players
+import pypitch.express as px
 
-registry = PlayerRegistry("./data")
-# Registry automatically handles new player participation patterns
+session = px.quick_load()
+# Impact players are automatically recognized from data
 ```
 
 ### Step 3: Use Existing APIs
@@ -180,17 +181,29 @@ print(results)
 
 ### Example 3: Match-Level Impact Analysis
 
+Analyze match-level impact (conceptual example):
+
 ```python
 import pypitch as pp
 
 session = pp.api.session.PyPitchSession("./data")
 match = session.load_match("ipl_2023_final")
 
-# Calculate impact player contribution
-from pypitch.compute.attribution import calculate_impact
+# Query impact player statistics directly
+from pypitch.storage.engine import QueryEngine
 
-impact_analysis = calculate_impact(match, focus="impact_players")
-print(f"Impact player contribution: {impact_analysis['impact_player_runs']} runs")
+engine = QueryEngine("./data/pypitch.duckdb")
+query = """
+    SELECT 
+        player_id,
+        SUM(batsman_runs) as runs,
+        COUNT(*) as balls
+    FROM balls
+    WHERE match_id = ? AND is_impact_player = true
+    GROUP BY player_id
+"""
+impact_stats = engine.execute_query(query, ["ipl_2023_final"])
+print(f"Impact player statistics: {impact_stats}")
 ```
 
 ## Data Model
