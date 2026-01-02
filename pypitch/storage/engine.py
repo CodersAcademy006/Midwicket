@@ -101,5 +101,9 @@ class QueryEngine:
         except Exception:
             return False
 
+    def close(self) -> None:
+        """Close the database connection."""
+        self.con.close()
+
 # Alias for backward compatibility if needed, but we will update references
 StorageEngine = QueryEngine

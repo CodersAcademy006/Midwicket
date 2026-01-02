@@ -16,8 +16,7 @@ SUPPORTED_EXTENSIONS = {".csv", ".tsv", ".evn", ".evt"}
 from .adapters.base import BaseAdapter
 from .adapters.registry import AdapterRegistry
 
-class RetrosheetAdapter:
-    AdapterRegistry.register("retrosheet", RetrosheetAdapter)
+class RetrosheetAdapter(BaseAdapter):
     """
     Adapter for Retrosheet event and tabular files. Handles discovery, parsing, and normalization.
     """
@@ -28,12 +27,13 @@ class RetrosheetAdapter:
         """
         Returns sorted, deduplicated match IDs for all supported files.
         """
+        # ...existing code...
         return sorted({
             f.stem for f in self.data_dir.iterdir()
             if f.suffix.lower() in SUPPORTED_EXTENSIONS
         })
 
-    def get_match_data(self, match_id: str) -> Dict[str, Any]:
+
         """
         Loads match data for the given match_id, dispatching by file type.
         Returns a normalized dict with match_id, format, info, events.

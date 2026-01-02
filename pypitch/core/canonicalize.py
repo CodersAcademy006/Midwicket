@@ -2,7 +2,7 @@ import pyarrow as pa
 from datetime import datetime
 from typing import Dict, Any, List
 
-from pypitch.schema.v1 import BALL_EVENT_SCHEMA
+from pypitch.schema.v1 import BALL_EVENT_SCHEMA, RunComponent, DismissalType
 from pypitch.storage.registry import IdentityRegistry
 
 def _determine_phase(over_num: int) -> str:
@@ -90,13 +90,56 @@ def canonicalize_match(match_data: Dict[str, Any], registry: IdentityRegistry, m
                 buffers['batting_team_id'].append(bat_team_id)
                 buffers['bowling_team_id'].append(bowl_team_id)
                 
-                runs = delivery.get('runs', {})
-                buffers['runs_batter'].append(runs.get('batter', 0))
-                buffers['runs_extras'].append(runs.get('extras', 0))
+                # --- B. Process Runs with RunComponent (Critical for Data Integrity) ---
+                runs_data = delivery.get('runs', {})
+                extras_data = delivery.get('extras', {})
+                
+                # Determine run component type based on extras
+                if 'wides' in extras_data:
+                    run_component = RunComponent.from_wide(extras_data['wides'])
+                elif 'noballs' in extras_data:
+                    run_component = RunComponent.from_no_ball(extras_data['noballs'])
+                elif 'byes' in extras_data:
+                    run_component = RunComponent.from_bye(extras_data['byes'])
+                elif 'legbyes' in extras_data:
+                    run_component = RunComponent.from_leg_bye(extras_data['legbyes'])
+                else:
+                    # Normal delivery - check for boundary
+                    batter_runs = runs_data.get('batter', 0)
+                    if batter_runs >= 4:
+                        run_component = RunComponent.from_boundary(batter_runs)
+                    else:
+                        run_component = RunComponent(batter_runs=batter_runs, extras=0, is_ball_faced=True, bowler_charged=True)
+                
+                buffers['runs_batter'].append(run_component.batter_runs)
+                buffers['runs_extras'].append(run_component.extras)
                 
                 wickets = delivery.get('wickets', [])
                 buffers['is_wicket'].append(len(wickets) > 0)
-                buffers['wicket_type'].append(wickets[0]['kind'] if wickets else None)
+                
+                # Use DismissalType enum for data integrity
+                if wickets:
+                    wicket_kind = wickets[0].get('kind', 'unknown')
+                    # Map Cricsheet wicket types to our enum
+                    wicket_mapping = {
+                        'bowled': DismissalType.BOWLED,
+                        'caught': DismissalType.CAUGHT,
+                        'lbw': DismissalType.LBW,
+                        'run out': DismissalType.RUN_OUT,
+                        'stumped': DismissalType.STUMPED,
+                        'caught and bowled': DismissalType.CAUGHT_AND_BOWLED,
+                        'hit wicket': DismissalType.HIT_WICKET,
+                        'obstructing the field': DismissalType.OBSTRUCTING_THE_FIELD,
+                        'double hit': DismissalType.DOUBLE_HIT,
+                        'handled the ball': DismissalType.HANDLED_THE_BALL,
+                        'retired hurt': DismissalType.RETIRED_HURT,
+                        'retired out': DismissalType.RETIRED_OUT,
+                        'retired not out': DismissalType.RETIRED_NOT_OUT
+                    }
+                    dismissal_type = wicket_mapping.get(wicket_kind.lower(), DismissalType.BOWLED)  # Default to bowled
+                    buffers['wicket_type'].append(dismissal_type.name)
+                else:
+                    buffers['wicket_type'].append(None)
                 
                 buffers['phase'].append(phase)
 
