@@ -1,5 +1,7 @@
 # PyPitch API Documentation
 
+This comprehensive API reference provides detailed documentation for all PyPitch functions, classes, and modules. The API is organized into multiple layers to support different use cases, from quick prototyping to production-grade applications.
+
 ## Table of Contents
 
 1. [Quick Start](#quick-start)
@@ -10,6 +12,16 @@
 6. [Simulation & Prediction](#simulation--prediction)
 7. [Visualization](#visualization)
 8. [Configuration](#configuration)
+9. [Error Handling](#error-handling)
+10. [Advanced Usage](#advanced-usage)
+
+## Overview
+
+PyPitch provides three API levels:
+
+- **Express API** (`pypitch.express`): Simplified one-liner functions with automatic setup
+- **Core API** (`pypitch.api`): Full-featured session-based API for production use
+- **Direct Engine Access** (`pypitch.storage`, `pypitch.compute`): Low-level access for custom analytics
 
 ## Quick Start
 
@@ -295,15 +307,28 @@ report.save("match_report.pdf")
 
 ## Configuration
 
+PyPitch can be configured using environment variables or a configuration file.
+
 ### Environment Variables
 
-- `PYPITCH_DATA_DIR`: Default data directory (default: `~/.pypitch_data`)
-- `PYPITCH_DEBUG`: Enable debug mode (default: `false`)
-- `PYPITCH_CACHE_SIZE`: Cache size in MB (default: `100`)
+Configure PyPitch behavior using the following environment variables:
+
+| Variable | Description | Default Value |
+|----------|-------------|---------------|
+| `PYPITCH_DATA_DIR` | Default data directory path | `~/.pypitch_data` |
+| `PYPITCH_DEBUG` | Enable debug mode with verbose logging | `false` |
+| `PYPITCH_CACHE_SIZE` | Cache size in megabytes | `100` |
+
+**Example:**
+```bash
+export PYPITCH_DATA_DIR="/path/to/data"
+export PYPITCH_DEBUG="true"
+export PYPITCH_CACHE_SIZE="200"
+```
 
 ### Configuration File
 
-Create `pypitch.toml` in your project root:
+Create a `pypitch.toml` file in your project root for persistent configuration:
 
 ```toml
 [general]
@@ -320,70 +345,226 @@ rate_limit = 100
 timeout = 10
 ```
 
+**Configuration Precedence:**
+1. Explicit function parameters (highest priority)
+2. Environment variables
+3. Configuration file
+4. Default values (lowest priority)
+
 ## Error Handling
 
-PyPitch uses specific exception types for different error conditions:
+PyPitch provides specific exception types for different error conditions, enabling precise error handling in your applications.
 
-- `DataNotFoundError`: When requested data is not available
-- `InvalidQueryError`: When query parameters are invalid
-- `ConnectionError`: When database connections fail
-- `SchemaValidationError`: When data doesn't match expected schema
+### Exception Types
 
-**Example:**
+| Exception | Description | When Raised |
+|-----------|-------------|-------------|
+| `DataNotFoundError` | Requested data is not available | Player/match not found in database |
+| `InvalidQueryError` | Query parameters are invalid | Malformed query or invalid parameters |
+| `ConnectionError` | Database connection failed | Cannot connect to DuckDB |
+| `SchemaValidationError` | Data schema mismatch | Data doesn't match Schema V1 contract |
+
+### Best Practices
+
+**Handle specific exceptions:**
 ```python
-from pypitch.exceptions import DataNotFoundError
+from pypitch.exceptions import DataNotFoundError, InvalidQueryError
 
 try:
     stats = session.get_player_stats("Unknown Player")
-except DataNotFoundError:
-    print("Player not found in database")
+except DataNotFoundError as e:
+    print(f"Player not found: {e}")
+except InvalidQueryError as e:
+    print(f"Invalid query: {e}")
+```
+
+**Use context managers for automatic cleanup:**
+```python
+from pypitch.api.session import PyPitchSession
+
+try:
+    with PyPitchSession("./data") as session:
+        stats = session.get_player_stats("V Kohli")
+except Exception as e:
+    print(f"An error occurred: {e}")
+    # Session is automatically closed
 ```
 
 ## Performance Tips
 
-1. **Use Express API** for simple operations - it's optimized for common use cases
-2. **Cache sessions** when making multiple calls
-3. **Use bundled data** for development and testing
-4. **Close sessions** explicitly or use context managers
-5. **Enable debug mode** only when troubleshooting
+Optimize your PyPitch usage with these performance recommendations:
+
+1. **Use Express API for Simple Operations**: The Express API is optimized for common use cases and handles setup automatically
+   ```python
+   # Preferred for simple queries
+   stats = px.get_player_stats("V Kohli")
+   ```
+
+2. **Cache Sessions for Multiple Calls**: Reuse session objects instead of creating new ones
+   ```python
+   session = px.quick_load()
+   # Reuse session for multiple queries
+   stats1 = session.get_player_stats("V Kohli")
+   stats2 = session.get_player_stats("R Sharma")
+   ```
+
+3. **Use Bundled Data for Development**: Avoid download overhead during development
+   ```python
+   session = px.quick_load()  # Instant setup
+   ```
+
+4. **Close Sessions Explicitly**: Use context managers or explicit cleanup
+   ```python
+   with PyPitchSession("./data") as session:
+       # Session automatically closed
+       pass
+   ```
+
+5. **Enable Debug Mode Only When Troubleshooting**: Debug mode adds overhead
+   ```python
+   px.set_debug_mode(False)  # Disable in production
+   ```
+
+6. **Leverage Query Caching**: Identical queries are automatically cached
+   ```python
+   # First call hits database
+   stats1 = px.get_player_stats("V Kohli")
+   # Second call uses cache
+   stats2 = px.get_player_stats("V Kohli")
+   ```
 
 ## Advanced Usage
 
-### Custom Queries
+For advanced users who need more control or custom analytics capabilities.
+
+### Custom SQL Queries
+
+Execute custom SQL queries directly against the DuckDB database:
 
 ```python
-# Direct SQL access
-results = engine.execute_query("""
+from pypitch.storage.engine import QueryEngine
+
+# Initialize query engine
+engine = QueryEngine("./data/pypitch.duckdb")
+
+# Execute custom SQL with parameters
+query = """
     SELECT batsman, SUM(batsman_runs) as runs
     FROM balls
     WHERE match_id = ?
     GROUP BY batsman
     ORDER BY runs DESC
-""", [match_id])
+    LIMIT 10
+"""
+results = engine.execute_query(query, [match_id])
 ```
 
 ### Plugin System
 
-PyPitch supports custom plugins for specialized analytics:
+Extend PyPitch functionality with custom plugins:
 
 ```python
 from pypitch.api.plugins import register_plugin
 
 @register_plugin("custom_analytics")
 class CustomAnalytics:
+    """Custom analytics plugin for specialized analysis."""
+    
     def analyze_match(self, match_data):
+        """
+        Perform custom match analysis.
+        
+        Args:
+            match_data: Match data object
+            
+        Returns:
+            Custom analysis results
+        """
         # Your custom analysis logic
         return analysis_results
+
+# Use the plugin
+from pypitch.api.plugins import get_plugin
+
+analytics = get_plugin("custom_analytics")
+results = analytics.analyze_match(match_data)
+```
+
+### Direct PyArrow Access
+
+Work directly with PyArrow tables for maximum performance:
+
+```python
+from pypitch.storage.engine import QueryEngine
+
+engine = QueryEngine("./data/pypitch.duckdb")
+
+# Get PyArrow table directly
+arrow_table = engine.execute_arrow_query("""
+    SELECT * FROM balls WHERE match_id = ?
+""", [match_id])
+
+# Perform custom PyArrow operations
+import pyarrow.compute as pc
+
+# Filter and compute
+filtered = arrow_table.filter(pc.field('batsman_runs') >= 4)
+boundary_count = len(filtered)
 ```
 
 ## Migration Guide
 
 ### From v0.x to v1.0
 
-- Express API is now the recommended interface
-- Session management requires explicit cleanup
-- Some function signatures have changed for consistency
-- Bundled data is now available for instant setup
+PyPitch v1.0 introduces several improvements and changes to the API.
 
-See [Migration Guide](migration.md) for detailed changes.</content>
-<parameter name="filePath">d:\Srijan\PyPitch\pypitch\docs\api.md
+#### Key Changes
+
+1. **Express API is Recommended**: The new Express API (`pypitch.express`) is now the recommended interface for most use cases
+   ```python
+   # Old (still supported)
+   from pypitch.api.session import PyPitchSession
+   session = PyPitchSession("./data")
+   
+   # New (recommended)
+   import pypitch.express as px
+   session = px.quick_load()
+   ```
+
+2. **Session Management**: Sessions now require explicit cleanup or use of context managers
+   ```python
+   # Recommended approach
+   with PyPitchSession("./data") as session:
+       stats = session.get_player_stats("V Kohli")
+   # Session automatically closed
+   ```
+
+3. **Bundled Sample Data**: Instant setup without downloads
+   ```python
+   # No download required
+   session = px.quick_load()
+   ```
+
+4. **Function Signature Changes**: Some functions have updated signatures for consistency
+   - `get_player_stats()` now returns `Optional[PlayerStats]` instead of raising exceptions
+   - `predict_win()` returns a dictionary with both `win_prob` and `confidence`
+
+#### Breaking Changes
+
+- Removed deprecated `get_stats()` function (use `get_player_stats()` instead)
+- Changed default data directory from `./cricket_data` to `~/.pypitch_data`
+- Updated `fantasy_points()` to return structured dictionary instead of single value
+
+#### New Features in v1.0
+
+- ✅ Express API with one-liner access
+- ✅ Bundled sample data
+- ✅ Win probability ML model
+- ✅ Enhanced caching system
+- ✅ Improved error messages
+
+For detailed migration steps and code examples, refer to the full migration documentation.
+
+---
+
+**Note**: This API documentation is for PyPitch v0.1.0. For the latest documentation, visit the [PyPitch repository](https://github.com/CodersAcademy006/PyPitch).
