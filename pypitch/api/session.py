@@ -18,7 +18,8 @@ from pypitch.core.migration import migrate_on_connect
 class PyPitchSession:
     _instance: Optional["PyPitchSession"] = None
 
-    def __init__(self, data_dir: Optional[str] = None, skip_registry_build: bool = False) -> None:
+    def __init__(self, data_dir: Optional[str] = None, skip_registry_build: bool = False,
+                 engine: Optional[QueryEngine] = None) -> None:
         self.data_dir = Path(data_dir) if data_dir else DEFAULT_DATA_DIR
         self.data_dir.mkdir(parents=True, exist_ok=True)
         
@@ -28,7 +29,7 @@ class PyPitchSession:
         
         # Initialize Components
         self.registry = IdentityRegistry(self.registry_path)
-        self.engine = QueryEngine(self.db_path)
+        self.engine = engine if engine else QueryEngine(self.db_path)
         self.cache = DuckDBCache(self.cache_path)
         self.executor = RuntimeExecutor(self.cache, self.engine)
         self.loader = DataLoader(str(self.data_dir))

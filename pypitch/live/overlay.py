@@ -43,8 +43,17 @@ class OverlayServer:
 
     def __init__(self, match_id: str, port: int = 8000, host: str = "localhost"):
         self.match_id = match_id
-        self.port = port
         self.host = host
+        
+        # Handle automatic port assignment
+        if port == 0:
+            import socket
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(('', 0))
+                self.port = s.getsockname()[1]
+        else:
+            self.port = port
+            
         self.server = None
         self.current_stats = LiveStats(
             match_id=match_id,
@@ -118,6 +127,21 @@ class OverlayServer:
     def update_stats(self, stats: LiveStats):
         """Update current live statistics."""
         self.current_stats = stats
+
+    def get_stats_json(self):
+        """Get current statistics as JSON."""
+        return {
+            "match_id": self.current_stats.match_id,
+            "current_over": self.current_stats.current_over,
+            "current_score": self.current_stats.current_score,
+            "wickets": self.current_stats.wickets_fallen,
+            "run_rate": f"{self.current_stats.run_rate:.2f}",
+            "required_rr": f"{self.current_stats.required_rr:.2f}" if self.current_stats.required_rr else None,
+            "batsman": self.current_stats.batsman_on_strike,
+            "bowler": self.current_stats.bowler,
+            "last_ball": self.current_stats.last_ball,
+            "recent_overs": self.current_stats.recent_overs
+        }
 
 class LiveFeedSimulator:
     """
