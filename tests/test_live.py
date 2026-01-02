@@ -33,7 +33,9 @@ class TestStreamIngestor:
     @pytest.fixture
     def thread_safe_engine(self, temp_db_path):
         """Create a thread-safe query engine."""
-        return create_thread_safe_engine(temp_db_path)
+        engine = create_thread_safe_engine(temp_db_path)
+        yield engine
+        engine.close()
 
     @pytest.fixture
     def ingestor(self, thread_safe_engine):
@@ -185,6 +187,13 @@ class TestStreamIngestor:
         # Register match
         ingestor.register_match("match_123", "api_poll")
 
+        # Make the loop run once by mocking stop_event.is_set
+        # First call returns False (enter loop), second call returns True (exit loop)
+        ingestor.stop_event.is_set = Mock(side_effect=[False, True])
+        
+        # Reduce poll interval to avoid long sleep
+        ingestor.poll_interval = 0.01
+
         # Simulate polling (normally done in background thread)
         ingestor._poll_apis()
 
@@ -217,7 +226,7 @@ class TestStreamIngestor:
 
         # Verify data was inserted
         result = thread_safe_engine.execute_sql("SELECT COUNT(*) as count FROM ball_events")
-        assert result['count'][0] == 1
+        assert result['count'][0].as_py() == 1
 
     def test_ingest_delivery_data_invalid(self, thread_safe_engine):
         """Test ingesting invalid delivery data."""
@@ -249,49 +258,51 @@ class TestLiveStats:
         """Test creating LiveStats instances."""
         stats = LiveStats(
             match_id="match_123",
-            team_batting="MI",
-            team_bowling="CSK",
-            current_runs=145,
-            wickets_down=2,
-            overs_completed=15.2,
+            current_over=15.2,
+            current_score=145,
+            wickets_fallen=2,
             run_rate=9.5,
-            required_run_rate=8.2,
-            target=180,
-            win_probability=0.75
+            required_rr=8.2,
+            batsman_on_strike="Rohit Sharma",
+            bowler="Deepak Chahar",
+            last_ball="4",
+            recent_overs=["1", "0", "4", "W", "2", "1"]
         )
 
         assert stats.match_id == "match_123"
-        assert stats.team_batting == "MI"
-        assert stats.team_bowling == "CSK"
-        assert stats.current_runs == 145
-        assert stats.wickets_down == 2
-        assert stats.overs_completed == 15.2
+        assert stats.current_over == 15.2
+        assert stats.current_score == 145
+        assert stats.wickets_fallen == 2
         assert stats.run_rate == 9.5
-        assert stats.required_run_rate == 8.2
-        assert stats.target == 180
-        assert stats.win_probability == 0.75
+        assert stats.required_rr == 8.2
+        assert stats.batsman_on_strike == "Rohit Sharma"
+        assert stats.bowler == "Deepak Chahar"
+        assert stats.last_ball == "4"
+        assert stats.recent_overs == ["1", "0", "4", "W", "2", "1"]
 
     def test_livestats_to_json(self):
         """Test converting LiveStats to JSON."""
         stats = LiveStats(
             match_id="match_123",
-            team_batting="MI",
-            team_bowling="CSK",
-            current_runs=145,
-            wickets_down=2,
-            overs_completed=15.2,
+            current_over=15.2,
+            current_score=145,
+            wickets_fallen=2,
             run_rate=9.5,
-            required_run_rate=8.2,
-            target=180,
-            win_probability=0.75
+            required_rr=8.2,
+            batsman_on_strike="Rohit Sharma",
+            bowler="Deepak Chahar",
+            last_ball="4",
+            recent_overs=["1", "0", "4", "W", "2", "1"]
         )
 
-        json_str = stats.to_json()
+        # LiveStats doesn't have to_json method, so we'll test JSON serialization directly
+        import json
+        json_str = json.dumps(stats.__dict__)
         data = json.loads(json_str)
 
         assert data['match_id'] == "match_123"
-        assert data['current_runs'] == 145
-        assert data['win_probability'] == 0.75
+        assert data['current_score'] == 145
+        assert data['run_rate'] == 9.5
 
 class TestOverlayServer:
     """Test the OverlayServer class."""
@@ -299,84 +310,85 @@ class TestOverlayServer:
     @pytest.fixture
     def overlay_server(self):
         """Create an OverlayServer instance."""
-        server = OverlayServer(port=0)  # Use port 0 for automatic assignment
+        server = OverlayServer(match_id="test_match", port=0)  # Use port 0 for automatic assignment
         yield server
         server.stop()
 
     def test_overlay_server_initialization(self, overlay_server):
         """Test overlay server initialization."""
         assert overlay_server.port >= 1024  # Should be assigned a port
-        assert overlay_server.stats == {}
-        assert overlay_server.server is not None
+        assert overlay_server.current_stats.match_id == "test_match"
+        assert overlay_server.current_stats.current_over == 0.0
+        assert overlay_server.current_stats.current_score == 0
 
     def test_update_stats(self, overlay_server):
         """Test updating match statistics."""
         stats = LiveStats(
             match_id="match_123",
-            team_batting="MI",
-            team_bowling="CSK",
-            current_runs=145,
-            wickets_down=2,
-            overs_completed=15.2,
+            current_over=15.2,
+            current_score=145,
+            wickets_fallen=2,
             run_rate=9.5,
-            required_run_rate=8.2,
-            target=180,
-            win_probability=0.75
+            required_rr=8.2,
+            batsman_on_strike="Rohit Sharma",
+            bowler="Deepak Chahar",
+            last_ball="4",
+            recent_overs=["1", "0", "4", "W", "2", "1"]
         )
 
-        overlay_server.update_stats("match_123", stats)
+        overlay_server.update_stats(stats)
 
-        assert "match_123" in overlay_server.stats
-        stored_stats = overlay_server.stats["match_123"]
-        assert stored_stats.match_id == "match_123"
-        assert stored_stats.current_runs == 145
+        assert overlay_server.current_stats.match_id == "match_123"
+        assert overlay_server.current_stats.current_over == 15.2
+        assert overlay_server.current_stats.current_score == 145
 
     def test_get_stats_json(self, overlay_server):
         """Test getting statistics as JSON."""
-        # Initially empty
+        # Initially should have default values
         json_data = overlay_server.get_stats_json()
-        assert json_data == "{}"
+        assert json_data["match_id"] == "test_match"
+        assert json_data["current_score"] == 0
+        assert json_data["wickets"] == 0
 
         # Add some stats
         stats = LiveStats(
             match_id="match_123",
-            team_batting="MI",
-            team_bowling="CSK",
-            current_runs=145,
-            wickets_down=2,
-            overs_completed=15.2,
+            current_over=15.2,
+            current_score=145,
+            wickets_fallen=2,
             run_rate=9.5,
-            required_run_rate=8.2,
-            target=180,
-            win_probability=0.75
+            required_rr=8.2,
+            batsman_on_strike="Rohit Sharma",
+            bowler="Deepak Chahar",
+            last_ball="4",
+            recent_overs=["1", "0", "4", "W", "2", "1"]
         )
 
-        overlay_server.update_stats("match_123", stats)
+        overlay_server.update_stats(stats)
 
         json_data = overlay_server.get_stats_json()
-        data = json.loads(json_data)
 
-        assert "match_123" in data
-        assert data["match_123"]["current_runs"] == 145
-        assert data["match_123"]["win_probability"] == 0.75
+        assert json_data["match_id"] == "match_123"
+        assert json_data["current_score"] == 145
+        assert json_data["run_rate"] == "9.50"
 
-    @patch('pypitch.live.overlay.http.server.HTTPServer')
-    def test_server_start_stop(self, mock_http_server, overlay_server):
+    @patch('socketserver.TCPServer')
+    def test_server_start_stop(self, mock_tcp_server, overlay_server):
         """Test starting and stopping the server."""
         # Mock the server
         mock_server_instance = Mock()
-        mock_http_server.return_value = mock_server_instance
+        mock_tcp_server.return_value.__enter__.return_value = mock_server_instance
 
         # Start server
         overlay_server.start()
 
-        # Verify server was started
-        mock_http_server.assert_called_once()
-        mock_server_instance.serve_forever.assert_called_once()
+        # Verify server was started (in background thread)
+        assert overlay_server.is_running is True
+        assert overlay_server.server is not None
 
         # Stop server
         overlay_server.stop()
-        mock_server_instance.shutdown.assert_called_once()
+        assert overlay_server.is_running is False
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

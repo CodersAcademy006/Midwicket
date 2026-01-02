@@ -73,15 +73,13 @@ class ConnectionPool:
 
     def _create_connection(self, read_only: bool = False) -> duckdb.DuckDBPyConnection:
         """Create a new DuckDB connection with appropriate settings."""
-        conn = duckdb.connect(self.db_path, read_only=read_only)
+        # Always create read-write connections to avoid configuration conflicts
+        # We manage read/write separation via the pools
+        conn = duckdb.connect(self.db_path, read_only=False)
 
         # Performance tuning
         conn.execute("PRAGMA threads=2;")  # Reduced for connection pooling
         conn.execute("PRAGMA memory_limit='1GB';")
-
-        # Additional settings for read connections
-        if read_only:
-            pass  # Removed unsupported PRAGMA
 
         with self._lock:
             self._created_connections += 1

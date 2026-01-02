@@ -286,8 +286,11 @@ class StreamIngestor:
                     except Exception as e:
                         logger.error(f"API processing error for {name}: {e}")
 
-                # Wait before next poll
-                time.sleep(self.poll_interval)
+                # Wait before next poll (responsive sleep)
+                for _ in range(int(self.poll_interval * 10)):
+                    if self.stop_event.is_set():
+                        break
+                    time.sleep(0.1)
 
             except Exception as e:
                 logger.error(f"API polling error: {e}")
