@@ -6,8 +6,7 @@ from typing import Iterator, Dict, Any, Optional
 from tqdm import tqdm
 
 # Constants
-CRICSHEET_URL = "https://cricsheet.org/downloads/ipl_json.zip"
-DEFAULT_DATA_DIR = Path.home() / ".pypitch_data"
+from pypitch.config import CRICSHEET_URL, DEFAULT_DATA_DIR
 
 class DataLoader:
     def __init__(self, data_dir: Optional[str] = None):

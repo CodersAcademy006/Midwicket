@@ -38,10 +38,19 @@ class TestSeasonSimulation:
     @pytest.fixture
     def thread_safe_session(self, temp_db_path):
         """Create a session with thread-safe engine."""
-        engine = create_thread_safe_engine(temp_db_path)
-        session = PyPitchSession(engine=engine)
-        yield session
-        session.close()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data_dir = Path(temp_dir)
+            
+            # Create dummy data to prevent download
+            raw_dir = data_dir / "raw" / "ipl"
+            raw_dir.mkdir(parents=True, exist_ok=True)
+            with open(raw_dir / "dummy_match.json", "w") as f:
+                f.write("{}")
+
+            engine = create_thread_safe_engine(temp_db_path)
+            session = PyPitchSession(data_dir=str(data_dir), engine=engine, skip_registry_build=True)
+            yield session
+            session.close()
 
     def generate_synthetic_season_data(self, num_matches: int = 74) -> pd.DataFrame:
         """
@@ -106,6 +115,7 @@ class TestSeasonSimulation:
 
         return pd.DataFrame(data)
 
+    @pytest.mark.performance
     def test_full_season_ingestion(self, thread_safe_session, temp_db_path):
         """Test ingesting and processing a full season of data."""
         # Generate season data
@@ -132,6 +142,7 @@ class TestSeasonSimulation:
 
         print(f"Successfully ingested {total_deliveries} deliveries in {ingestion_time:.2f}s")
 
+    @pytest.mark.performance
     def test_season_analytics_queries(self, thread_safe_session):
         """Test running analytical queries on season data."""
         # Generate and ingest data
@@ -182,6 +193,7 @@ class TestSeasonSimulation:
             except Exception as e:
                 pytest.fail(f"Query {query_name} failed: {e}")
 
+    @pytest.mark.performance
     def test_concurrent_access_simulation(self, thread_safe_session):
         """Test concurrent read/write operations."""
         import threading
@@ -261,6 +273,7 @@ class TestSeasonSimulation:
 
         print(f"Successfully completed {result_count} concurrent operations")
 
+    @pytest.mark.performance
     def test_data_integrity_checks(self, thread_safe_session):
         """Test data integrity and consistency checks."""
         season_data = self.generate_synthetic_season_data(num_matches=2)
@@ -293,6 +306,7 @@ class TestSeasonSimulation:
             # If ingestion failed due to validation, that's also acceptable
             print(f"Data validation prevented invalid data ingestion: {e}")
 
+    @pytest.mark.performance
     def test_performance_regression_check(self, thread_safe_session):
         """Test for performance regressions in common operations."""
         # Generate larger dataset for performance testing

@@ -19,6 +19,11 @@ from pypitch.api.validation import (
 )
 from pypitch.exceptions import PyPitchError, DataValidationError
 
+from pypitch.storage.engine import QueryEngine
+from pypitch.storage.registry import IdentityRegistry
+from pypitch.runtime.cache_duckdb import DuckDBCache
+from pypitch.runtime.executor import RuntimeExecutor
+
 class TestPyPitchAPI:
     """Test the PyPitchAPI class."""
 
@@ -37,9 +42,8 @@ class TestPyPitchAPI:
         # Mock session to avoid full DB initialization
         mock_session = Mock()
         mock_session.engine = Mock()
-        api = PyPitchAPI(session=mock_session)
-        yield api
-        # api.session.close() # Mock doesn't need closing
+        with PyPitchAPI(session=mock_session) as api:
+            yield api
 
     def test_api_initialization(self, api_instance):
         """Test API initialization."""
@@ -209,12 +213,32 @@ class TestPyPitchAPI:
             with pytest.raises(Exception):
                 api_instance.predict_win_probability(request)
 
+@pytest.fixture
+def mock_session():
+    """Create a mock session with in-memory databases for testing."""
+    # Create session with in-memory databases for testing
+    registry = IdentityRegistry(":memory:")
+    engine = QueryEngine(":memory:")
+    cache = DuckDBCache(":memory:")
+    executor = RuntimeExecutor(cache, engine)
+    
+    # Create a mock session object
+    class MockSession:
+        def __init__(self) -> None:
+            self.registry = registry
+            self.engine = engine
+            self.cache = cache
+            self.executor = executor
+    
+    return MockSession()
+
 class TestFastAPIApp:
     """Test the FastAPI application creation."""
 
-    def test_create_app(self):
+    def test_create_app(self, mock_session):
         """Test creating the FastAPI application."""
-        app = create_app()
+        session = mock_session
+        app = create_app(session=session, start_ingestor=False)
 
         assert app is not None
         assert hasattr(app, 'routes')
@@ -235,11 +259,14 @@ class TestFastAPIApp:
             assert expected_route in route_paths, f"Missing route: {expected_route}"
 
     @pytest.fixture
-    def client(self):
+    def client(self, mock_session):
         """Create a test client for the FastAPI app."""
         from fastapi.testclient import TestClient
-        app = create_app()
-        return TestClient(app)
+        
+        session = mock_session
+        app = create_app(session=session, start_ingestor=False)
+        with TestClient(app) as client:
+            yield client
 
     def test_health_endpoint(self, client):
         """Test the health check endpoint."""

@@ -80,6 +80,76 @@ import pypitch as pp
 print(pp.__version__)  # Should print: 0.1.0
 ```
 
+## Deployment
+
+### Docker Deployment
+
+PyPitch includes production-ready Docker configuration for easy deployment:
+
+#### Quick Start with Docker
+
+```bash
+# Clone the repository
+git clone https://github.com/CodersAcademy006/PyPitch.git
+cd pypitch
+
+# Copy environment configuration
+cp .env.example .env
+# Edit .env with your production values
+
+# Start all services
+docker-compose up -d
+
+# Check health
+curl http://localhost:8000/health
+```
+
+#### Services Included
+
+- **PyPitch API**: FastAPI-based REST API (`http://localhost:8000`)
+- **PostgreSQL**: Production database for metadata
+- **Prometheus**: Metrics collection (`http://localhost:9090`)
+- **Grafana**: Monitoring dashboards (`http://localhost:3000`)
+
+#### API Endpoints
+
+```
+GET  /health          - Health check
+GET  /v1/metrics      - System and API metrics
+GET  /matches         - List matches
+POST /analyze         - Custom analysis
+GET  /win_probability - Win probability predictions
+```
+
+#### Authentication
+
+Include your API key in requests:
+```bash
+curl -H "X-API-Key: your-api-key" http://localhost:8000/health
+```
+
+#### Rate Limiting
+
+- 60 requests per minute per API key/IP
+- Rate limit headers included in responses
+- 429 status code when exceeded
+
+### Manual Deployment
+
+For custom deployment scenarios:
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Set environment variables
+export SECRET_KEY="your-secret-key"
+export API_CORS_ORIGINS='["http://yourdomain.com"]'
+
+# Run the API
+python -m uvicorn pypitch.serve.api:PyPitchAPI().app --host 0.0.0.0 --port 8000
+```
+
 ## Quick Start
 
 The fastest way to get started is using the Express API with bundled sample data:
