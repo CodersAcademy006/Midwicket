@@ -1,7 +1,7 @@
 import duckdb
 import pyarrow as pa
 import logging
-from typing import Dict, Any, Optional
+from typing import Any, Optional
 from pypitch.schema.v1 import BALL_EVENT_SCHEMA
 from pypitch.storage.connection_pool import ConnectionPool
 
@@ -22,14 +22,14 @@ class QueryEngine:
 
         # State tracking for deterministic hashing
         self._snapshot_id = "initial_empty"
-        self._derived_versions: Dict[str, str] = {}
+        self._derived_versions: dict[str, str] = {}
 
     @property
     def snapshot_id(self) -> str:
         return self._snapshot_id
 
     @property
-    def derived_versions(self) -> Dict[str, str]:
+    def derived_versions(self) -> dict[str, str]:
         return self._derived_versions
 
     def ingest_events(self, arrow_table: pa.Table, snapshot_tag: str, append: bool = False) -> None:
@@ -94,7 +94,7 @@ class QueryEngine:
                 return result.read_all()
             return result
 
-    def run(self, plan: Dict[str, Any]) -> pa.Table:
+    def run(self, plan: dict[str, Any]) -> pa.Table:
         """
         Executes the plan.
         """
@@ -102,7 +102,7 @@ class QueryEngine:
             return self.execute_sql(plan["sql"])
         raise NotImplementedError("Plan execution without SQL not implemented")
 
-    def insert_live_delivery(self, delivery_data: Dict[str, Any]) -> None:
+    def insert_live_delivery(self, delivery_data: dict[str, Any]) -> None:
         """
         Insert live delivery data.
         """

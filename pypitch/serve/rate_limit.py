@@ -76,10 +76,10 @@ class RateLimiter:
 
     def cleanup_old_keys(self) -> None:
         """Remove keys with no recent requests to prevent memory growth."""
+        now = time.time()
+        window_start = now - 60
         with self.lock:
-            keys_to_remove = [key for key, timestamps in self.requests.items() if not timestamps]
-            for key in keys_to_remove:
-                del self.requests[key]
+            self._cleanup_old_keys(window_start)
 
 # Global rate limiter instance
 rate_limiter = RateLimiter()

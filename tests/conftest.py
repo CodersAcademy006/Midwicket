@@ -1,5 +1,4 @@
 import os
-import pytest
 
 # Configure environment for tests
 # This must be done before importing pypitch modules

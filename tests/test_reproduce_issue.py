@@ -3,7 +3,10 @@ from unittest.mock import patch, Mock
 from pypitch.serve.api import PyPitchAPI
 from pypitch.api.validation import WinPredictionRequest
 
-def test_repro():
+TEST_ERROR_MSG = "Test error"
+
+def test_predict_win_probability_wraps_internal_errors():
+    """Verify predict_win_probability wraps internal exceptions with a descriptive message."""
     mock_session = Mock()
     mock_session.engine = Mock()
     
@@ -11,7 +14,7 @@ def test_repro():
     with patch('pypitch.serve.api.FastAPI'):
         api = PyPitchAPI(session=mock_session)
         
-        with patch('pypitch.serve.api.wp_func', side_effect=Exception("Test error")):
+        with patch('pypitch.serve.api.wp_func', side_effect=Exception(TEST_ERROR_MSG)):
             request = WinPredictionRequest(
                 target=150,
                 current_runs=50,
@@ -19,5 +22,5 @@ def test_repro():
                 overs_done=10.0
             )
             
-            with pytest.raises(Exception, match="Win probability calculation failed: Test error"):
+            with pytest.raises(Exception, match=f"Win probability calculation failed: {TEST_ERROR_MSG}"):
                 api.predict_win_probability(request)

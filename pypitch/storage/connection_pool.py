@@ -10,7 +10,6 @@ import duckdb
 import logging
 
 logger = logging.getLogger(__name__)
-import logging
 
 class ConnectionPool:
     """Thread-safe connection pool for database connections."""
@@ -41,6 +40,23 @@ class ConnectionPool:
         except Exception:
             return False
 
+    def _cleanup_invalid_connections(self) -> None:
+        """Clean up invalid idle connections."""
+        # Only check idle connections to avoid blocking
+        valid_connections = []
+        for conn_info in self._connections:
+            if conn_info['in_use']:
+                valid_connections.append(conn_info)
+            elif self._is_connection_valid(conn_info):
+                valid_connections.append(conn_info)
+            else:
+                # Close invalid connection
+                try:
+                    conn_info['connection'].close()
+                except Exception:
+                    pass
+        self._connections = valid_connections
+
     def get_connection(self, timeout: float | None = None) -> duckdb.DuckDBPyConnection:
         """Get a connection from the pool."""
         with self._condition:
@@ -49,15 +65,21 @@ class ConnectionPool:
 
             start_time = time.time()
             while True:
-                # Clean up invalid connections
-                self._connections = [c for c in self._connections if self._is_connection_valid(c)]
-
                 # Try to find an available connection
                 for conn_info in self._connections:
                     if not conn_info['in_use']:
-                        conn_info['in_use'] = True
-                        conn_info['last_used'] = time.time()
-                        return conn_info['connection']
+                        if self._is_connection_valid(conn_info):
+                            conn_info['in_use'] = True
+                            conn_info['last_used'] = time.time()
+                            return conn_info['connection']
+                        else:
+                            # Remove invalid connection
+                            self._connections.remove(conn_info)
+                            try:
+                                conn_info['connection'].close()
+                            except Exception:
+                                pass
+                            break # Restart loop
 
                 # Create new connection if under limit
                 if len(self._connections) < self.max_connections:
@@ -79,10 +101,12 @@ class ConnectionPool:
                             f"Max connections: {self.max_connections}, "
                             f"Active connections: {len(self._connections)}"
                         )
-                    wait_time = timeout - elapsed
-                    self._condition.wait(timeout=wait_time)
+                    self._condition.wait(timeout - elapsed)
                 else:
                     self._condition.wait()
+                
+                # Clean up invalid connections after waiting
+                self._cleanup_invalid_connections()
 
     def return_connection(self, connection: duckdb.DuckDBPyConnection) -> None:
         """Return a connection to the pool."""
