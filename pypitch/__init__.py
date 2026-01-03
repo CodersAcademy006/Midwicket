@@ -1,6 +1,6 @@
 # Expose sources for direct import
 from .sources import *
-
+from typing import Any
 # 1. Expose the Core Session & Init
 # This lets users do: pp.init() or pp.PyPitchSession
 from .api.session import PyPitchSession, init
@@ -19,7 +19,7 @@ from . import visuals
 
 # 5. Expose the Serve Module (lazy import to avoid dependency issues)
 # This lets users do: pp.serve()
-def serve(*args, **kwargs):
+def serve(*args: Any, **kwargs: Any) -> None:
     """Lazy import of serve function to avoid circular imports."""
     from .serve import serve as _serve
     return _serve(*args, **kwargs)

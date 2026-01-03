@@ -7,7 +7,7 @@ services:
       - "8000:8000"
     environment:
       - PYPITCH_ENV=production
-      - SECRET_KEY=${SECRET_KEY:-change-this-in-production}
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY is required}
       - API_CORS_ORIGINS=["http://localhost:3000","http://localhost:8080"]
     volumes:
       - ./data:/app/data
@@ -25,12 +25,10 @@ services:
     environment:
       - POSTGRES_DB=pypitch
       - POSTGRES_USER=pypitch
-      - POSTGRES_PASSWORD=${DB_PASSWORD:-pypitch_password}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:?DB_PASSWORD is required}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
-    ports:
-      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U pypitch"]
       interval: 30s
@@ -39,7 +37,7 @@ services:
     restart: unless-stopped
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v2.54.1 # Using latest v2.x LTS for compatibility; v3.x has breaking changes
     ports:
       - "9090:9090"
     volumes:
@@ -53,11 +51,11 @@ services:
     restart: unless-stopped
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:12.3.1
     ports:
       - "3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:?GRAFANA_PASSWORD is required}
     volumes:
       - grafana_data:/var/lib/grafana
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
