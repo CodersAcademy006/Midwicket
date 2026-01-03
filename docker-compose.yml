@@ -37,7 +37,7 @@ services:
     restart: unless-stopped
 
   prometheus:
-    image: prom/prometheus:v2.41.0
+    image: prom/prometheus:v2.54.1 # Using latest v2.x LTS for compatibility; v3.x has breaking changes
     ports:
       - "9090:9090"
     volumes:
@@ -51,7 +51,7 @@ services:
     restart: unless-stopped
 
   grafana:
-    image: grafana/grafana:9.5.2
+    image: grafana/grafana:12.3.1
     ports:
       - "3000:3000"
     environment:

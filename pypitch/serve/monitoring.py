@@ -9,7 +9,6 @@ from collections import defaultdict
 import psutil
 import logging
 from datetime import datetime, timedelta
-from pathlib import Path
 import os
 
 logger = logging.getLogger(__name__)
@@ -92,7 +91,7 @@ class MetricsCollector:
                 'timestamp': time.time()
             }
         except Exception as e:
-            logger.exception(f"Failed to collect system metrics: {e}")
+            logger.exception("Failed to collect system metrics: %s", e)
             return {}
 
     def get_api_metrics(self, since: Optional[float] = None) -> dict[str, Any]:

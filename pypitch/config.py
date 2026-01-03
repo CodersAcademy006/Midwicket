@@ -39,16 +39,17 @@ if not SECRET_KEY:
     # Ensure parent directory exists
     try:
         dev_secret_file.parent.mkdir(parents=True, exist_ok=True)
-    except Exception as e:
+    except Exception:
         logging.getLogger(__name__).exception("Failed to create directory %s", dev_secret_file.parent)
         raise
 
     if dev_secret_file.exists():
         try:
-            with open(dev_secret_file) as f:
+            with open(dev_secret_file, encoding='utf-8') as f:
                 SECRET_KEY = f.read().strip()
-        except Exception as e:
+        except Exception as err:
             logging.getLogger(__name__).exception("Failed to read development secret key")
+            raise RuntimeError("Failed to read existing secret key file") from err
             
     if not SECRET_KEY:
         logger = logging.getLogger(__name__)
@@ -69,11 +70,11 @@ if not SECRET_KEY:
             # Atomic replace
             os.replace(temp_path, dev_secret_file)
         except Exception as e:
-             logger.warning("Failed to persist development secret key: %s", e)
+            logger.warning("Failed to persist development secret key: %s", e)
 
 API_KEY_REQUIRED = os.getenv("PYPITCH_API_KEY_REQUIRED", "false").lower() == "true"
 
-def set_debug(value: bool = True):
+def set_debug(value: bool = True) -> None:
     """
     Set debug mode. If True, forces eager execution and verbose errors.
     """
