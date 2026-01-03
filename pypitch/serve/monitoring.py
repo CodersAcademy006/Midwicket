@@ -4,21 +4,55 @@ Monitoring and metrics collection for PyPitch API.
 
 import time
 import threading
-from typing import Dict, Any, List
+from typing import Any, Optional
 from collections import defaultdict
 import psutil
 import logging
 from datetime import datetime, timedelta
+import os
 
 logger = logging.getLogger(__name__)
 
 class MetricsCollector:
     """Collects and stores API metrics."""
 
-    def __init__(self):
+    def __init__(self, disk_path: Optional[str] = None) -> None:
         self.metrics = defaultdict(list)
         self.lock = threading.Lock()
         self.max_metrics_age = 3600  # Keep metrics for 1 hour
+        
+        # Configure disk monitoring path
+        if disk_path:
+            if not os.path.isabs(disk_path):
+                raise ValueError(f"disk_path must be absolute: {disk_path}")
+            if not os.path.exists(disk_path):
+                raise ValueError(f"disk_path does not exist: {disk_path}")
+            if not os.access(disk_path, os.R_OK):
+                raise ValueError(f"disk_path is not accessible: {disk_path}")
+            self.disk_path = disk_path
+        else:
+            # Default to system root
+            self.disk_path = os.path.abspath(os.sep)
+            # On Windows, try to resolve to system drive if default is used
+            if os.name == 'nt':
+                system_drive = os.environ.get('SystemDrive')
+                if system_drive:
+                    self.disk_path = os.path.abspath(system_drive + os.sep)
+            
+            # Verify default path is valid and readable
+            if not os.path.exists(self.disk_path) or not os.access(self.disk_path, os.R_OK):
+                # Fallback to current working directory if system root fails
+                try:
+                    fallback_path = os.path.abspath(os.getcwd())
+                    if os.path.exists(fallback_path) and os.access(fallback_path, os.R_OK):
+                        logger.warning("Disk path %s not accessible; falling back to %s", self.disk_path, fallback_path)
+                        self.disk_path = fallback_path
+                    else:
+                        logger.error("Neither disk path %s nor fallback %s are accessible. Disk metrics may fail.", 
+                                   self.disk_path, fallback_path)
+                        # Keep the original path; get_system_metrics will handle errors
+                except (FileNotFoundError, OSError):
+                    logger.exception("Cannot determine accessible disk path. Disk metrics may be unavailable.")
 
     def record_request(self, method: str, endpoint: str, status_code: int, duration: float):
         """Record an API request."""
@@ -45,7 +79,7 @@ class MetricsCollector:
                 'message': message
             })
 
-    def get_system_metrics(self) -> Dict[str, Any]:
+    def get_system_metrics(self) -> dict[str, Any]:
         """Get current system metrics."""
         try:
             return {
@@ -53,14 +87,14 @@ class MetricsCollector:
                 'memory_percent': psutil.virtual_memory().percent,
                 'memory_used_mb': psutil.virtual_memory().used / 1024 / 1024,
                 'memory_available_mb': psutil.virtual_memory().available / 1024 / 1024,
-                'disk_usage_percent': psutil.disk_usage('/').percent,
+                'disk_usage_percent': psutil.disk_usage(self.disk_path).percent,
                 'timestamp': time.time()
             }
         except Exception as e:
-            logger.error(f"Failed to collect system metrics: {e}")
+            logger.exception("Failed to collect system metrics: %s", e)
             return {}
 
-    def get_api_metrics(self, since: float = None) -> Dict[str, Any]:
+    def get_api_metrics(self, since: Optional[float] = None) -> dict[str, Any]:
         """Get API usage metrics."""
         if since is None:
             since = time.time() - 3600  # Last hour
@@ -106,7 +140,7 @@ class MetricsCollector:
             'endpoints': dict(endpoints)
         }
 
-    def _cleanup_old_metrics(self):
+    def _cleanup_old_metrics(self) -> None:
         """Remove metrics older than max_metrics_age."""
         cutoff = time.time() - self.max_metrics_age
         for metric_list in self.metrics.values():

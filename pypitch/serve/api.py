@@ -6,7 +6,8 @@ Perfect for enterprise engineers and startups.
 """
 from typing import Dict, Any, Optional, List
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request, Depends
+from fastapi import FastAPI, Request, HTTPException, Depends
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel
@@ -17,11 +18,11 @@ import logging
 
 from pypitch.live.ingestor import StreamIngestor
 from pypitch.serve.auth import verify_api_key
-from pypitch.serve.rate_limit import check_rate_limit
-from pypitch.serve.monitoring import record_request_metrics, record_error_metrics
+from pypitch.serve.rate_limit import check_rate_limit, rate_limiter, get_client_key
+from pypitch.serve.monitoring import record_request_metrics, record_error_metrics, metrics_collector
 from pypitch.config import API_CORS_ORIGINS
-
-import logging
+from pypitch.api.session import PyPitchSession
+from pypitch.compute.winprob import win_probability as wp_func
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +97,6 @@ class PyPitchAPI:
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
 
             # Add rate limit headers
-            from pypitch.serve.rate_limit import rate_limiter, get_client_key
             client_key = get_client_key(request)
             remaining = rate_limiter.get_remaining_requests(client_key)
             reset_time = rate_limiter.get_reset_time(client_key)
@@ -127,7 +127,6 @@ class PyPitchAPI:
 
         # Initialize session
         if session is None:
-            from pypitch.api.session import PyPitchSession
             self.session = PyPitchSession.get()
         else:
             self.session = session
@@ -146,12 +145,18 @@ class PyPitchAPI:
         @self.app.exception_handler(HTTPException)
         async def http_exception_handler(request: Request, exc: HTTPException):
             record_error_metrics("HTTPException", str(exc.detail))
-            return await self.app.default_exception_handler(request, exc)
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={"detail": exc.detail}
+            )
 
         @self.app.exception_handler(Exception)
         async def general_exception_handler(request: Request, exc: Exception):
             record_error_metrics("Exception", str(exc))
-            return await self.app.default_exception_handler(request, exc)
+            return JSONResponse(
+                status_code=500,
+                content={"detail": "Internal server error"}
+            )
 
     def close(self):
         """Explicitly close and cleanup resources."""
@@ -167,14 +172,9 @@ class PyPitchAPI:
         """Context manager exit - ensures cleanup."""
         self.close()
 
-    def __del__(self):
-        """Cleanup resources as final fallback."""
-        self.close()
-
     def predict_win_probability(self, request):
         """Calculate win probability for current match state."""
         try:
-            from pypitch.compute.winprob import win_probability as wp_func
             result = wp_func(
                 target=request.target,
                 current_runs=request.current_runs,
@@ -339,7 +339,6 @@ class PyPitchAPI:
         @self.app.get("/v1/metrics")
         async def get_metrics(authenticated: bool = Depends(verify_api_key)):
             """Get API and system metrics."""
-            from pypitch.serve.monitoring import metrics_collector
 
             api_metrics = metrics_collector.get_api_metrics()
             system_metrics = metrics_collector.get_system_metrics()
@@ -412,7 +411,6 @@ class PyPitchAPI:
         ):
             """Calculate win probability for current match state."""
             try:
-                from pypitch.compute.winprob import win_probability as wp_func
                 result = wp_func(
                     target=target,
                     current_runs=current_runs,

@@ -3,9 +3,9 @@ Rate limiting utilities for PyPitch API.
 """
 
 import time
-from typing import Dict, Tuple
 from collections import defaultdict
 import threading
+import bisect
 from fastapi import HTTPException, Request
 
 class RateLimiter:
@@ -13,8 +13,27 @@ class RateLimiter:
 
     def __init__(self, requests_per_minute: int = 60):
         self.requests_per_minute = requests_per_minute
-        self.requests: Dict[str, list] = defaultdict(list)
+        self.requests: dict[str, list] = defaultdict(list)
         self.lock = threading.Lock()
+        self.cleanup_counter = 0
+
+    def _cleanup_old_requests(self, key: str, window_start: float) -> None:
+        """Remove requests older than window_start for the given key."""
+        timestamps = self.requests[key]
+        # Find first valid timestamp
+        start_index = bisect.bisect_right(timestamps, window_start)
+            
+        if start_index > 0:
+            self.requests[key] = timestamps[start_index:]
+
+    def _cleanup_old_keys(self, window_start: float) -> None:
+        """Remove keys with no recent requests."""
+        keys_to_remove = []
+        for key, timestamps in self.requests.items():
+            if not timestamps or timestamps[-1] <= window_start:
+                keys_to_remove.append(key)
+        for key in keys_to_remove:
+            del self.requests[key]
 
     def is_allowed(self, key: str) -> bool:
         """Check if request is allowed for the given key."""
@@ -22,8 +41,14 @@ class RateLimiter:
         window_start = now - 60  # 1 minute window
 
         with self.lock:
+            # Amortized cleanup: only run full cleanup every 100 requests
+            self.cleanup_counter += 1
+            if self.cleanup_counter >= 100:
+                self._cleanup_old_keys(window_start)
+                self.cleanup_counter = 0
+            
             # Remove old requests outside the window
-            self.requests[key] = [t for t in self.requests[key] if t > window_start]
+            self._cleanup_old_requests(key, window_start)
 
             # Check if under limit
             if len(self.requests[key]) < self.requests_per_minute:
@@ -38,7 +63,7 @@ class RateLimiter:
 
         with self.lock:
             # Clean up old requests
-            self.requests[key] = [t for t in self.requests[key] if t > window_start]
+            self._cleanup_old_requests(key, window_start)
             return max(0, self.requests_per_minute - len(self.requests[key]))
 
     def get_reset_time(self, key: str) -> float:
@@ -48,6 +73,13 @@ class RateLimiter:
                 return 0
             oldest_request = min(self.requests[key])
             return max(0, (oldest_request + 60) - time.time())
+
+    def cleanup_old_keys(self) -> None:
+        """Remove keys with no recent requests to prevent memory growth."""
+        now = time.time()
+        window_start = now - 60
+        with self.lock:
+            self._cleanup_old_keys(window_start)
 
 # Global rate limiter instance
 rate_limiter = RateLimiter()

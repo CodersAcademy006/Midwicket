@@ -202,7 +202,7 @@ class TestPyPitchAPI:
     def test_error_handling(self, api_instance):
         """Test error handling in API methods."""
         # Test with invalid data that should cause internal errors
-        with patch('pypitch.compute.winprob.win_probability', side_effect=Exception("Test error")):
+        with patch('pypitch.serve.api.wp_func', side_effect=Exception("Test error")):
             request = WinPredictionRequest(
                 target=150,
                 current_runs=50,
