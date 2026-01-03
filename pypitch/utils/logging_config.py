@@ -6,7 +6,8 @@ import logging
 import logging.handlers
 import sys
 from pathlib import Path
-from typing import Optional
+
+def setup_logging(level: str = "INFO", log_file: str | None = None) -> None:
     """
     Setup comprehensive logging for PyPitch.
 
