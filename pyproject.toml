@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "pypitch"
 version = "0.1.0"
 authors = [
-  { name="PyPitch Team", email="dev@pypitch.org" },
+  { name="PyPitch Team", email="srjnupadhyay@gmail.com" },
 ]
 description = "The Open Source Cricket Intelligence SDK"
 readme = "README.md"
@@ -28,7 +28,7 @@ dependencies = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/yourusername/pypitch"
+"Homepage" = "https://github.com/CodersAcademy006/pypitch"
 [tool.mypy]
 ignore_missing_imports = true
 check_untyped_defs = true
@@ -47,17 +47,3 @@ ignore_missing_imports = true
 [tool.setuptools.packages.find]
 include = ["pypitch*"]
 exclude = ["data*", "examples*", "tests*"]
-
-[tool.pytest.ini_options]
-addopts = "-ra -q"
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-python_paths = ["."]
-norecursedirs = ["examples", "docs", "scripts", "__pycache__"]
-markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "integration: marks tests as integration tests",
-    "performance: marks tests as performance tests"
-]
