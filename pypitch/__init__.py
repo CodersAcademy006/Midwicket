@@ -1,26 +1,28 @@
 # Expose sources for direct import
 from .sources import *
-# pypitch/__init__.py
 
 # 1. Expose the Core Session & Init
 # This lets users do: pp.init() or pp.PyPitchSession
-from pypitch.api.session import PyPitchSession, init
+from .api.session import PyPitchSession, init
 
 # 2. Expose the Data Module
 # This lets users do: pp.data.download()
-import pypitch.data as data
+from . import data
 
 # 3. Expose the API Module
 # This lets users do: pp.api.session
-import pypitch.api as api
+from . import api
 
 # 4. Expose the Visuals Module
 # This lets users do: pp.visuals.plot_worm_graph
-import pypitch.visuals as visuals
+from . import visuals
 
-# 5. Expose the Serve Module
+# 5. Expose the Serve Module (lazy import to avoid dependency issues)
 # This lets users do: pp.serve()
-from pypitch.serve import serve
+def serve(*args, **kwargs):
+    """Lazy import of serve function to avoid circular imports."""
+    from .serve import serve as _serve
+    return _serve(*args, **kwargs)
 
 # 5. Expose Debug Mode
 from .runtime.modes import set_debug_mode

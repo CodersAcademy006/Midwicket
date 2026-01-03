@@ -16,9 +16,15 @@ def benchmark_session():
     """Create a test session with sample data for benchmarking."""
     with tempfile.TemporaryDirectory() as temp_dir:
         data_dir = Path(temp_dir)
+        
+        # Create dummy data to prevent download
+        raw_dir = data_dir / "raw" / "ipl"
+        raw_dir.mkdir(parents=True, exist_ok=True)
+        with open(raw_dir / "dummy_match.json", "w") as f:
+            f.write("{}")
 
         # Create minimal test data
-        with PyPitchSession(str(data_dir)) as session:
+        with PyPitchSession(data_dir=str(data_dir), skip_registry_build=True) as session:
             # Load a small amount of test data
             loader = DataLoader(str(data_dir))
             # For benchmarking, we'll use existing data or create mock data
@@ -28,6 +34,7 @@ def benchmark_session():
 class TestPerformanceRegression:
     """Performance tests to prevent slowdowns."""
 
+    @pytest.mark.performance
     def test_player_stats_query_speed(self, benchmark, benchmark_session):
         """Ensure player stats queries stay under 50ms."""
         # Benchmark the get_player_stats method
@@ -39,6 +46,7 @@ class TestPerformanceRegression:
         # The result should be fast
         assert result is not None or result is None  # Allow None for missing data
 
+    @pytest.mark.performance
     def test_match_loading_speed(self, benchmark, benchmark_session):
         """Ensure match loading stays under 200ms."""
         # Find an available match ID
@@ -51,6 +59,7 @@ class TestPerformanceRegression:
 
         benchmark(load_match)
 
+    @pytest.mark.performance
     def test_registry_resolution_speed(self, benchmark, benchmark_session):
         """Ensure player resolution stays under 10ms."""
         result = benchmark(
@@ -61,6 +70,7 @@ class TestPerformanceRegression:
         # Should resolve quickly
         assert result is not None or result is None
 
+    @pytest.mark.performance
     def test_query_execution_speed(self, benchmark, benchmark_session):
         """Ensure basic queries stay under 100ms."""
         def run_query():
@@ -75,6 +85,7 @@ class TestPerformanceRegression:
         assert result is not None
 
     @pytest.mark.parametrize("query_type", ["player_stats", "match_stats", "registry_lookup"])
+    @pytest.mark.performance
     def test_query_types_performance(self, benchmark, query_type, benchmark_session):
         """Parameterized test for different query types."""
 
@@ -119,6 +130,7 @@ def pypitch_benchmark(benchmark):
     return benchmark_with_threshold
 
 # Example usage in tests
+@pytest.mark.performance
 def test_custom_benchmark(benchmark, benchmark_session):
     """Example of using benchmark fixture."""
     result = benchmark(
