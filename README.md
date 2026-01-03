@@ -113,7 +113,7 @@ curl http://localhost:8000/health
 
 #### API Endpoints
 
-```
+```http
 GET  /health          - Health check
 GET  /v1/metrics      - System and API metrics
 GET  /matches         - List matches
@@ -124,6 +124,7 @@ GET  /win_probability - Win probability predictions
 #### Authentication
 
 Include your API key in requests:
+
 ```bash
 curl -H "X-API-Key: your-api-key" http://localhost:8000/health
 ```

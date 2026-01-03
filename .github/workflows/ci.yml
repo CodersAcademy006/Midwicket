@@ -25,4 +25,4 @@ jobs:
         pytest --cov=pypitch --cov-report=xml
     - name: Run mypy
       run: |
-        mypy pypitch || true
+        mypy pypitch

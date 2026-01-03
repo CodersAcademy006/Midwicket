@@ -1,8 +1,11 @@
 import duckdb
 import pyarrow as pa
+import logging
 from typing import Dict, Any, Optional
 from pypitch.schema.v1 import BALL_EVENT_SCHEMA
 from pypitch.storage.connection_pool import ConnectionPool
+
+logger = logging.getLogger(__name__)
 
 class QueryEngine:
     def __init__(self, db_path: str = ":memory:") -> None:
@@ -15,9 +18,7 @@ class QueryEngine:
 
         # Initialize database schema on first connection
         with self.pool.connection() as con:
-            # Performance tuning for analytical workloads
-            con.execute("PRAGMA threads=4;")
-            con.execute("PRAGMA memory_limit='2GB';")
+            pass  # PRAGMAs are set in ConnectionPool._create_connection
 
         # State tracking for deterministic hashing
         self._snapshot_id = "initial_empty"
@@ -52,7 +53,7 @@ class QueryEngine:
             # This is a zero-copy operation (pointers only)
             con.register('arrow_view', arrow_table)
             try:
-                exists = self.table_exists("ball_events")
+                exists = self.table_exists("ball_events", con)
                 print(f"[QueryEngine.ingest_events] ball_events exists={exists}")
 
                 # Persist to disk
@@ -75,7 +76,7 @@ class QueryEngine:
                 except Exception:
                     pass
 
-    def execute_sql(self, sql: str, params: Optional[list] = None) -> pa.Table:
+    def execute_sql(self, sql: str, params: Optional[list] = None, read_only: bool = True) -> pa.Table:
         """
         Execute a SQL query and return results as a PyArrow Table.
         """
@@ -83,6 +84,10 @@ class QueryEngine:
             params = []
 
         with self.pool.connection() as con:
+            if not read_only:
+                con.execute(sql, params)
+                return pa.Table.from_pylist([]) # Return empty table for non-select queries
+            
             result = con.execute(sql, params).arrow()
             # Ensure we return a Table, not a RecordBatchReader
             if isinstance(result, pa.RecordBatchReader):
@@ -103,7 +108,7 @@ class QueryEngine:
         """
         with self.pool.connection() as con:
             # Ensure table exists
-            if not self.table_exists("ball_events"):
+            if not self.table_exists("ball_events", con):
                 # Create table if not exists (simplified schema for demo)
                 # Note: In real app, use full schema
                 con.execute("""
@@ -133,14 +138,22 @@ class QueryEngine:
                 delivery_data.get('timestamp')
             ])
 
-    def table_exists(self, table_name: str) -> bool:
+    def table_exists(self, table_name: str, con=None) -> bool:
         """Checks if a table exists in the database."""
-        try:
+        if con is None:
             with self.pool.connection() as con:
-                # DuckDB specific query
-                res = con.execute(f"SELECT count(*) FROM information_schema.tables WHERE table_name = '{table_name}'").fetchone()
-                return res[0] > 0 if res else False
-        except Exception:
+                return self._table_exists(table_name, con)
+        else:
+            return self._table_exists(table_name, con)
+
+    def _table_exists(self, table_name: str, con) -> bool:
+        """Checks if a table exists using the provided connection."""
+        try:
+            # DuckDB specific query
+            res = con.execute("SELECT count(*) FROM information_schema.tables WHERE table_name = ?", [table_name]).fetchone()
+            return res[0] > 0 if res else False
+        except duckdb.Error as e:
+            logger.warning("Error checking table existence: %s", e)
             return False
 
     def close(self) -> None:

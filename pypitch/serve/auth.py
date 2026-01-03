@@ -7,11 +7,11 @@ import secrets
 from typing import Optional
 from fastapi import HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # JWT handling (conditional import)
 try:
-    import jwt
+    from jose import jwt
     HAS_JWT = True
 except ImportError:
     jwt = None
@@ -74,15 +74,17 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
         raise RuntimeError("JWT token creation requires 'python-jose' package. Install with: pip install python-jose[cryptography]")
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
+        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm="HS256")
     return encoded_jwt
 
 def decode_access_token(token: str):
     """Decode and verify JWT token."""
+    if not HAS_JWT:
+        raise RuntimeError("JWT token decoding requires 'python-jose' package. Install with: pip install python-jose[cryptography]")
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
         return payload
