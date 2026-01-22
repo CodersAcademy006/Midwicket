@@ -145,6 +145,9 @@ class PyPitchSession:
         self.registry.close()
         self.engine.close()
         self.cache.close()
+        # Clear singleton reference to prevent stale instances
+        if PyPitchSession._instance is self:
+            PyPitchSession._instance = None
 
     def __enter__(self):
         return self
