@@ -20,11 +20,8 @@ parts/
 sdist/
 var/
 wheels/
-<<<<<<< HEAD
-=======
 pip-wheel-metadata/
 share/python-wheels/
->>>>>>> 9ce6f86219c06bae7b057fceca2a3254ef30169f
 *.egg-info/
 .installed.cfg
 *.egg
@@ -110,7 +107,6 @@ __pypackages__/
 # Celery stuff
 celerybeat-schedule
 celerybeat.pid
->>>>>>> 9ce6f86219c06bae7b057fceca2a3254ef30169f
 
 # SageMath parsed files
 *.sage.py
@@ -142,37 +138,31 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-<<<<<<< HEAD
-# Data files (irrelevant for version control)
-data/
+# Project specific
+# Data files (runtime generated, not source code)
+*.db
+*.duckdb
+*.duckdb.wal
+*.sqlite
+*.sqlite3
+data/*.duckdb
+data/*.duckdb.wal
 data/cache.duckdb
 data/registry.duckdb
 data/bundled/
 data/raw/
-=======
-# Project specific
-# Data files
-*.db
-*.duckdb
-*.sqlite
-*.sqlite3
-data/
 raw/
 registry.sqlite
 
 # Logs
 *.log
 logs/
->>>>>>> 9ce6f86219c06bae7b057fceca2a3254ef30169f
 
 # IDE
 .vscode/
 .idea/
-<<<<<<< HEAD
-=======
 *.swp
 *.swo
->>>>>>> 9ce6f86219c06bae7b057fceca2a3254ef30169f
 
 # OS
 .DS_Store
