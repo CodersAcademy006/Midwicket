@@ -1,8 +1,5 @@
-# Expose sources for direct import (guard against optional missing adapters)
-try:
-    from .sources import *  # noqa: F401, F403
-except ImportError:
-    pass
+# Expose sources for direct import
+from .sources import *  # noqa: F401, F403
 
 from typing import Any
 # 1. Expose the Core Session & Init
@@ -23,40 +20,40 @@ from . import visuals
 
 # 5. Expose the Serve Module (lazy import to avoid dependency issues)
 # This lets users do: pp.serve()
-def serve(*args: Any, **kwargs: Any) -> None:
+def serve(*args: Any, **kwargs: Any) -> Any:
     """Lazy import of serve function to avoid circular imports."""
     from .serve import serve as _serve
     return _serve(*args, **kwargs)
 
-# 5. Expose Debug Mode
+# 6. Expose Debug Mode
 from .runtime.modes import set_debug_mode
 
-# 6. Expose Models
+# 7. Expose Models
 from .models.win_predictor import WinPredictor
 
-# 7. Expose Win Probability Functions
+# 8. Expose Win Probability Functions
 from .compute.winprob import win_probability, set_win_model
 
-# 8. Expose Match Configuration
+# 9. Expose Match Configuration
 from .core.match_config import MatchConfig
 
-# 3. Expose the Stats API
+# 10. Expose the Stats API
 # This lets users do: pp.stats.matchup()
 import pypitch.api.stats as stats
 
-# 5. Expose the Fantasy API
+# 11. Expose the Fantasy API
 # This lets users do: pp.fantasy.cheat_sheet()
 import pypitch.api.fantasy as fantasy
 
-# 6. Expose the Sim API
+# 12. Expose the Sim API
 # This lets users do: pp.sim.predict_win()
 import pypitch.api.sim as sim
 
-# 4. Expose Common Query Objects (Optional but nice)
+# 13. Expose Common Query Objects (Optional but nice)
 # This lets users do: q = pp.MatchupQuery(...)
 from pypitch.query.matchups import MatchupQuery
 
-# 9. Expose Express Module
+# 14. Expose Express Module
 # This lets users do: pp.express.load_competition()
 import pypitch.express as express
 

@@ -6,7 +6,7 @@ import requests
 from typing import Any
 from urllib.parse import urljoin
 import json
-from requests.exceptions import ConnectionError
+from requests.exceptions import ConnectionError as RequestsConnectionError
 
 class PyPitchClient:
     """Client for interacting with PyPitch API servers."""

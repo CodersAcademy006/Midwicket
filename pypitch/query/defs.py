@@ -6,7 +6,8 @@ __all__ = ["FantasyQuery", "WinProbQuery", "MatchupQuery"]
 
 # Type aliases for consistency
 Phase = Literal["powerplay", "middle", "death", "all"]
-Role = Literal["batter", "bowler", "all-rounder"]
+# NOTE: "all" is a valid selection meaning "any role" in fantasy queries.
+Role = Literal["batter", "bowler", "all-rounder", "all"]
 
 class FantasyQuery(BaseQuery):
     """

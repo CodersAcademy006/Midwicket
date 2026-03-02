@@ -25,8 +25,10 @@ from pypitch.sources.cricsheet_loader import CricsheetLoader
 # Global debug mode
 _DEBUG_MODE = False
 
-# Global session cache for quick_load
+# Global session cache for quick_load (guarded by a lock for thread safety)
 _cached_session: Optional[PyPitchSession] = None
+import threading
+_session_lock = threading.Lock()
 
 def set_debug_mode(enabled: bool = True) -> None:
     """Enable debug mode for eager execution and verbose logging."""
@@ -133,38 +135,39 @@ def _load_bundled_registry(registry: IdentityRegistry, bundled_dir: Path) -> Non
         raise
 
 def _auto_setup_session(data_dir: Optional[str] = None) -> PyPitchSession:
-    """Auto-setup session with defaults and caching."""
+    """Auto-setup session with defaults and caching. Thread-safe."""
     global _cached_session
-    
-    # Return cached session if available and data_dir matches
-    if _cached_session is not None:
+
+    with _session_lock:
+        # Double-checked locking: fast path for already-initialised sessions
+        if _cached_session is not None:
+            return _cached_session
+
+        data_path = _ensure_data_dir(data_dir)
+
+        # Check if we have bundled data (first check package data, then user data)
+        bundled_dir = Path(__file__).parent.parent / "data" / "bundled"
+        if not bundled_dir.exists():
+            bundled_dir = data_path / "bundled"
+
+        if bundled_dir.exists() and (bundled_dir / "entities.parquet").exists():
+            if _DEBUG_MODE:
+                print("📦 Using bundled sample data for quick start.")
+            # Create session with bundled data directory (skip registry build)
+            session = PyPitchSession(str(data_path), skip_registry_build=True)
+            # Load bundled registry data
+            _load_bundled_registry(session.registry, bundled_dir)
+            _cached_session = session
+            return _cached_session
+
+        # Otherwise, download if needed
+        loader = DataLoader(str(data_path))
+        if not (loader.raw_dir.exists() and list(loader.raw_dir.glob("*.json"))):
+            print("⬇️  Downloading sample data (IPL 2023)...")
+            loader.download()
+
+        _cached_session = PyPitchSession(str(data_path))
         return _cached_session
-    
-    data_path = _ensure_data_dir(data_dir)
-
-    # Check if we have bundled data (first check package data, then user data)
-    bundled_dir = Path(__file__).parent.parent / "data" / "bundled"
-    if not bundled_dir.exists():
-        bundled_dir = data_path / "bundled"
-    
-    if bundled_dir.exists() and (bundled_dir / "entities.parquet").exists():
-        if _DEBUG_MODE:
-            print("📦 Using bundled sample data for quick start.")
-        # Create session with bundled data directory (skip registry build)
-        _cached_session = PyPitchSession(str(data_path), skip_registry_build=True)
-        
-        # Load bundled registry data
-        _load_bundled_registry(_cached_session.registry, bundled_dir)
-        return _cached_session
-
-    # Otherwise, download if needed
-    loader = DataLoader(str(data_path))
-    if not (loader.raw_dir.exists() and list(loader.raw_dir.glob("*.json"))):
-        print("⬇️  Downloading sample data (IPL 2023)...")
-        loader.download()
-
-    _cached_session = PyPitchSession(str(data_path))
-    return _cached_session
 
 def load_competition(competition: str, season: int, data_dir: str = "./data"):
     """
@@ -212,9 +215,9 @@ def get_matchup(batter: str, bowler: str, data_dir: Optional[str] = None) -> Opt
         result = px.get_matchup("V Kohli", "JJ Bumrah")
         print(f"Matches: {result.matches}, Avg: {result.average}")
     """
-    session = _auto_setup_session(data_dir)
-    # TODO: Implement matchup logic
-    return None
+    _auto_setup_session(data_dir)
+    from pypitch.api import stats as _stats
+    return _stats.matchup(batter, bowler)
 
 def predict_win(venue: str, target: int, current_score: int, wickets_down: int, overs_done: float, data_dir: Optional[str] = None) -> Dict[str, float]:
     """

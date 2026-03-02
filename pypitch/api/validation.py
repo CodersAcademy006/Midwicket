@@ -17,19 +17,8 @@ class WinPredictionRequest(BaseModel):
     overs_done: float = Field(..., ge=0.0, le=20.0, description="Overs completed")
     venue: Optional[str] = Field(None, max_length=100, description="Venue name")
 
-    @field_validator('overs_done')
-    @classmethod
-    def validate_overs_done(cls, v):
-        if v < 0 or v > 20:
-            raise ValueError('overs_done must be between 0 and 20')
-        return v
-
-    @field_validator('wickets_down')
-    @classmethod
-    def validate_wickets_down(cls, v):
-        if v < 0 or v > 10:
-            raise ValueError('wickets_down must be between 0 and 10')
-        return v
+    # Field constraints above already enforce ge/le bounds;
+    # dedicated validators below are intentionally omitted to avoid redundancy.
 
 class PlayerLookupRequest(BaseModel):
     """Request model for player lookup."""
@@ -39,8 +28,9 @@ class PlayerLookupRequest(BaseModel):
     @field_validator('name')
     @classmethod
     def validate_name(cls, v):
-        # Basic name validation - allow letters, spaces, hyphens, apostrophes
-        if not re.match(r"^[a-zA-Z\s\-']+$", v):
+        # Allow letters, spaces, hyphens, apostrophes, and dots
+        # (e.g. "M.S. Dhoni", "A.B. de Villiers", "B.S. Chandrasekhar")
+        if not re.match(r"^[a-zA-Z\s\-'.]+$", v):
             raise ValueError('Name contains invalid characters')
         return v.strip()
 

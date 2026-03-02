@@ -168,8 +168,8 @@ class PyPitchSession:
         """Fallback cleanup in case close() wasn't called explicitly."""
         try:
             self.close()
-        except:
-            pass  # Ignore errors during cleanup
+        except Exception:
+            pass  # Ignore all errors during GC cleanup
 
 # Helper to expose the executor directly to API modules
 def get_executor() -> RuntimeExecutor:

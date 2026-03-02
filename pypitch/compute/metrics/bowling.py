@@ -14,6 +14,9 @@ def calculate_pressure_index(dots: pa.Array, balls: pa.Array) -> pa.Array:
     """
     Metric: Dot Ball Percentage.
     High Dot % correlates strongly with Wickets in T20s.
+    When balls == 0 the index is safely returned as 0.0.
     """
     dot_pct = pc.divide(dots.cast(pa.float64()), balls.cast(pa.float64()))
-    return pc.multiply(dot_pct, 100.0)
+    result = pc.multiply(dot_pct, 100.0)
+    # Guard against division by zero (balls == 0 → return 0.0)
+    return pc.if_else(pc.equal(balls, 0), 0.0, result)

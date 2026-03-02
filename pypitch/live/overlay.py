@@ -69,6 +69,9 @@ class OverlayServer:
         if self.is_running:
             return
 
+        # Capture self in a closure so the handler never touches a global
+        overlay_self = self
+
         # Create custom request handler
         class OverlayHandler(BaseHTTPRequestHandler):
             def do_GET(self):
@@ -80,16 +83,16 @@ class OverlayServer:
 
                     # Return current stats as JSON
                     stats_dict = {
-                        "match_id": overlay_server.current_stats.match_id,
-                        "current_over": overlay_server.current_stats.current_over,
-                        "current_score": overlay_server.current_stats.current_score,
-                        "wickets": overlay_server.current_stats.wickets_fallen,
-                        "run_rate": f"{overlay_server.current_stats.run_rate:.2f}",
-                        "required_rr": f"{overlay_server.current_stats.required_rr:.2f}" if overlay_server.current_stats.required_rr else None,
-                        "batsman": overlay_server.current_stats.batsman_on_strike,
-                        "bowler": overlay_server.current_stats.bowler,
-                        "last_ball": overlay_server.current_stats.last_ball,
-                        "recent_overs": overlay_server.current_stats.recent_overs[-5:],  # Last 5 overs
+                        "match_id": overlay_self.current_stats.match_id,
+                        "current_over": overlay_self.current_stats.current_over,
+                        "current_score": overlay_self.current_stats.current_score,
+                        "wickets": overlay_self.current_stats.wickets_fallen,
+                        "run_rate": f"{overlay_self.current_stats.run_rate:.2f}",
+                        "required_rr": f"{overlay_self.current_stats.required_rr:.2f}" if overlay_self.current_stats.required_rr else None,
+                        "batsman": overlay_self.current_stats.batsman_on_strike,
+                        "bowler": overlay_self.current_stats.bowler,
+                        "last_ball": overlay_self.current_stats.last_ball,
+                        "recent_overs": overlay_self.current_stats.recent_overs[-5:],  # Last 5 overs
                         "timestamp": time.time()
                     }
 
@@ -98,9 +101,8 @@ class OverlayServer:
                     self.send_response(404)
                     self.end_headers()
 
-        # Store reference for handler
-        global overlay_server
-        overlay_server = self
+            def log_message(self, *args):
+                pass  # Suppress access log noise
 
         # Start server in background thread
         def run_server():

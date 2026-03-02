@@ -1,4 +1,5 @@
 import warnings
+from functools import wraps
 from typing import Any
 
 def deprecated_function(message: str, version: str):
@@ -11,6 +12,7 @@ def deprecated_function(message: str, version: str):
             pass
     """
     def decorator(func):
+        @wraps(func)
         def wrapper(*args, **kwargs):
             warnings.warn(
                 f"{func.__name__} is deprecated and will be removed in v{version}. {message}",
@@ -32,6 +34,7 @@ def deprecated_argument(arg_name: str, message: str, version: str):
                 warnings.warn(...)
     """
     def decorator(func):
+        @wraps(func)
         def wrapper(*args, **kwargs):
             if arg_name in kwargs and kwargs[arg_name] is not None:
                 warnings.warn(

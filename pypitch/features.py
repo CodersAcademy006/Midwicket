@@ -55,7 +55,7 @@ class RollingFeature:
         WHERE player_id = ?
         """
 
-        return session.engine.con.sql(query, [player_id])
+        return session.engine.execute_sql(query, params=[player_id])
 
     def _get_metric_column(self) -> str:
         """Map metric name to database column."""
@@ -99,7 +99,7 @@ class MomentumIndicator:
             ORDER BY match_date DESC
             LIMIT ?
             """
-            df = session.engine.con.sql(query, [player_id, period]).df()
+            df = session.engine.execute_sql(query, params=[player_id, period]).to_pandas()
             if not df.empty:
                 avg_runs = df['avg_runs'].iloc[0] or 0
                 avg_balls = df['avg_balls'].iloc[0] or 1  # Avoid division by zero
@@ -137,7 +137,7 @@ class FatigueMetric:
         AND match_date >= date('now', '-30 days')
         """
 
-        df = session.engine.con.sql(query, [player_id]).df()
+        df = session.engine.execute_sql(query, params=[player_id]).to_pandas()
         if df.empty:
             return {
                 'fatigue_level': 'low',

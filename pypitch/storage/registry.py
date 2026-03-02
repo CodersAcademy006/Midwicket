@@ -79,34 +79,49 @@ class IdentityRegistry:
         return None
 
     def upsert_player_stats(self, stats: Dict[int, Dict[str, int]]) -> None:
-        """Bulk upsert player stats."""
-        # DuckDB doesn't have a simple UPSERT for batch, so we'll delete and insert
-        # In a real high-concurrency app, this would be a transaction.
+        """Bulk upsert player stats inside an explicit transaction."""
         ids = list(stats.keys())
         if not ids:
             return
-            
-        self.con.execute(f"DELETE FROM player_stats WHERE entity_id IN ({','.join(map(str, ids))})")
-        
-        data = []
-        for pid, s in stats.items():
-            data.append((pid, s['matches'], s['runs'], s['balls_faced'], s['wickets'], s['balls_bowled'], s['runs_conceded']))
-            
-        self.con.executemany("INSERT INTO player_stats VALUES (?, ?, ?, ?, ?, ?, ?)", data)
+
+        self.con.begin()
+        try:
+            # Use parameterised IN-list via DuckDB array binding
+            self.con.execute(
+                "DELETE FROM player_stats WHERE entity_id = ANY(?)",
+                [ids]
+            )
+            data = [
+                (pid, s['matches'], s['runs'], s['balls_faced'], s['wickets'], s['balls_bowled'], s['runs_conceded'])
+                for pid, s in stats.items()
+            ]
+            self.con.executemany("INSERT INTO player_stats VALUES (?, ?, ?, ?, ?, ?, ?)", data)
+            self.con.commit()
+        except Exception:
+            self.con.rollback()
+            raise
 
     def upsert_venue_stats(self, stats: Dict[int, Dict[str, int]]) -> None:
-        """Bulk upsert venue stats."""
+        """Bulk upsert venue stats inside an explicit transaction."""
         ids = list(stats.keys())
         if not ids:
             return
 
-        self.con.execute(f"DELETE FROM venue_stats WHERE entity_id IN ({','.join(map(str, ids))})")
-        
-        data = []
-        for vid, s in stats.items():
-            data.append((vid, s['matches'], s['total_runs'], s['first_innings_runs'], s['first_innings_count']))
-            
-        self.con.executemany("INSERT INTO venue_stats VALUES (?, ?, ?, ?, ?)", data)
+        self.con.begin()
+        try:
+            self.con.execute(
+                "DELETE FROM venue_stats WHERE entity_id = ANY(?)",
+                [ids]
+            )
+            data = [
+                (vid, s['matches'], s['total_runs'], s['first_innings_runs'], s['first_innings_count'])
+                for vid, s in stats.items()
+            ]
+            self.con.executemany("INSERT INTO venue_stats VALUES (?, ?, ?, ?, ?)", data)
+            self.con.commit()
+        except Exception:
+            self.con.rollback()
+            raise
 
 
     def _resolve_generic(self, name: str, entity_type: str, match_date: date, auto_ingest: bool = False) -> int:

@@ -45,10 +45,10 @@ class WinPredictor:
             "chinnaswamy": 0.10,   # Royal Challengers Bangalore
             "dyanmond park": 0.08, # Chennai Super Kings
             "punjab cricket": 0.05, # Punjab Kings
-            " Brabourne": 0.06,    # Home advantage
+            "brabourne": 0.06,     # Home advantage (no leading space)
         }
 
-    def predict(self, target: int, current_runs: int, wickets_down: int, overs_done: float, venue: str = None) -> Tuple[float, float]:
+    def predict(self, target: int, current_runs: int, wickets_down: int, overs_done: float, venue: Optional[str] = None) -> Tuple[float, float]:
         """
         Predict win probability for the chasing team with confidence interval.
 
@@ -143,7 +143,7 @@ class WinPredictor:
         confidence = extremity * situation_confidence
         return float(np.clip(confidence, 0.1, 0.95))
 
-    def predict_with_details(self, target: int, current_runs: int, wickets_down: int, overs_done: float, venue: str = None) -> Dict[str, float]:
+    def predict_with_details(self, target: int, current_runs: int, wickets_down: int, overs_done: float, venue: Optional[str] = None) -> Dict[str, float]:
         """
         Predict win probability with detailed breakdown.
 

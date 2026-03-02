@@ -32,10 +32,7 @@ def matchup(
     
     v_id = None
     if venue:
-        # Assuming resolve_venue exists or we implement it similarly
-        # For now, let"s assume it returns an int ID
-        # v_id = str(reg.resolve_venue(venue))
-        pass
+        v_id = str(reg.resolve_venue(venue, today, auto_ingest=True))
 
     # 2. Build Query
     q = MatchupQuery(

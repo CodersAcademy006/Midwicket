@@ -76,11 +76,24 @@ def build_registry_stats(loader: Any, registry: Any) -> None:
                         player_stats[bid]["runs"] += runs_batter
                         if not is_wide:
                             player_stats[bid]["balls_faced"] += 1
+                    elif batter_name:
+                        import logging as _logging
+                        _logging.getLogger(__name__).warning(
+                            "Batter '%s' not in match roster; stats for this delivery are skipped.",
+                            batter_name
+                        )
 
                     # Bowler stats — wides and no-balls are not legal deliveries
                     if bowler_name and bowler_name in players_in_match:
                         oid = players_in_match[bowler_name]
-                        player_stats[oid]["runs_conceded"] += runs_total
+                        # Exclude byes/leg-byes: only runs_batter + wides + noballs
+                        # are charged to the bowler in cricket scoring.
+                        bowler_runs = (
+                            runs_batter
+                            + int(extras.get("wides", 0))
+                            + int(extras.get("noballs", 0))
+                        )
+                        player_stats[oid]["runs_conceded"] += bowler_runs
                         if not is_wide and not is_noball:
                             player_stats[oid]["balls_bowled"] += 1
 

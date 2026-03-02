@@ -57,7 +57,8 @@ class DataLoader:
             # Clean up partial downloads
             if self.zip_path.exists():
                 self.zip_path.unlink()
-            raise ConnectionError(f"Failed to download data: {e}")
+            from pypitch.exceptions import ConnectionError as PyPitchConnectionError
+            raise PyPitchConnectionError(f"Failed to download data: {e}") from e
 
     def _extract(self) -> None:
         """Unzips the downloaded file into the raw directory."""

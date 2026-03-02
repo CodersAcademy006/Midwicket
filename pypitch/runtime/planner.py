@@ -51,12 +51,12 @@ class QueryPlanner:
         # but if we had a big table we'd filter. 
         # For now, 'ball_events' IS the snapshot.
         
-        if hasattr(query, 'batter_id'):
+        if hasattr(query, 'batter_id') and query.batter_id is not None:
             try:
                 clauses.append(f"batter_id = {int(query.batter_id)}")
             except (ValueError, TypeError) as exc:
                 raise ValueError(f"Invalid batter_id: {query.batter_id!r}") from exc
-        if hasattr(query, 'bowler_id'):
+        if hasattr(query, 'bowler_id') and query.bowler_id is not None:
             try:
                 clauses.append(f"bowler_id = {int(query.bowler_id)}")
             except (ValueError, TypeError) as exc:
@@ -131,16 +131,12 @@ class QueryPlanner:
                 venue_id = int(getattr(query, "venue_id"))
             except (ValueError, TypeError) as exc:
                 raise ValueError("venue_id must be integer-valued") from exc
-            # Simple fantasy points: 1 run = 1 pt, 1 wicket = 20 pts
+            # Fantasy points: (total_runs + 20 * total_wickets) / matches played = avg per match
             return f"""
                 SELECT 
                     batter_id as player_id,
-                    SUM(runs_batter) + SUM(CASE WHEN is_wicket THEN 20 ELSE 0 END) as avg_points
-                FROM {table}
-                WHERE venue_id = {venue_id}
-                GROUP BY batter_id
-                ORDER BY avg_points DESC
-            """
-
+                    (
+                        SUM(runs_batter) + SUM(CASE WHEN is_wicket THEN 20 ELSE 0 END)
+                    ) / NULLIF(COUNT(DISTINCT match_id), 0) as avg_points
         raise NotImplementedError(f"No SQL generation for {query.__class__.__name__}")
 

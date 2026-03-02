@@ -15,12 +15,12 @@ class DerivedStore:
         Ensures the requested derived table exists in the 'derived' schema.
         If not, it computes it and persists it for the session.
         """
-        sql = f"""
+        sql = """
             SELECT count(*) as count
-            FROM information_schema.tables 
-            WHERE table_schema = 'derived' AND table_name = '{table_name}'
+            FROM information_schema.tables
+            WHERE table_schema = 'derived' AND table_name = ?
         """
-        result = self.engine.execute_sql(sql, read_only=True)
+        result = self.engine.execute_sql(sql, params=[table_name], read_only=True)
         exists = result['count'][0].as_py() > 0
 
         if exists:
@@ -48,13 +48,10 @@ class DerivedStore:
 
     def get_venue_baselines(self, snapshot_id: str) -> pa.Table:
         """
-        Returns (venue_id, avg_runs_per_over).
+        Returns the pre-materialized venue baselines from derived.venue_baselines.
+        Call ensure_materialized first to guarantee the table exists.
         """
-        query = """
-        SELECT 
-            venue_id, 
-            AVG(runs_batter + runs_extras) * 6 as avg_runs_per_over
-        FROM ball_events 
-        GROUP BY venue_id
-        """
-        return self.engine.execute_sql(query)
+        return self.engine.execute_sql(
+            "SELECT * FROM derived.venue_baselines",
+            read_only=True
+        )

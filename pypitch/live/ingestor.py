@@ -162,10 +162,13 @@ class StreamIngestor:
         from http.server import HTTPServer, BaseHTTPRequestHandler
         import urllib.parse
 
+        # Use a closure so the handler can reach the ingestor without
+        # overriding BaseHTTPRequestHandler.__init__ (which would break the
+        # HTTP server's internal request/response wiring).
+        ingestor_ref = self
+
         class WebhookHandler(BaseHTTPRequestHandler):
-            def __init__(self, ingestor, *args, **kwargs):
-                self.ingestor = ingestor
-                super().__init__(*args, **kwargs)
+            """Handles incoming webhook POST requests."""
 
             def do_POST(self):
                 """Handle webhook POST requests."""
@@ -174,12 +177,11 @@ class StreamIngestor:
                     post_data = self.rfile.read(content_length)
                     data = json.loads(post_data.decode('utf-8'))
 
-                    # Extract match_id from URL path or data
                     path_parts = urllib.parse.urlparse(self.path).path.strip('/').split('/')
                     match_id = path_parts[-1] if path_parts else data.get('match_id')
 
                     if match_id:
-                        self.ingestor.update_match_data(match_id, data)
+                        ingestor_ref.update_match_data(match_id, data)
                         self.send_response(200)
                         self.send_header('Content-type', 'application/json')
                         self.end_headers()
@@ -198,15 +200,11 @@ class StreamIngestor:
                     self.wfile.write(json.dumps({'error': str(e)}).encode())
 
             def log_message(self, format, *args):
-                # Suppress default HTTP server logs
+                # Suppress default HTTP server access logs
                 return
 
-        # Create server with custom handler
-        def create_handler(*args, **kwargs):
-            return WebhookHandler(self, *args, **kwargs)
-
         try:
-            self.webhook_server = HTTPServer(('localhost', self.webhook_port), create_handler)
+            self.webhook_server = HTTPServer(('localhost', self.webhook_port), WebhookHandler)
             self.executor.submit(self.webhook_server.serve_forever)
             logger.info(f"Webhook server started on port {self.webhook_port}")
         except Exception as e:

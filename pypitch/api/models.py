@@ -20,7 +20,7 @@ class PlayerStats(BaseModel):
 
     @property
     def average(self) -> float | None:
-        """Cricket batting average: runs scored per dismissal."""
+        """Cricket batting average: runs scored per dismissal (wickets column used as surrogate)."""
         if self.wickets == 0:
             # Not-out throughout career — return None (conventionally "not out")
             return None
