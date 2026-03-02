@@ -1,22 +1,10 @@
 """
-Data pipeline utilities for building registry and summary statistics.
-"""
-from typing import Any
+Data pipeline utilities — public surface for the data sub-package.
 
-def build_registry_stats(loader: Any, registry: Any) -> None:
-    """
-    Build registry and summary statistics from raw data.
-    
-    Args:
-        loader: DataLoader instance
-        registry: IdentityRegistry instance
-    """
-    # Placeholder implementation
-    # This would typically:
-    # 1. Load raw match data
-    # 2. Extract player/team/venue entities
-    # 3. Populate registry tables
-    # 4. Build summary statistics
-    print("Building registry statistics...")
-    # Implementation would go here
-    pass
+Re-exports the canonical implementation from pipeline.py so callers use
+a stable import path (``from pypitch.data import build_registry_stats``)
+while the actual logic lives in exactly one place.
+"""
+from .pipeline import build_registry_stats
+
+__all__ = ["build_registry_stats"]
