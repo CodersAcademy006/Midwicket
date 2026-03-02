@@ -1,0 +1,4 @@
+include README.md
+include LICENSE
+recursive-include pypitch/data/bundled *.parquet
+recursive-include pypitch *.py

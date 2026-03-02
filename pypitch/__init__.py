@@ -1,63 +1,94 @@
-# Expose sources for direct import
-from .sources import *
+"""
+PyPitch — The Open Source Cricket Intelligence SDK.
+
+Quick start::
+
+    import pypitch as pp
+
+    # One-liner player stats
+    stats = pp.express.get_player_stats("V Kohli")
+
+    # Win probability
+    prob = pp.express.predict_win(
+        venue="Wankhede Stadium",
+        target=180,
+        current_score=95,
+        wickets_down=3,
+        overs_done=10.0,
+    )
+
+    # Head-to-head matchup
+    result = pp.express.get_matchup("V Kohli", "JJ Bumrah")
+"""
+
 from typing import Any
-# 1. Expose the Core Session & Init
-# This lets users do: pp.init() or pp.PyPitchSession
+
+# Core session
 from .api.session import PyPitchSession, init
 
-# 2. Expose the Data Module
-# This lets users do: pp.data.download()
+# Sub-packages (used via pp.data.*, pp.visuals.*, etc.)
 from . import data
-
-# 3. Expose the API Module
-# This lets users do: pp.api.session
-from . import api
-
-# 4. Expose the Visuals Module
-# This lets users do: pp.visuals.plot_worm_graph
 from . import visuals
 
-# 5. Expose the Serve Module (lazy import to avoid dependency issues)
-# This lets users do: pp.serve()
+# Top-level convenience modules
+from . import api
+from . import express
+
+# Stats / fantasy / sim namespaces
+import pypitch.api.stats as stats
+import pypitch.api.fantasy as fantasy
+import pypitch.api.sim as sim
+
+# Common query objects
+from .query.matchups import MatchupQuery
+
+# Debug / mode helpers
+from .runtime.modes import set_debug_mode
+
+# ML model
+from .models.win_predictor import WinPredictor
+
+# Win probability
+from .compute.winprob import win_probability, set_win_model
+
+# Match configuration
+from .core.match_config import MatchConfig
+
+# Serve helper (lazy import avoids pulling fastapi at install time)
 def serve(*args: Any, **kwargs: Any) -> None:
-    """Lazy import of serve function to avoid circular imports."""
+    """Start the PyPitch REST API server. Requires the ``serve`` extra."""
     from .serve import serve as _serve
     return _serve(*args, **kwargs)
 
-# 5. Expose Debug Mode
-from .runtime.modes import set_debug_mode
 
-# 6. Expose Models
-from .models.win_predictor import WinPredictor
-
-# 7. Expose Win Probability Functions
-from .compute.winprob import win_probability, set_win_model
-
-# 8. Expose Match Configuration
-from .core.match_config import MatchConfig
-
-# 3. Expose the Stats API
-# This lets users do: pp.stats.matchup()
-import pypitch.api.stats as stats
-
-# 5. Expose the Fantasy API
-# This lets users do: pp.fantasy.cheat_sheet()
-import pypitch.api.fantasy as fantasy
-
-# 6. Expose the Sim API
-# This lets users do: pp.sim.predict_win()
-import pypitch.api.sim as sim
-
-# 4. Expose Common Query Objects (Optional but nice)
-# This lets users do: q = pp.MatchupQuery(...)
-from pypitch.query.matchups import MatchupQuery
-
-# 9. Expose Express Module
-# This lets users do: pp.express.load_competition()
-import pypitch.express as express
-
-# Version info
 __version__ = "0.1.0"
+__author__ = "PyPitch Team"
+__email__ = "srjnupadhyay@gmail.com"
 
-# Cleanup namespace (optional, keeps dir(pp) clean)
-del api
+__all__ = [
+    # Session
+    "PyPitchSession",
+    "init",
+    # Modules
+    "data",
+    "visuals",
+    "api",
+    "express",
+    # Namespaces
+    "stats",
+    "fantasy",
+    "sim",
+    # Query objects
+    "MatchupQuery",
+    # Helpers
+    "set_debug_mode",
+    "serve",
+    # ML
+    "WinPredictor",
+    "win_probability",
+    "set_win_model",
+    # Config
+    "MatchConfig",
+    # Meta
+    "__version__",
+]
