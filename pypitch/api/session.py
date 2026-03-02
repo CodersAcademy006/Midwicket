@@ -54,7 +54,7 @@ class PyPitchSession:
                      count = self.registry.con.fetchone()[0]
                      if count == 0:
                          raise Exception("Empty")
-                 except:
+                 except Exception:
                      print("[PyPitch] Building Registry & Summary Stats...")
                      build_registry_stats(self.loader, self.registry)
 
@@ -87,7 +87,7 @@ class PyPitchSession:
                     if resolved_id:
                         entity_id = resolved_id
                         break
-                except:
+                except Exception:
                     continue
         
         if entity_id is None:
