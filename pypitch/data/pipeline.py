@@ -1,5 +1,27 @@
 """
 Data pipeline utilities for building registry and summary statistics.
+<<<<<<< feat/core-infrastructure
+"""
+from typing import Any
+
+def build_registry_stats(loader: Any, registry: Any) -> None:
+    """
+    Build registry and summary statistics from raw data.
+    
+    Args:
+        loader: DataLoader instance
+        registry: IdentityRegistry instance
+    """
+    # Placeholder implementation
+    # This would typically:
+    # 1. Load raw match data
+    # 2. Extract player/team/venue entities
+    # 3. Populate registry tables
+    # 4. Build summary statistics
+    print("Building registry statistics...")
+    # Implementation would go here
+    pass
+=======
 
 Implements the ETL pass that seeds the IdentityRegistry (Agent 4) and
 pre-computes derived tables consumed by the Archivist (Agent 3).
@@ -32,3 +54,4 @@ def build_registry_stats(loader: Any, registry: Any) -> None:
         "build_registry_stats is not implemented yet. "
         "Provide a real implementation before calling session.initialize()."
     )
+>>>>>>> main
