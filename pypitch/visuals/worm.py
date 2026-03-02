@@ -172,7 +172,7 @@ def plot_worm_graph(match_id: str, bowler_id: int, session: Any, ax: Optional[An
                 try:
                     name = session.registry.con.execute("SELECT primary_name FROM entities WHERE id = ?", [bid]).fetchone()
                     bowler_names.append(f"{name[0] if name else 'Unknown'} (ID: {bid})")
-                except:
+                except Exception:
                     bowler_names.append(f"ID: {bid}")
             
             bowlers_list = "\n".join(f"  - {name}" for name in bowler_names)
@@ -437,7 +437,7 @@ def plot_batter_pacing(match_id: str, batsman_id: int, session: Any, ax: Optiona
                 try:
                     name = session.registry.con.execute("SELECT primary_name FROM entities WHERE id = ?", [bid]).fetchone()
                     batsman_names.append(f"{name[0] if name else 'Unknown'} (ID: {bid})")
-                except:
+                except Exception:
                     batsman_names.append(f"ID: {bid}")
             
             batsmen_list = "\n".join(f"  - {name}" for name in batsman_names)
