@@ -212,9 +212,37 @@ def get_matchup(batter: str, bowler: str, data_dir: Optional[str] = None) -> Opt
         result = px.get_matchup("V Kohli", "JJ Bumrah")
         print(f"Matches: {result.matches}, Avg: {result.average}")
     """
+    from datetime import date
+    from pypitch.query.base import MatchupQuery
+
     session = _auto_setup_session(data_dir)
-    # TODO: Implement matchup logic
-    return None
+    registry = session.registry
+
+    # Resolve names to entity IDs
+    dates_to_try = [date.today(), date(2024, 1, 1), date(2023, 1, 1), date(2022, 1, 1)]
+
+    def _resolve(name: str) -> Optional[int]:
+        for d in dates_to_try:
+            try:
+                eid = registry.resolve_player(name, d)
+                if eid:
+                    return eid
+            except Exception:
+                continue
+        return None
+
+    batter_id = _resolve(batter)
+    bowler_id = _resolve(bowler)
+    if batter_id is None or bowler_id is None:
+        return None
+
+    query = MatchupQuery(
+        batter_id=str(batter_id),
+        bowler_id=str(bowler_id),
+        snapshot_id="latest",
+    )
+    result = session.executor.execute(query)
+    return result.data
 
 def predict_win(venue: str, target: int, current_score: int, wickets_down: int, overs_done: float, data_dir: Optional[str] = None) -> Dict[str, float]:
     """

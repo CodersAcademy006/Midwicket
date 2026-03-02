@@ -9,11 +9,12 @@ re-configuration deterministic across all call sites.
 import logging
 import sys
 from pathlib import Path
+from typing import List, Optional
 
 
 def setup_logging(
     level: int = logging.INFO,
-    log_file: Path | None = None,
+    log_file: Optional[Path] = None,
 ) -> None:
     """
     Configure logging for the entire pypitch package.
@@ -28,7 +29,7 @@ def setup_logging(
         Without it, ``basicConfig`` is a silent no-op on subsequent
         calls, which makes log-level changes invisible and hard to debug.
     """
-    handlers: list[logging.Handler] = [logging.StreamHandler(sys.stdout)]
+    handlers: List[logging.Handler] = [logging.StreamHandler(sys.stdout)]
 
     if log_file is not None:
         handlers.append(logging.FileHandler(log_file))

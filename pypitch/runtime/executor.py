@@ -138,35 +138,9 @@ class RuntimeExecutor:
 
         # 6. Cache & Return
         self.cache.set(query_hash, result_value)
-        
+
         return ExecutionResult(
             data=result_value,
-            meta=ResultMetadata(
-                query_hash=query_hash,
-                snapshot_id=query.snapshot_id,
-                execution_time_ms=(time.perf_counter() - start_time) * 1000,
-                source="compute"
-            )
-        )
-
-        # 3. Planning (The Optimizer)
-        # Never send raw logic to the engine. Send a Plan.
-        # This allows you to reject "Scan Full History" queries before they run.
-        plan = self.planner.create_plan(query)
-        
-        # 4. Execution (The Heavy Lift)
-        try:
-            result_data = self.engine.run(plan)
-        except Exception as e:
-            # You must log the query_hash here for debugging
-            raise RuntimeError(f"Query {query_hash} failed: {str(e)}") from e
-
-        # 5. Persistence (The Memory)
-        # We only cache if execution succeeded.
-        self.cache.set(query_hash, result_data, ttl=query.execution_opts.timeout)
-
-        return ExecutionResult(
-            data=result_data,
             meta=ResultMetadata(
                 query_hash=query_hash,
                 snapshot_id=query.snapshot_id,

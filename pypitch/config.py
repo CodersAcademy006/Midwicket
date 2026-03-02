@@ -62,7 +62,7 @@ if not SECRET_KEY:
             with tempfile.NamedTemporaryFile(mode='w', dir=dev_secret_file.parent, delete=False) as tmp:
                 tmp.write(SECRET_KEY)
                 tmp.flush()
-                os.fsync(tmp.file.fileno())
+                os.fsync(tmp.fileno())
                 temp_path = Path(tmp.name)
             
             # Ensure permissions

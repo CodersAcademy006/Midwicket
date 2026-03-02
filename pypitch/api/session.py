@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from typing import Optional, Any
 from datetime import date
@@ -14,6 +15,8 @@ from pypitch.data.loader import DEFAULT_DATA_DIR, DataLoader
 from pypitch.data.pipeline import build_registry_stats
 from pypitch.core.canonicalize import canonicalize_match
 from pypitch.core.migration import migrate_on_connect
+
+logger = logging.getLogger(__name__)
 
 class PyPitchSession:
     _instance: Optional["PyPitchSession"] = None
@@ -145,6 +148,9 @@ class PyPitchSession:
         self.registry.close()
         self.engine.close()
         self.cache.close()
+        # Clear singleton reference to prevent stale instances
+        if PyPitchSession._instance is self:
+            PyPitchSession._instance = None
 
     def __enter__(self):
         return self

@@ -25,7 +25,7 @@ class LiveStats:
     batsman_on_strike: str = ""
     bowler: str = ""
     last_ball: str = ""
-    recent_overs: List[str] = None
+    recent_overs: Optional[List[str]] = None
 
     def __post_init__(self):
         if self.recent_overs is None:

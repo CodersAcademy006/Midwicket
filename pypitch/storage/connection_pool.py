@@ -4,7 +4,7 @@ Connection pooling for database engines.
 
 import threading
 import time
-from typing import Any
+from typing import Any, Optional
 from contextlib import contextmanager
 import duckdb
 import logging
@@ -57,7 +57,7 @@ class ConnectionPool:
                     pass
         self._connections = valid_connections
 
-    def get_connection(self, timeout: float | None = None) -> duckdb.DuckDBPyConnection:
+    def get_connection(self, timeout: Optional[float] = None) -> duckdb.DuckDBPyConnection:
         """Get a connection from the pool."""
         with self._condition:
             if self._closed:

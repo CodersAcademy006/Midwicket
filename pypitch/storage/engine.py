@@ -46,7 +46,7 @@ class QueryEngine:
             incoming_rows = getattr(arrow_table, 'num_rows', None)
         except Exception:
             incoming_rows = None
-        print(f"[QueryEngine.ingest_events] snapshot_tag={snapshot_tag} append={append} incoming_rows={incoming_rows}")
+        logger.debug("ingest_events: snapshot_tag=%s append=%s incoming_rows=%s", snapshot_tag, append, incoming_rows)
 
         with self.pool.connection() as con:
             # Registers the Arrow table as a queryable view in DuckDB
@@ -54,22 +54,22 @@ class QueryEngine:
             con.register('arrow_view', arrow_table)
             try:
                 exists = self.table_exists("ball_events", con)
-                print(f"[QueryEngine.ingest_events] ball_events exists={exists}")
+                logger.debug("ingest_events: ball_events exists=%s", exists)
 
                 # Persist to disk
                 if append and exists:
-                    print("[QueryEngine.ingest_events] Performing INSERT INTO ball_events FROM arrow_view")
+                    logger.debug("ingest_events: appending to ball_events")
                     con.execute("INSERT INTO ball_events SELECT * FROM arrow_view")
                 else:
-                    print("[QueryEngine.ingest_events] Creating or replacing ball_events from arrow_view")
+                    logger.debug("ingest_events: creating/replacing ball_events")
                     con.execute("CREATE OR REPLACE TABLE ball_events AS SELECT * FROM arrow_view")
 
                 # Check resulting row count for quick verification
                 try:
                     res = con.execute("SELECT COUNT(*) FROM ball_events").fetchone()
-                    print(f"[QueryEngine.ingest_events] ball_events row_count_after_write={res[0] if res else 'unknown'}")
+                    logger.debug("ingest_events: row_count_after_write=%s", res[0] if res else "unknown")
                 except Exception as e:
-                    print(f"[QueryEngine.ingest_events] Failed to fetch row count after write: {e}")
+                    logger.debug("ingest_events: failed to fetch row count: %s", e)
             finally:
                 try:
                     con.unregister('arrow_view')
