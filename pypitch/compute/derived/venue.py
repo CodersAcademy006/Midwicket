@@ -3,6 +3,10 @@ import pyarrow as pa
 def build_venue_stats(ball_events: pa.Table) -> pa.Table:
     """
     Aggregates data by Venue ID to calculate average scores.
+    
+    Fallback: If count_distinct is unavailable (PyArrow < 14.0),
+    the aggregation will fail. Caller should catch and fall back
+    to raw event scanning.
     """
     # Group by Venue + Inning
     aggregated = ball_events.group_by(['venue_id', 'inning']).aggregate([

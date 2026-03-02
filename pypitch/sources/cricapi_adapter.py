@@ -11,7 +11,6 @@ from .adapters.base import BaseAdapter
 from .adapters.registry import AdapterRegistry
 
 class CricAPIAdapter(BaseAdapter):
-    AdapterRegistry.register("cricapi", CricAPIAdapter)
     """
     Adapter for CricAPI cricket data. Normalizes output, validates responses, and matches the PyPitch adapter contract.
     """
@@ -37,7 +36,7 @@ class CricAPIAdapter(BaseAdapter):
             raise ValueError("Invalid CricAPI response: missing 'matches'")
         match_ids = []
         for match in data["matches"]:
-            match_id = str(match.get("unique_id"))
+            match_id = str(match.get("unique_id")).strip()
             if match_id:
                 match_ids.append(match_id)
         return match_ids
@@ -79,3 +78,6 @@ class CricAPIAdapter(BaseAdapter):
             "events": events,
             "raw": data
         }
+
+# Register adapter
+AdapterRegistry.register("cricapi", CricAPIAdapter)
