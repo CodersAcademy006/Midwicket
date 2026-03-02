@@ -55,15 +55,23 @@ class QueryPlanner:
             clauses.append(f"batter_id = {query.batter_id}")
         if hasattr(query, 'bowler_id'):
             clauses.append(f"bowler_id = {query.bowler_id}")
-        if hasattr(query, 'venue_id') and query.venue_id:
+        if hasattr(query, 'venue_id') and query.venue_id is not None:
             clauses.append(f"venue_id = {query.venue_id}")
+        if hasattr(query, 'phase'):
+            # Whitelist validation for phase values
+            valid_phases = ['powerplay', 'middle', 'death', 'all']
+            if query.phase not in valid_phases:
+                raise ValueError(f"Invalid phase '{query.phase}'. Must be one of {valid_phases}")
+            if query.phase != 'all':
+                clauses.append(f"phase = '{query.phase}'")
             
         return " AND ".join(clauses) if clauses else "1=1"
 
     # Legacy method kept for compatibility if needed, but we are moving to create_plan returning SQL
     def create_legacy_plan(self, query: BaseQuery) -> Dict[str, Any]:
         """
-        Analyzes query dependencies and returns an execution plan.
+        Creates an execution plan by analyzing query dependencies.
+        Returns a dict with strategy, target_table, sql, and cost.
         """
         reqs = query.requires
         available_tables = self.engine.derived_versions.keys()

@@ -5,7 +5,7 @@ Pydantic models for API responses and data structures.
 """
 
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import Any
 from decimal import Decimal
 
 class PlayerStats(BaseModel):
@@ -19,21 +19,21 @@ class PlayerStats(BaseModel):
     runs_conceded: int = Field(..., ge=0, description="Total runs conceded")
 
     @property
-    def average(self) -> Optional[float]:
+    def average(self) -> float | None:
         """Batting average"""
         if self.matches == 0:
             return None
         return float(Decimal(self.runs) / Decimal(self.matches))
 
     @property
-    def strike_rate(self) -> Optional[float]:
+    def strike_rate(self) -> float | None:
         """Batting strike rate"""
         if self.balls_faced == 0:
             return None
         return float((Decimal(self.runs) / Decimal(self.balls_faced)) * 100)
 
     @property
-    def economy(self) -> Optional[float]:
+    def economy(self) -> float | None:
         """Bowling economy"""
         if self.balls_bowled == 0:
             return None
@@ -43,16 +43,16 @@ class MatchupResult(BaseModel):
     """Head-to-head matchup statistics"""
     batter_name: str = Field(..., description="Batter name")
     bowler_name: str = Field(..., description="Bowler name")
-    venue_name: Optional[str] = Field(None, description="Venue name")
+    venue_name: str | None = Field(None, description="Venue name")
     matches: int = Field(..., ge=0, description="Number of matches")
     runs_scored: int = Field(..., ge=0, description="Total runs scored")
     balls_faced: int = Field(..., ge=0, description="Total balls faced")
     dismissals: int = Field(..., ge=0, description="Number of dismissals")
-    average: Optional[float] = Field(None, ge=0, description="Batting average")
-    strike_rate: Optional[float] = Field(None, ge=0, description="Strike rate")
+    average: float | None = Field(None, ge=0, description="Batting average")
+    strike_rate: float | None = Field(None, ge=0, description="Strike rate")
 
     @classmethod
-    def from_dataframe(cls, df, batter: str, bowler: str, venue: Optional[str] = None):
+    def from_dataframe(cls, df: Any, batter: str, bowler: str, venue: str | None = None) -> "MatchupResult":
         """Convert internal DataFrame to public model"""
         # Aggregate the data
         total_matches = len(df)
@@ -79,5 +79,5 @@ class VenueStats(BaseModel):
     """Venue statistics"""
     name: str = Field(..., description="Venue name")
     matches: int = Field(..., ge=0, description="Total matches")
-    average_first_innings: Optional[float] = Field(None, ge=0, description="Average first innings score")
-    average_total: Optional[float] = Field(None, ge=0, description="Average total score")
+    average_first_innings: float | None = Field(None, ge=0, description="Average first innings score")
+    average_total: float | None = Field(None, ge=0, description="Average total score")
