@@ -87,15 +87,20 @@ class DuckDBCache(CacheInterface):
             return self._deserialize(blob, is_arrow)
         finally:
             if self.path != ":memory:":
+                # Purge expired entries on a best-effort basis when we open
+                # a write connection anyway during set().  For read-only gets
+                # we skip the DELETE to keep the connection read-only.
                 con.close()
 
     def set(self, key: str, value: Any, ttl: int = 3600) -> None:
         blob, is_arrow = self._serialize(value)
         expires_at = int(time.time()) + ttl
 
-        # ACID Transaction for Write
+        # ACID Transaction for Write — also evict stale entries opportunistically.
         con = self._get_con()
         try:
+            # Purge expired rows whenever we have a write connection open
+            con.execute("DELETE FROM cache_store WHERE expires_at <= ?", [int(time.time())])
             con.execute("""
                 INSERT OR REPLACE INTO cache_store (key, value, is_arrow, expires_at)
                 VALUES (?, ?, ?, ?)

@@ -1,5 +1,9 @@
-# Expose sources for direct import
-from .sources import *
+# Expose sources for direct import (guard against optional missing adapters)
+try:
+    from .sources import *  # noqa: F401, F403
+except ImportError:
+    pass
+
 from typing import Any
 # 1. Expose the Core Session & Init
 # This lets users do: pp.init() or pp.PyPitchSession
@@ -58,6 +62,3 @@ import pypitch.express as express
 
 # Version info
 __version__ = "0.1.0"
-
-# Cleanup namespace (optional, keeps dir(pp) clean)
-del api

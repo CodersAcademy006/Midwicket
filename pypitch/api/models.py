@@ -20,10 +20,11 @@ class PlayerStats(BaseModel):
 
     @property
     def average(self) -> float | None:
-        """Batting average"""
-        if self.matches == 0:
+        """Cricket batting average: runs scored per dismissal."""
+        if self.wickets == 0:
+            # Not-out throughout career — return None (conventionally "not out")
             return None
-        return float(Decimal(self.runs) / Decimal(self.matches))
+        return float(Decimal(self.runs) / Decimal(self.wickets))
 
     @property
     def strike_rate(self) -> float | None:
@@ -53,14 +54,23 @@ class MatchupResult(BaseModel):
 
     @classmethod
     def from_dataframe(cls, df: Any, batter: str, bowler: str, venue: str | None = None) -> "MatchupResult":
-        """Convert internal DataFrame to public model"""
-        # Aggregate the data
-        total_matches = len(df)
-        total_runs = df['runs'].sum()
-        total_balls = df['balls'].sum()
-        total_dismissals = df['wickets'].sum()
+        """Convert internal DataFrame (single aggregated row) to public model."""
+        if df.empty:
+            return cls(
+                batter_name=batter, bowler_name=bowler, venue_name=venue,
+                matches=0, runs_scored=0, balls_faced=0, dismissals=0,
+                average=None, strike_rate=None,
+            )
 
-        avg = float(total_runs / total_matches) if total_matches > 0 else None
+        # The SQL produces one aggregated row: matches, runs, balls, wickets
+        row = df.iloc[0]
+        total_matches = int(row.get('matches', 0)) if 'matches' in df.columns else 0
+        total_runs = int(row.get('runs', 0))
+        total_balls = int(row.get('balls', 0))
+        total_dismissals = int(row.get('wickets', 0))
+
+        # Cricket batting average = runs / dismissals (not runs / matches)
+        avg = float(total_runs / total_dismissals) if total_dismissals > 0 else None
         sr = float((total_runs / total_balls) * 100) if total_balls > 0 else None
 
         return cls(
@@ -68,11 +78,11 @@ class MatchupResult(BaseModel):
             bowler_name=bowler,
             venue_name=venue,
             matches=total_matches,
-            runs_scored=int(total_runs),
-            balls_faced=int(total_balls),
-            dismissals=int(total_dismissals),
+            runs_scored=total_runs,
+            balls_faced=total_balls,
+            dismissals=total_dismissals,
             average=avg,
-            strike_rate=sr
+            strike_rate=sr,
         )
 
 class VenueStats(BaseModel):

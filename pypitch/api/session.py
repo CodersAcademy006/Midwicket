@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Optional, Any
 from datetime import date
+import duckdb
 from pypitch.api.models import PlayerStats
 import pyarrow as pa
 from tqdm import tqdm
@@ -47,16 +48,24 @@ class PyPitchSession:
                      print("[PyPitch] First time setup detected. Downloading data...")
                      self.loader.download()
                  
-                 # Now check if we need to build stats
-                 # We can check if the 'player_stats' table is empty or missing
+                 # Check if the 'player_stats' table is empty or missing
+                 registry_empty = False
                  try:
-                     self.registry.con.execute("SELECT count(*) FROM player_stats")
-                     count = self.registry.con.fetchone()[0]
+                     result = self.registry.con.execute("SELECT count(*) FROM player_stats")
+                     count = result.fetchone()[0]
                      if count == 0:
-                         raise Exception("Empty")
-                 except Exception:
+                         registry_empty = True
+                 except duckdb.Error:
+                     # Table doesn't exist yet
+                     registry_empty = True
+
+                 if registry_empty:
                      print("[PyPitch] Building Registry & Summary Stats...")
                      build_registry_stats(self.loader, self.registry)
+
+        # Register this instance as the singleton so PyPitchSession.get()
+        # returns this session rather than creating a new one.
+        PyPitchSession._instance = self
 
     def load_match(self, match_id: str) -> None:
         """

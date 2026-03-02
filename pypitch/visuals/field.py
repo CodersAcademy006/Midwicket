@@ -1,9 +1,14 @@
 """
 Cricket Field Drawing Utility for custom backgrounds in visualizations.
 """
-import plotly.graph_objects as go
+from __future__ import annotations
+from typing import TYPE_CHECKING
 
-def add_cricket_pitch_layout(fig: go.Figure) -> go.Figure:
+if TYPE_CHECKING:
+    import plotly.graph_objects as go
+
+
+def add_cricket_pitch_layout(fig: "go.Figure") -> "go.Figure":
     # Draw the pitch rectangle (22 yards long)
     fig.add_shape(type="rect", x0=-1.5, y0=0, x1=1.5, y1=20.12, fillcolor="#E3D0A8")
     # Draw the stumps

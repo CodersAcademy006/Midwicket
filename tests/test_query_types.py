@@ -52,12 +52,14 @@ class TestWinProbQueryValidation:
         assert q.overs_remaining == 0.0
 
     def test_overs_remaining_max(self):
-        q = WinProbQuery(**{**self.BASE, "overs_remaining": 50.0})
-        assert q.overs_remaining == 50.0
+        # Maximum valid overs remaining in a T20 match is 20.0
+        q = WinProbQuery(**{**self.BASE, "overs_remaining": 20.0})
+        assert q.overs_remaining == 20.0
 
     def test_overs_remaining_too_high_raises(self):
+        # Any value above 20 is physically impossible in a T20 match
         with pytest.raises(ValidationError):
-            WinProbQuery(**{**self.BASE, "overs_remaining": 51.0})
+            WinProbQuery(**{**self.BASE, "overs_remaining": 20.1})
 
     def test_overs_remaining_negative_raises(self):
         with pytest.raises(ValidationError):

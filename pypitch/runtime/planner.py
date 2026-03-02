@@ -52,11 +52,20 @@ class QueryPlanner:
         # For now, 'ball_events' IS the snapshot.
         
         if hasattr(query, 'batter_id'):
-            clauses.append(f"batter_id = {query.batter_id}")
+            try:
+                clauses.append(f"batter_id = {int(query.batter_id)}")
+            except (ValueError, TypeError) as exc:
+                raise ValueError(f"Invalid batter_id: {query.batter_id!r}") from exc
         if hasattr(query, 'bowler_id'):
-            clauses.append(f"bowler_id = {query.bowler_id}")
+            try:
+                clauses.append(f"bowler_id = {int(query.bowler_id)}")
+            except (ValueError, TypeError) as exc:
+                raise ValueError(f"Invalid bowler_id: {query.bowler_id!r}") from exc
         if hasattr(query, 'venue_id') and query.venue_id is not None:
-            clauses.append(f"venue_id = {query.venue_id}")
+            try:
+                clauses.append(f"venue_id = {int(query.venue_id)}")
+            except (ValueError, TypeError) as exc:
+                raise ValueError(f"Invalid venue_id: {query.venue_id!r}") from exc
         if hasattr(query, 'phase'):
             # Whitelist validation for phase values
             valid_phases = ['powerplay', 'middle', 'death', 'all']
@@ -98,22 +107,30 @@ class QueryPlanner:
 
     def _generate_sql(self, query: BaseQuery, table: str) -> str:
         if query.__class__.__name__ == "MatchupQuery":
-            # Handle single ID (str)
-            batter_id = getattr(query, "batter_id")
-            bowler_id = getattr(query, "bowler_id")
+            # Validate IDs are integers to prevent SQL injection
+            try:
+                batter_id = int(getattr(query, "batter_id"))
+                bowler_id = int(getattr(query, "bowler_id"))
+            except (ValueError, TypeError) as exc:
+                raise ValueError("batter_id and bowler_id must be integer-valued strings") from exc
             
             return f"""
                 SELECT 
-                    sum(runs_batter) as runs, 
-                    count(*) as balls, 
-                    sum(case when is_wicket=true then 1 else 0 end) as wickets
+                    COUNT(DISTINCT match_id) as matches,
+                    SUM(runs_batter) as runs, 
+                    COUNT(*) as balls, 
+                    SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END) as wickets
                 FROM {table} 
                 WHERE batter_id = {batter_id}
                   AND bowler_id = {bowler_id}
             """
         
         if query.__class__.__name__ == "FantasyQuery":
-            venue_id = getattr(query, "venue_id")
+            # Validate venue_id is an integer to prevent SQL injection
+            try:
+                venue_id = int(getattr(query, "venue_id"))
+            except (ValueError, TypeError) as exc:
+                raise ValueError("venue_id must be integer-valued") from exc
             # Simple fantasy points: 1 run = 1 pt, 1 wicket = 20 pts
             return f"""
                 SELECT 

@@ -8,31 +8,20 @@ class DerivedStore:
 
     def _init_schema(self) -> None:
         """Ensure the 'derived' schema exists in DuckDB."""
-        if hasattr(self.engine, 'con'):
-            self.engine.con.execute("CREATE SCHEMA IF NOT EXISTS derived;")
-        else:
-            # Assume ThreadSafeQueryEngine
-            self.engine.execute_sql("CREATE SCHEMA IF NOT EXISTS derived;", read_only=False)
+        self.engine.execute_sql("CREATE SCHEMA IF NOT EXISTS derived;", read_only=False)
 
     def ensure_materialized(self, table_name: str, snapshot_id: str) -> None:
         """
         Ensures the requested derived table exists in the 'derived' schema.
         If not, it computes it and persists it for the session.
         """
-        # Check if table exists
         sql = f"""
             SELECT count(*) as count
             FROM information_schema.tables 
             WHERE table_schema = 'derived' AND table_name = '{table_name}'
         """
-        
-        if hasattr(self.engine, 'con'):
-            res = self.engine.con.execute(sql).fetchone()
-            exists = res[0] > 0 if res else False
-        else:
-            # ThreadSafeQueryEngine returns Arrow Table
-            table = self.engine.execute_sql(sql, read_only=True)
-            exists = table['count'][0].as_py() > 0
+        result = self.engine.execute_sql(sql, read_only=True)
+        exists = result['count'][0].as_py() > 0
 
         if exists:
             return
@@ -47,7 +36,6 @@ class DerivedStore:
         """
         Materializes venue baselines into derived.venue_baselines.
         """
-        # Correcting the formula to match 'venue_avg_sr' expectation
         query = """
         CREATE OR REPLACE TABLE derived.venue_baselines AS
         SELECT 
@@ -56,21 +44,12 @@ class DerivedStore:
         FROM ball_events 
         GROUP BY venue_id
         """
-        if hasattr(self.engine, 'con'):
-            self.engine.con.execute(query)
-        else:
-            self.engine.execute_sql(query, read_only=False)
+        self.engine.execute_sql(query, read_only=False)
 
     def get_venue_baselines(self, snapshot_id: str) -> pa.Table:
         """
-        Returns (venue_id, avg_runs_per_over)
-        Cached automatically by the engine's standard caching logic (if we were using the Executor).
-        Here we query the engine directly.
+        Returns (venue_id, avg_runs_per_over).
         """
-        # Note: In a real system, we might want to filter by snapshot_id if we had multiple snapshots loaded.
-        # For now, we assume the engine has the correct snapshot loaded or we query the 'ball_events' table directly.
-        # The user's snippet used 'balls' but our table is 'ball_events'.
-        
         query = """
         SELECT 
             venue_id, 

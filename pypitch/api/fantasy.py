@@ -12,7 +12,7 @@ def cheat_sheet(venue: str, last_n_years: int = 3) -> pd.DataFrame:
     reg = get_registry()
     exc = get_executor()
     
-    v_id = reg.resolve_venue(venue)
+    v_id = reg.resolve_venue(venue, auto_ingest=True)
     
     q = FantasyQuery(
         venue_id=v_id,

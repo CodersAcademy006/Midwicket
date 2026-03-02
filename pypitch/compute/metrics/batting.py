@@ -95,7 +95,7 @@ def calculate_impact_score(
     is_death = pc.equal(phase, "Death")
     
     expected_rpb = pc.case_when(
-        pc.make_struct([is_pp, is_death], field_names=["pp", "death"]),
+        pc.make_struct(is_pp, is_death),
         1.2,  # If PP
         1.6,  # If Death
         1.1   # Else (Middle)

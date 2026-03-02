@@ -41,9 +41,9 @@ class WinProbQuery(BaseQuery):
     @field_validator('overs_remaining')
     @classmethod
     def validate_overs_remaining(cls, v: float) -> float:
-        """Ensure overs_remaining is within valid cricket match bounds."""
-        if v < 0 or v > 50:
-            raise ValueError(f"overs_remaining must be between 0 and 50, got {v}")
+        """Ensure overs_remaining is within valid T20 match bounds (0–20)."""
+        if v < 0 or v > 20:
+            raise ValueError(f"overs_remaining must be between 0 and 20, got {v}")
         return v
     
     @property

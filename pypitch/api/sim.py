@@ -9,7 +9,7 @@ def predict_win(venue: str, target: int, current_runs: int, wickets_down: int, o
     reg = get_registry()
     exc = get_executor()
     
-    v_id = reg.resolve_venue(venue)
+    v_id = reg.resolve_venue(venue, auto_ingest=True)
     
     q = WinProbQuery(
         venue_id=v_id,

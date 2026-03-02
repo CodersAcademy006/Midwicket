@@ -12,7 +12,14 @@ import logging
 logger = logging.getLogger(__name__)
 
 class ConnectionPool:
-    """Thread-safe connection pool for database connections."""
+    """Thread-safe connection pool for database connections.
+
+    DuckDB serializes writes at the file level: while multiple read
+    connections are fine, concurrent writers on the same file will race
+    for an OS-level lock.  ``write_connection()`` acquires a process-wide
+    mutex so that write operations are serialized and no two threads can
+    hold a write connection simultaneously.
+    """
 
     def __init__(self, db_path: str, max_connections: int = 10, max_idle_time: int = 300) -> None:
         self.db_path = db_path
@@ -20,6 +27,8 @@ class ConnectionPool:
         self.max_idle_time = max_idle_time
         self._connections: list[dict[str, Any]] = []
         self._condition = threading.Condition(threading.Lock())
+        # Serializes all write operations so only one thread writes at a time.
+        self._write_lock = threading.Lock()
         self._closed = False
 
     def _create_connection(self) -> duckdb.DuckDBPyConnection:
@@ -132,9 +141,24 @@ class ConnectionPool:
 
     @contextmanager
     def connection(self):
-        """Context manager for getting a connection."""
+        """Context manager for getting a read connection."""
         conn = self.get_connection()
         try:
             yield conn
         finally:
             self.return_connection(conn)
+
+    @contextmanager
+    def write_connection(self):
+        """Context manager for a write connection.
+
+        Acquires the process-wide write lock before handing out the
+        connection so that concurrent write paths are serialized and the
+        DuckDB file is never contended by multiple writers at once.
+        """
+        with self._write_lock:
+            conn = self.get_connection()
+            try:
+                yield conn
+            finally:
+                self.return_connection(conn)

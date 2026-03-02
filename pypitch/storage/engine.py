@@ -46,30 +46,23 @@ class QueryEngine:
             incoming_rows = getattr(arrow_table, 'num_rows', None)
         except Exception:
             incoming_rows = None
-        print(f"[QueryEngine.ingest_events] snapshot_tag={snapshot_tag} append={append} incoming_rows={incoming_rows}")
+        logger.debug("ingest_events: snapshot_tag=%s append=%s incoming_rows=%s",
+                     snapshot_tag, append, incoming_rows)
 
-        with self.pool.connection() as con:
-            # Registers the Arrow table as a queryable view in DuckDB
-            # This is a zero-copy operation (pointers only)
+        # Write operations must go through write_connection() to avoid
+        # concurrent-writer conflicts on the DuckDB file.
+        with self.pool.write_connection() as con:
             con.register('arrow_view', arrow_table)
             try:
-                exists = self.table_exists("ball_events", con)
-                print(f"[QueryEngine.ingest_events] ball_events exists={exists}")
+                exists = self._table_exists("ball_events", con)
 
-                # Persist to disk
                 if append and exists:
-                    print("[QueryEngine.ingest_events] Performing INSERT INTO ball_events FROM arrow_view")
                     con.execute("INSERT INTO ball_events SELECT * FROM arrow_view")
                 else:
-                    print("[QueryEngine.ingest_events] Creating or replacing ball_events from arrow_view")
                     con.execute("CREATE OR REPLACE TABLE ball_events AS SELECT * FROM arrow_view")
 
-                # Check resulting row count for quick verification
-                try:
-                    res = con.execute("SELECT COUNT(*) FROM ball_events").fetchone()
-                    print(f"[QueryEngine.ingest_events] ball_events row_count_after_write={res[0] if res else 'unknown'}")
-                except Exception as e:
-                    print(f"[QueryEngine.ingest_events] Failed to fetch row count after write: {e}")
+                # Stamp the snapshot so the planner can reason about versions.
+                self._snapshot_id = snapshot_tag
             finally:
                 try:
                     con.unregister('arrow_view')
@@ -79,15 +72,17 @@ class QueryEngine:
     def execute_sql(self, sql: str, params: Optional[list] = None, read_only: bool = True) -> pa.Table:
         """
         Execute a SQL query and return results as a PyArrow Table.
+        Write operations (DDL / DML) are serialized via the write lock.
         """
         if params is None:
             params = []
 
-        with self.pool.connection() as con:
+        ctx = self.pool.write_connection() if not read_only else self.pool.connection()
+        with ctx as con:
             if not read_only:
                 con.execute(sql, params)
-                return pa.Table.from_pylist([]) # Return empty table for non-select queries
-            
+                return pa.Table.from_pylist([])  # DDL/DML returns no rows
+
             result = con.execute(sql, params).arrow()
             # Ensure we return a Table, not a RecordBatchReader
             if isinstance(result, pa.RecordBatchReader):
@@ -104,25 +99,35 @@ class QueryEngine:
 
     def insert_live_delivery(self, delivery_data: dict[str, Any]) -> None:
         """
-        Insert live delivery data.
+        Insert a live delivery into the dedicated ``live_events`` table.
+
+        Live data has a different (simplified) shape from the historical V1
+        schema so we keep it in a separate table rather than mixing it with
+        ``ball_events``, which is reserved for Schema V1-compliant data.
         """
-        with self.pool.connection() as con:
-            # Ensure table exists
-            if not self.table_exists("ball_events", con):
-                # Create table if not exists (simplified schema for demo)
-                # Note: In real app, use full schema
-                con.execute("""
-                CREATE TABLE IF NOT EXISTS ball_events (
-                    match_id VARCHAR, inning INTEGER, over INTEGER, ball INTEGER,
-                    runs_total INTEGER, wickets_fallen INTEGER, target INTEGER,
-                    venue VARCHAR, timestamp DOUBLE,
-                    runs_batter INTEGER DEFAULT 0, runs_extras INTEGER DEFAULT 0,
-                    is_wicket BOOLEAN DEFAULT FALSE, batter VARCHAR DEFAULT '', bowler VARCHAR DEFAULT ''
+        with self.pool.write_connection() as con:
+            # Create the live_events table if it does not yet exist.
+            con.execute("""
+                CREATE TABLE IF NOT EXISTS live_events (
+                    match_id    VARCHAR,
+                    inning      INTEGER,
+                    over        INTEGER,
+                    ball        INTEGER,
+                    runs_total  INTEGER,
+                    wickets_fallen INTEGER,
+                    target      INTEGER,
+                    venue       VARCHAR,
+                    timestamp   DOUBLE,
+                    runs_batter INTEGER DEFAULT 0,
+                    runs_extras INTEGER DEFAULT 0,
+                    is_wicket   BOOLEAN DEFAULT FALSE,
+                    batter      VARCHAR DEFAULT '',
+                    bowler      VARCHAR DEFAULT ''
                 )
-                """)
+            """)
 
             con.execute("""
-                INSERT INTO ball_events (
+                INSERT INTO live_events (
                     match_id, inning, over, ball, runs_total,
                     wickets_fallen, target, venue, timestamp
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
