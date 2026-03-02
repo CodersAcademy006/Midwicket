@@ -11,6 +11,9 @@ from pathlib import Path
 from pypitch.api.session import PyPitchSession
 from pypitch.data.loader import DataLoader
 
+# Skip all tests in this module if pytest-benchmark is not installed
+pytest_benchmark = pytest.importorskip("pytest_benchmark", reason="pytest-benchmark not installed")
+
 @pytest.fixture(scope="session")
 def benchmark_session():
     """Create a test session with sample data for benchmarking."""
