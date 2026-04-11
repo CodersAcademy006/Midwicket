@@ -5,12 +5,15 @@ Handles schema changes without breaking existing user data.
 Automatically patches Parquet files and databases when new columns are added.
 """
 
+import logging
 import os
 from pathlib import Path
 from typing import Dict, List, Set, Any
 import duckdb
 import pyarrow as pa
 import pyarrow.parquet as pq
+
+logger = logging.getLogger(__name__)
 
 class SchemaMigration:
     """Handles automatic schema evolution for PyPitch data."""
@@ -69,14 +72,14 @@ class SchemaMigration:
         if current_version == target_version:
             return False
 
-        print(f"🔄 Migrating schema from {current_version} to {target_version}...")
+        logger.info("Migrating schema from %s to %s...", current_version, target_version)
 
         # Perform migrations step by step
         if current_version == "1.0" and target_version == "1.1":
             self._migrate_1_0_to_1_1()
 
         self.set_schema_version(target_version)
-        print(f"✅ Schema migration completed to version {target_version}")
+        logger.info("Schema migration completed to version %s", target_version)
         return True
 
     def _migrate_1_0_to_1_1(self):
@@ -115,11 +118,11 @@ class SchemaMigration:
                 )
             """)
 
-            print("📊 Updated deliveries table with is_impact_player column")
-            print("🏆 Updated matches table with competition and season columns")
+            logger.debug("Updated deliveries table with is_impact_player column")
+            logger.debug("Updated matches table with competition and season columns")
 
         except Exception as e:
-            print(f"⚠️  Migration warning: {e}")
+            logger.warning("Migration warning: %s", e)
             # Don't fail the migration for non-critical issues
 
         finally:
@@ -204,7 +207,7 @@ class SchemaMigrator:
                     self._migrate_file(parquet_file)
                     migrated += 1
             except Exception as e:
-                print(f"Migration failed for {parquet_file}: {e}")
+                logger.error("Migration failed for %s: %s", parquet_file, e)
                 errors += 1
 
         return {
@@ -271,7 +274,7 @@ def migrate_on_connect(data_dir: str) -> None:
     """
     migrator = SchemaMigration(data_dir)
     if migrator.check_and_migrate():
-        print("🔄 Database schema updated. Your existing data is safe!")
+        logger.info("Database schema updated. Existing data is safe.")
 
 def validate_database_integrity(data_dir: str) -> Dict[str, Any]:
     """
@@ -290,9 +293,9 @@ def migrate_data_lake(data_dir: str = "./data") -> Dict[str, Any]:
     result = migrator.check_and_migrate()
 
     if result["migrated"] > 0:
-        print(f"✅ Migrated {result['migrated']} files to current schema")
+        logger.info("Migrated %d files to current schema", result["migrated"])
     if result["errors"] > 0:
-        print(f"⚠️  {result['errors']} files had migration errors")
+        logger.warning("%d files had migration errors", result["errors"])
 
     return result
 

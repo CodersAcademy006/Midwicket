@@ -38,5 +38,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python scripts/healthcheck.py
 
-# Run the application
-CMD ["python", "-m", "uvicorn", "pypitch.serve.api:PyPitchAPI().app", "--host", "0.0.0.0", "--port", "8000"]
+# Run the application (factory mode: uvicorn calls create_app() at startup)
+CMD ["python", "-m", "uvicorn", "pypitch.serve.api:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]

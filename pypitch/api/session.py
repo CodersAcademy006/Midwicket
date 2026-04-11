@@ -42,37 +42,54 @@ class PyPitchSession:
         
         # Auto-Setup (skip if using bundled data)
         if not skip_registry_build:
-            # Check if registry is populated (simple check: do we have any players?)
-            # If not, run the "Light" ingestion.
-            if not self.registry.get_player_stats(1): # Dummy check, or better check if table exists/has rows
-                 # Actually, let's just check if we have data downloaded.
-                 if not (self.loader.raw_dir.exists() and list(self.loader.raw_dir.glob("*.json"))):
-                     print("[PyPitch] First time setup detected. Downloading data...")
-                     self.loader.download()
-                 
-                 # Now check if we need to build stats
-                 # We can check if the 'player_stats' table is empty or missing
-                 try:
-                     self.registry.con.execute("SELECT count(*) FROM player_stats")
-                     count = self.registry.con.fetchone()[0]
-                     if count == 0:
-                         raise Exception("Empty")
-                 except Exception:
-                     print("[PyPitch] Building Registry & Summary Stats...")
-                     build_registry_stats(self.loader, self.registry)
+            # Only attempt registry build when raw data is actually present.
+            # This prevents a NotImplementedError crash on first import when
+            # build_registry_stats() has not been implemented yet.
+            raw_data_present = (
+                self.loader.raw_dir.exists()
+                and bool(list(self.loader.raw_dir.glob("*.json")))
+            )
+            registry_empty = not self.registry.get_player_stats(1)
+
+            if registry_empty:
+                if not raw_data_present:
+                    logger.info("No raw data found. Run loader.download() or call session.download_data() to fetch data.")
+                else:
+                    try:
+                        count_row = self.registry.con.execute(
+                            "SELECT count(*) FROM player_stats"
+                        ).fetchone()
+                        count = count_row[0] if count_row else 0
+                    except Exception:
+                        count = 0
+
+                    if count == 0:
+                        logger.info("Building registry & summary stats from raw data...")
+                        try:
+                            build_registry_stats(self.loader, self.registry)
+                        except NotImplementedError:
+                            logger.warning(
+                                "build_registry_stats() is not yet implemented. "
+                                "The registry will be empty until it is provided. "
+                                "You can still load individual matches via session.load_match()."
+                            )
+
+    def download_data(self, force: bool = False) -> None:
+        """Download raw match data. Safe to call multiple times."""
+        self.loader.download(force=force)
 
     def load_match(self, match_id: str) -> None:
         """
         Lazy loads a specific match into the 'Heavy' engine.
         """
-        print(f"Loading match {match_id}...")
+        logger.info("Loading match %s", match_id)
         try:
             data = self.loader.get_match(match_id)
             table = canonicalize_match(data, self.registry, match_id)
             self.engine.ingest_events(table, snapshot_tag=f"match_{match_id}", append=True)
-            print(f"Match {match_id} loaded successfully.")
+            logger.info("Match %s loaded successfully.", match_id)
         except Exception as e:
-            print(f"Failed to load match {match_id}: {e}")
+            logger.error("Failed to load match %s: %s", match_id, e)
 
     def get_player_stats(self, player_id: str) -> Optional[PlayerStats]:
         """Get player statistics by ID or name."""

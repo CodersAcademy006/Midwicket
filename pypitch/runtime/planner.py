@@ -125,5 +125,17 @@ class QueryPlanner:
                 ORDER BY avg_points DESC
             """
 
-        raise NotImplementedError(f"No SQL generation for {query.__class__.__name__}")
+        # Generic fallback: apply whatever filters the query declares via
+        # _build_where_clause and return a full-table scan.  This is
+        # intentionally permissive so that custom query subclasses work
+        # out of the box.  Callers that need specific projections should
+        # register a named handler above.
+        import logging
+        logging.getLogger(__name__).warning(
+            "No specialised SQL handler for %s — falling back to full scan. "
+            "Consider adding an explicit handler in QueryPlanner._generate_sql.",
+            query.__class__.__name__,
+        )
+        where = self._build_where_clause(query)
+        return f"SELECT * FROM {table} WHERE {where}"
 

@@ -14,7 +14,9 @@ services:
     depends_on:
       - pypitch-db
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      # Uses Python (always present in image) — curl is not installed
+      test: ["CMD", "python", "-c",
+             "import http.client, sys; c=http.client.HTTPConnection('localhost',8000,timeout=5); c.request('GET','/health'); r=c.getresponse(); sys.exit(0 if r.status==200 else 1)"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -28,7 +30,7 @@ services:
       - POSTGRES_PASSWORD=${DB_PASSWORD:?DB_PASSWORD is required}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+      # init-db.sql removed — PyPitch uses DuckDB, not Postgres DDL init scripts
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U pypitch"]
       interval: 30s
@@ -58,8 +60,11 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:?GRAFANA_PASSWORD is required}
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
-      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+      # Provisioning and dashboard bind-mounts are added here once
+      # monitoring/grafana/provisioning and monitoring/grafana/dashboards exist locally.
+      # Uncomment when you create those directories:
+      # - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      # - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
     depends_on:
       - prometheus
     restart: unless-stopped

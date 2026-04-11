@@ -201,29 +201,37 @@ Executes analytical queries on cricket data.
 from pypitch.storage.engine import QueryEngine
 
 engine = QueryEngine("./data/pypitch.duckdb")
-results = engine.execute_query("SELECT * FROM balls WHERE batsman = 'V Kohli'")
+results = engine.execute_sql("SELECT * FROM balls WHERE batsman = 'V Kohli'")
 ```
 
 ## Analytics & Statistics
 
-### Fantasy Points
+### Cheat Sheet / Venue Bias
 
-#### `fantasy_points(player_name: str, match_id: str) -> Dict[str, float]`
+#### `cheat_sheet(venue: str, last_n_years: int = 3) -> pd.DataFrame`
 
-Calculate fantasy cricket points for a player in a specific match.
+Generates a Fantasy Cheat Sheet for a specific venue.
+Includes average score, pace vs spin wickets, and top fantasy-point scorers.
 
 **Parameters:**
-- `player_name` (str): Player name
-- `match_id` (str): Match identifier
+- `venue` (str): Venue name (fuzzy matched via the Identity Registry)
+- `last_n_years` (int): How many recent years of data to consider (default: 3)
 
-**Returns:** Dictionary with points breakdown.
+**Returns:** `pd.DataFrame` of top-20 players sorted by avg fantasy points at that venue.
 
 **Example:**
 ```python
-from pypitch.api.fantasy import fantasy_points
+from pypitch.api.fantasy import cheat_sheet, venue_bias
 
-points = fantasy_points("Virat Kohli", "980959")
-print(f"Total points: {points['total']}")
+# Top fantasy picks at Wankhede
+df = cheat_sheet("Wankhede")
+print(df.head())
+
+# Check toss-decision bias for a venue
+bias = venue_bias("Chinnaswamy")
+print(f"Win batting first: {bias['win_bat_first_pct']}%")
+print(f"Win chasing: {bias['win_chase_pct']}%")
+print(f"Verdict: {bias['verdict']}")
 ```
 
 ### Matchup Analysis
@@ -456,7 +464,7 @@ query = """
     ORDER BY runs DESC
     LIMIT 10
 """
-results = engine.execute_query(query, [match_id])
+results = engine.execute_sql(query, [match_id])
 ```
 
 ### Plugin System

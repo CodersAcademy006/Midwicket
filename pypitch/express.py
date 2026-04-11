@@ -142,26 +142,18 @@ def _auto_setup_session(data_dir: Optional[str] = None) -> PyPitchSession:
     
     data_path = _ensure_data_dir(data_dir)
 
-    # Check if we have bundled data (first check package data, then user data)
-    bundled_dir = Path(__file__).parent.parent / "data" / "bundled"
-    if not bundled_dir.exists():
-        bundled_dir = data_path / "bundled"
-    
-    if bundled_dir.exists() and (bundled_dir / "entities.parquet").exists():
-        if _DEBUG_MODE:
-            print("📦 Using bundled sample data for quick start.")
-        # Create session with bundled data directory (skip registry build)
-        _cached_session = PyPitchSession(str(data_path), skip_registry_build=True)
-        
-        # Load bundled registry data
-        _load_bundled_registry(_cached_session.registry, bundled_dir)
-        return _cached_session
-
-    # Otherwise, download if needed
+    # Download data on first run if not already present
     loader = DataLoader(str(data_path))
-    if not (loader.raw_dir.exists() and list(loader.raw_dir.glob("*.json"))):
-        print("⬇️  Downloading sample data (IPL 2023)...")
-        loader.download()
+    raw_present = loader.raw_dir.exists() and bool(list(loader.raw_dir.glob("*.json")))
+
+    if not raw_present:
+        if _DEBUG_MODE:
+            print("No local data found. Downloading IPL dataset (~50 MB)...")
+        try:
+            loader.download()
+        except Exception as exc:
+            if _DEBUG_MODE:
+                print(f"Download failed: {exc}. Continuing without data.")
 
     _cached_session = PyPitchSession(str(data_path))
     return _cached_session
@@ -267,18 +259,24 @@ def predict_win(venue: str, target: int, current_score: int, wickets_down: int, 
     from pypitch.compute.winprob import win_probability
     return win_probability(target, current_score, wickets_down, overs_done, venue)
 
-def quick_load() -> PyPitchSession:
+def quick_load(data_dir: Optional[str] = None) -> PyPitchSession:
     """
-    Quick load with bundled data (no download required).
+    Return a ready-to-use PyPitchSession, downloading data automatically
+    on first call if no local data is found (~50 MB IPL dataset).
+
+    Subsequent calls return the cached session instantly.
+
+    Args:
+        data_dir: Optional custom data directory (default: ~/.pypitch_data)
 
     Returns:
-        PyPitchSession with sample World Cup data
+        Initialised PyPitchSession.
 
     Example:
         session = px.quick_load()
-        # Instantly ready for analysis
+        session.load_match("1234567")
     """
-    return _auto_setup_session()
+    return _auto_setup_session(data_dir)
 
 # Export convenience functions
 __all__ = [
