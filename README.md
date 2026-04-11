@@ -227,43 +227,49 @@ stats = px.get_player_stats("Steve Smith")
 # Head-to-head matchups
 matchup = px.get_matchup("V Kohli", "JJ Bumrah")
 
-# Fantasy points calculation
-points = pp.api.fantasy.fantasy_points("V Kohli", "980959")
+# Fantasy cheat sheet for a venue
+cheat = pp.fantasy.cheat_sheet("Wankhede Stadium")
+print(cheat.head())
 ```
 
 ### Match Analysis
 ```python
-# Load match data
-match = session.load_match("980959")
+# Load a specific match into the engine
+session.load_match("980959")
 
-# Win probability throughout innings
-probs = pp.compute.winprob.calculate_win_probability(match)
-
-# Performance reports
-report = pp.report.pdf.create_match_report("980959")
+# Win probability at a point in the match
+from pypitch.compute.winprob import win_probability
+prob = win_probability(target=180, current_runs=120,
+                       wickets_down=5, overs_done=15.0, venue=None)
+print(f"Chase win probability: {prob['win_prob']:.1%}")
 ```
 
 ### Predictive Modeling
 ```python
-# Win probability prediction
+# Win probability via Express API
 result = px.predict_win("Eden Gardens", 180, 120, 5, 15.0)
 print(f"Win chance: {result['win_prob']:.1%}")
 
-# Player impact analysis
-impact = pp.compute.attribution.calculate_impact("V Kohli", match)
+# Venue batting/bowling bias
+bias = pp.fantasy.venue_bias("Wankhede Stadium")
+print(f"Verdict: {bias['verdict']}")
 ```
 
 ### Data Management
 ```python
-# Download competition data
-loader = pp.data.loader.DataLoader("./data")
-loader.download_competition("ipl", 2023)
+# Download IPL data (~50 MB)
+from pypitch.data.loader import DataLoader
+loader = DataLoader("./data")
+loader.download()
 
-# Custom data ingestion
-pp.data.pipeline.ingest_match_data(custom_match_json)
+# Build the identity registry from raw files
+from pypitch.data.pipeline import build_registry_stats
+build_registry_stats(loader, session.registry)
 
-# Query optimization
-results = pp.storage.engine.QueryEngine("./data").execute_query(sql)
+# Raw SQL via the query engine
+from pypitch.storage.engine import QueryEngine
+engine = QueryEngine("./data/pypitch.duckdb")
+results = engine.execute_sql("SELECT * FROM ball_events LIMIT 10")
 ```
 
 ## Architecture Overview
@@ -361,20 +367,22 @@ print(f"Current win probability: {prob['win_prob']:.1%}")
 print(f"Model confidence: {prob['confidence']:.1%}")
 ```
 
-### Fantasy Cricket Points
+### Fantasy Cricket Cheat Sheet
 
-Calculate fantasy cricket points for players:
+Generate a fantasy selection cheat sheet ranked by projected points at a venue:
 
 ```python
-from pypitch.api.fantasy import fantasy_points
+from pypitch.api.fantasy import cheat_sheet, venue_bias
 
-# Calculate points for a player in a specific match
-points = fantasy_points("Virat Kohli", "980959")
-print("Fantasy Points Breakdown:")
-for category, pts in points.items():
-    if pts > 0:
-        print(f"  {category}: {pts}")
-print(f"  Total: {points['total']}")
+# Top 20 players by avg fantasy points at this venue
+df = cheat_sheet("Wankhede Stadium")
+print(df[["player_id", "avg_points"]].head(10))
+
+# Batting-first vs chase advantage at the venue
+bias = venue_bias("Eden Gardens")
+print(f"Verdict: {bias['verdict']} "
+      f"(bat-first win%: {bias['win_bat_first_pct']}, "
+      f"chase win%: {bias['win_chase_pct']})")
 ```
 
 ### Advanced Analytics
@@ -389,15 +397,17 @@ engine = QueryEngine("./data/pypitch.duckdb")
 
 # Custom SQL query for detailed analysis
 query = """
-    SELECT batsman, SUM(batsman_runs) as total_runs, COUNT(*) as balls_faced
-    FROM balls
+    SELECT batter_id,
+           SUM(runs_batter)  AS total_runs,
+           COUNT(*)          AS balls_faced
+    FROM ball_events
     WHERE match_id = ?
-    GROUP BY batsman
+    GROUP BY batter_id
     ORDER BY total_runs DESC
     LIMIT 10
 """
-results = engine.execute_query(query, ["980959"])
-print(results)
+results = engine.execute_sql(query, ["980959"])
+print(results.to_pandas())
 ```
 
 For more examples, see the [examples/](examples/) directory which contains 25+ scripts covering various use cases.

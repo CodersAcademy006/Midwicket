@@ -10,6 +10,7 @@ from pypitch.storage.engine import QueryEngine
 from pypitch.runtime.planner import QueryPlanner
 from pypitch.compute.derived import DerivedStore
 from . import modes
+from .modes import ExecutionMode  # noqa: F401 – re-exported for callers
 
 class ResultMetadata(BaseModel):
     """
@@ -35,9 +36,21 @@ class RuntimeExecutor:
         self.planner = QueryPlanner(engine)
         self.derived = DerivedStore(engine)
 
-    def execute(self, query: BaseQuery) -> ExecutionResult:
+    def execute(self, query: BaseQuery, mode: ExecutionMode = ExecutionMode.EXACT) -> ExecutionResult:
         """
         Main execute for all queries, including WinProbQuery (win probability model).
+
+        Args:
+            query:  The query object describing what data to fetch.
+            mode:   ExecutionMode controlling cost/accuracy trade-offs.
+                    - EXACT  (default): full raw-event scan allowed.
+                    - APPROX: prefer materialized views; falls back to raw scan.
+                    - BUDGET: strictly materialized views only; raises if unavailable.
+
+        Note (0.1.x):
+            Non-WinProb queries currently route through ``create_legacy_plan``
+            which always performs a raw scan.  Full Planner-first routing
+            (prefer-materialization, BUDGET guard) is tracked for v0.2.x.
         """
         start_time = time.perf_counter()
         query_hash = query.cache_key
@@ -78,8 +91,29 @@ class RuntimeExecutor:
                 )
             )
 
-        # Use legacy plan for now to maintain backward compatibility with existing tests
+        # ── 0.1.x: legacy planning path ──────────────────────────────────────
+        # create_legacy_plan returns a dict with {"strategy", "sql", "cost"}.
+        # We enforce ExecutionMode here even though full Planner-first routing
+        # (prefer-materialization, cost estimation) is planned for v0.2.x.
+        import logging
+        _log = logging.getLogger(__name__)
+
         plan = self.planner.create_legacy_plan(query)
+
+        if mode == ExecutionMode.BUDGET and plan["strategy"] == "raw_scan":
+            raise RuntimeError(
+                f"ExecutionMode.BUDGET forbids raw scans, but no materialized "
+                f"view covers query {query.__class__.__name__}. "
+                f"Either materialise the required table first or use "
+                f"ExecutionMode.EXACT."
+            )
+        if mode == ExecutionMode.APPROX and plan["strategy"] == "raw_scan":
+            _log.warning(
+                "ExecutionMode.APPROX: falling back to raw_scan for %s "
+                "(no materialized view available)",
+                query.__class__.__name__,
+            )
+
         result_table = self.engine.execute_sql(plan["sql"])
         if modes.debug_mode and hasattr(result_table, 'collect'):
             result_table = result_table.collect()

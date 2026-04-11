@@ -82,4 +82,4 @@ include = ["pypitch*"]
 exclude = ["data*", "examples*", "tests*"]
 
 [tool.setuptools.package-data]
-pypitch = ["data/bundled/*.parquet", "py.typed"]
+pypitch = ["py.typed"]

@@ -59,12 +59,13 @@ PyPitch automatically handles impact player data from Cricsheet:
 ```python
 from pypitch.data.loader import DataLoader
 
-# Load IPL 2023 data with impact player information
+# Load IPL data (downloads from Cricsheet if not already cached)
 loader = DataLoader("./data")
-loader.download_competition("ipl", 2023)
+loader.download()          # skips if data already present
+# loader.download(force=True)  # re-download even if cached
 
-# Impact player data is automatically ingested
-# Note: Impact player tracking depends on Cricsheet data format
+# Impact player data is automatically ingested from the Cricsheet JSON files.
+# Note: Impact player tracking depends on Cricsheet data format.
 ```
 
 ### Analyzing Impact Player Performance
@@ -98,7 +99,7 @@ query = """
     HAVING first_over > 0
     ORDER BY match_id
 """
-results = engine.execute_query(query)
+results = engine.execute_sql(query)
 ```
 
 ## Supporting New Cricket Rules
@@ -176,7 +177,7 @@ query = """
     GROUP BY team
     ORDER BY impact_players_used DESC
 """
-results = engine.execute_query(query)
+results = engine.execute_sql(query)
 print(results)
 ```
 
@@ -203,7 +204,7 @@ query = """
     WHERE match_id = ? AND is_impact_player = true
     GROUP BY player_id
 """
-impact_stats = engine.execute_query(query, ["ipl_2023_final"])
+impact_stats = engine.execute_sql(query, ["ipl_2023_final"])
 print(f"Impact player statistics: {impact_stats}")
 ```
 

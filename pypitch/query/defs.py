@@ -6,7 +6,7 @@ __all__ = ["FantasyQuery", "WinProbQuery", "MatchupQuery"]
 
 # Type aliases for consistency
 Phase = Literal["powerplay", "middle", "death", "all"]
-Role = Literal["batter", "bowler", "all-rounder"]
+Role = Literal["batter", "bowler", "all-rounder", "all"]
 
 class FantasyQuery(BaseQuery):
     """
@@ -14,7 +14,7 @@ class FantasyQuery(BaseQuery):
     Used for: Cheat Sheets, Captain Optimizers.
     """
     venue_id: int
-    roles: List[Role] = ["all"]  # Type-safe role list
+    roles: List[Role] = ["all"]  # "all" = no role filter applied
     budget_cap: Optional[float] = None
     min_matches: int = 10
 

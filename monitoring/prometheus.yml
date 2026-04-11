@@ -1,0 +1,18 @@
+# Minimal Prometheus configuration for PyPitch
+# Extend this file as your monitoring needs grow.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: "pypitch-api"
+    static_configs:
+      - targets: ["pypitch-api:8000"]
+    metrics_path: /v1/metrics
+    # API key auth header (set PYPITCH_API_KEY in your shell before `docker compose up`)
+    # bearer_token: "${PYPITCH_API_KEY}"
