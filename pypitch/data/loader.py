@@ -36,7 +36,7 @@ class DataLoader:
         logger.info("Downloading IPL Data from %s", CRICSHEET_URL)
         
         try:
-            response = requests.get(CRICSHEET_URL, stream=True)
+            response = requests.get(CRICSHEET_URL, stream=True, timeout=60)
             response.raise_for_status()
             
             total_size = int(response.headers.get('content-length', 0))
@@ -63,9 +63,23 @@ class DataLoader:
             raise ConnectionError(f"Failed to download data: {e}")
 
     def _extract(self) -> None:
-        """Unzips the downloaded file into the raw directory."""
-        with zipfile.ZipFile(self.zip_path, 'r') as z:
-            z.extractall(self.raw_dir)
+        """
+        Unzips the downloaded file into the raw directory.
+
+        Guards against zip-slip: any member whose resolved path would escape
+        ``self.raw_dir`` is skipped with a warning.
+        """
+        raw_dir_resolved = self.raw_dir.resolve()
+        with zipfile.ZipFile(self.zip_path, "r") as z:
+            for member in z.namelist():
+                target = (raw_dir_resolved / member).resolve()
+                # Reject paths that escape the extraction directory
+                try:
+                    target.relative_to(raw_dir_resolved)
+                except ValueError:
+                    logger.warning("Skipping unsafe zip entry: %s", member)
+                    continue
+                z.extract(member, self.raw_dir)
 
     def get_match(self, match_id: str) -> Dict[str, Any]:
         """

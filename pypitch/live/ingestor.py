@@ -47,7 +47,10 @@ class StreamIngestor:
 
         # Live match tracking
         self.live_matches: Dict[str, LiveMatch] = {}
-        self.update_queue = queue.Queue()
+        # Bounded queue — 10 000 deliveries ≈ ~4 full T20 matches worth of
+        # pending updates.  Callers that overflow get queue.Full and should
+        # back off rather than silently exhausting server memory.
+        self.update_queue: queue.Queue = queue.Queue(maxsize=10_000)
         self.stop_event = threading.Event()
 
         # Webhook server
@@ -134,8 +137,15 @@ class StreamIngestor:
             logger.warning(f"Match {match_id} not registered for live tracking")
             return
 
-        # Add to processing queue
-        self.update_queue.put((match_id, delivery_data))
+        # Add to processing queue — non-blocking; raise immediately if full
+        # so the caller (API layer) can return HTTP 429 instead of hanging.
+        try:
+            self.update_queue.put_nowait((match_id, delivery_data))
+        except queue.Full:
+            raise DataIngestionError(
+                "Live ingestion queue is full. "
+                "The server is under load; please retry after a short delay."
+            )
         self.live_matches[match_id].last_update = time.time()
 
     def add_api_endpoint(self, name: str, url: str, headers: Dict[str, str] = None):

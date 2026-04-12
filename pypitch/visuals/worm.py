@@ -164,7 +164,7 @@ def plot_worm_graph(match_id: str, bowler_id: int, session: Any, ax: Optional[An
 
     if df.empty:
         try:
-            bowler_table = session.engine.execute_sql(f"SELECT DISTINCT bowler_id FROM ball_events WHERE match_id = '{match_id}'")
+            bowler_table = session.engine.execute_sql("SELECT DISTINCT bowler_id FROM ball_events WHERE match_id = ?", [match_id])
             bowler_df = bowler_table.to_pandas()
             bowler_names = []
             for bid in bowler_df['bowler_id'].tolist():
