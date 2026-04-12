@@ -1,49 +1,59 @@
 """
-Example 03: The Universal Ingestion
-Downloads IPL + International data and initializes the engine.
+03_ingest_world.py
+
+Downloads IPL data from Cricsheet and populates the registry.
+Run this once before using examples that query players or venues.
 """
 import sys
 import os
 
-# Add project root to path so we can import pypitch without installing it
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import pypitch as pp
+from pypitch.data.loader import DataLoader
+from pypitch.data.pipeline import build_registry_stats
+
 
 def main():
-    print("🌍 Starting Global Ingestion...")
+    print("Starting data ingestion...")
 
-    # 1. Download IPL and Test Matches
-    # Note: This might take a while depending on your internet speed
+    data_dir = "./data"
+
+    # 1. Download IPL JSON files (~50 MB) from Cricsheet
+    loader = DataLoader(data_dir)
     try:
-        pp.data.download("ipl")
-        pp.data.download("tests")
+        loader.download()
+        print("Download complete.")
     except Exception as e:
         print(f"Download failed: {e}")
         return
 
-    # 2. Init Session (Connects to Registry)
-    # pp.init() returns the session object directly
-    session = pp.init(source="./data")
+    # 2. Initialize session
+    session = pp.init(source=data_dir)
 
-    # 3. Populate Registry
-    # This teaches your engine who "Don Bradman" and "Travis Head" are
-    pp.data.ingest_registry("./data/raw", session.registry)
+    # 3. Populate registry (player/venue identity resolution)
+    print("Building registry from raw match data...")
+    try:
+        build_registry_stats(session.loader, session.registry)
+        print("Registry built successfully.")
+    except Exception as e:
+        print(f"Registry build failed: {e}")
+        return
 
     # 4. Verify
-    print("\n🔍 Verifying Registry...")
-    try:
-        # Check IPL Player
-        p1 = session.registry.resolve_player("V Kohli", match_date=None)
-        print(f"   Found: V Kohli (ID: {p1})")
+    print("\nVerifying Registry...")
+    from datetime import date
+    for name in ["V Kohli", "JJ Bumrah", "Wankhede Stadium"]:
+        try:
+            eid = session.registry.resolve_player(name, date.today())
+            print(f"  Player '{name}' -> ID {eid}")
+        except Exception:
+            try:
+                eid = session.registry.resolve_venue(name, date.today())
+                print(f"  Venue  '{name}' -> ID {eid}")
+            except Exception as e:
+                print(f"  Not found: {name} ({e})")
 
-        # Check Test Player (Modern Era)
-        # Note: Cricsheet ball-by-ball data typically starts from ~2004
-        p2 = session.registry.resolve_player("JL Langer", match_date=None)
-        print(f"   Found: JL Langer (ID: {p2})")
-        
-    except Exception as e:
-        print(f"❌ Verification Failed: {e}")
 
 if __name__ == "__main__":
     main()

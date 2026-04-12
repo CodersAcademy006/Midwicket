@@ -1,33 +1,35 @@
 """
 07_win_prediction.py
 
-This script demonstrates the Win Probability API.
-Note: In early versions of PyPitch, this might return a placeholder or raise NotImplementedError
-if the simulation model is not yet fully trained.
+Demonstrates the Win Probability API using the built-in
+Duckworth-Lewis-style model (no data download required).
+
+For venue-adjusted predictions, wire in a trained ML model
+via pp.set_win_model() — see 29_win_probability.py for details.
 """
 
-from pypitch.api.sim import predict_win
+import pypitch.express as px
+
 
 def main():
-    venue = "Eden Gardens"
-    target = 180
-    current_runs = 150
-    wickets_down = 3
-    overs_done = 16.0
-    
-    print(f"Scenario: Chasing {target} at {venue}")
-    print(f"Score: {current_runs}/{wickets_down} in {overs_done} overs")
-    
-    try:
-        result = predict_win(venue, target, current_runs, wickets_down, overs_done)
-        print("\nPrediction:")
-        print(f"Win Probability: {result.get('win_prob', 0.0) * 100:.1f}%")
-        
-    except NotImplementedError:
-        print("\nNote: Win Prediction model is not yet connected to the SQL engine.")
-        print("This feature requires the Simulation Agent (coming in v0.2).")
-    except Exception as e:
-        print(f"Prediction failed: {e}")
+    scenarios = [
+        dict(venue="Eden Gardens",  target=180, current_score=150, wickets_down=3, overs_done=16.0),
+        dict(venue="Wankhede Stadium", target=165, current_score=80, wickets_down=5, overs_done=12.0),
+        dict(venue="Chinnaswamy",   target=200, current_score=50, wickets_down=7, overs_done=10.0),
+    ]
+
+    print(f"{'Scenario':<45}  {'Win %':>6}  {'Conf':>6}")
+    print("-" * 62)
+    for s in scenarios:
+        label = f"{s['target']} target | {s['current_score']}/{s['wickets_down']} in {s['overs_done']} ov"
+        try:
+            result = px.predict_win(**s)
+            wp = result.get("win_prob", 0.0)
+            cf = result.get("confidence", 0.0)
+            print(f"{label:<45}  {wp*100:>5.1f}%  {cf*100:>5.1f}%")
+        except Exception as e:
+            print(f"{label:<45}  ERROR: {e}")
+
 
 if __name__ == "__main__":
     main()

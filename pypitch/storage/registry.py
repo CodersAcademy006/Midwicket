@@ -56,6 +56,19 @@ class IdentityRegistry:
                 first_innings_runs INTEGER,
                 first_innings_count INTEGER
             );
+
+            -- Head-to-Head Matchup Stats
+            CREATE TABLE IF NOT EXISTS matchup_stats (
+                batter_id  INTEGER,
+                bowler_id  INTEGER,
+                balls      INTEGER,
+                runs       INTEGER,
+                wickets    INTEGER,
+                dot_balls  INTEGER,
+                boundaries INTEGER,
+                sixes      INTEGER,
+                PRIMARY KEY (batter_id, bowler_id)
+            );
         """)
 
     def get_player_stats(self, player_id: int) -> Optional[Dict[str, Any]]:
@@ -126,6 +139,46 @@ class IdentityRegistry:
                 "INSERT INTO venue_stats VALUES (?, ?, ?, ?, ?)", data
             )
 
+
+    def get_matchup_stats(self, batter_id: int, bowler_id: int) -> Optional[Dict[str, Any]]:
+        """Return head-to-head stats for a batter/bowler pair, or None if unknown."""
+        res = self.con.execute(
+            "SELECT balls, runs, wickets, dot_balls, boundaries, sixes "
+            "FROM matchup_stats WHERE batter_id = ? AND bowler_id = ?",
+            [batter_id, bowler_id],
+        ).fetchone()
+        if res:
+            return {
+                "balls": res[0], "runs": res[1], "wickets": res[2],
+                "dot_balls": res[3], "boundaries": res[4], "sixes": res[5],
+            }
+        return None
+
+    def upsert_matchup_stats(self, stats: Dict) -> None:
+        """
+        Bulk upsert head-to-head matchup stats.
+
+        ``stats`` maps ``(batter_id, bowler_id)`` tuples to dicts with keys:
+        balls, runs, wickets, dot_balls, boundaries, sixes.
+        """
+        if not stats:
+            return
+        pairs = list(stats.keys())
+        data = [
+            (b, bo, s["balls"], s["runs"], s["wickets"],
+             s["dot_balls"], s["boundaries"], s["sixes"])
+            for (b, bo), s in stats.items()
+        ]
+        with self._lock:
+            placeholders = ", ".join("(?, ?)" for _ in pairs)
+            flat_pairs = [v for pair in pairs for v in pair]
+            self.con.execute(
+                f"DELETE FROM matchup_stats WHERE (batter_id, bowler_id) IN ({placeholders})",
+                flat_pairs,
+            )
+            self.con.executemany(
+                "INSERT INTO matchup_stats VALUES (?, ?, ?, ?, ?, ?, ?, ?)", data
+            )
 
     def _resolve_generic(self, name: str, entity_type: str, match_date: date, auto_ingest: bool = False) -> int:
         prefix = entity_type[0].upper()

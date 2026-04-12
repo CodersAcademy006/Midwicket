@@ -15,8 +15,9 @@ def main():
     venue_name = "MA Chidambaram Stadium"
     try:
         venue_id = reg.resolve_venue(venue_name, date.today())
-    except ValueError:
-        print(f"Venue {venue_name} not found.")
+    except Exception as e:
+        print(f"Venue '{venue_name}' not found: {e}")
+        print("Run 03_ingest_world.py first to populate the registry.")
         return
 
     # Query for all players at this venue

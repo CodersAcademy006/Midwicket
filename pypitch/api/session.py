@@ -51,28 +51,31 @@ class PyPitchSession:
             )
             registry_empty = not self.registry.get_player_stats(1)
 
-            if registry_empty:
+            # Also rebuild when matchup_stats is empty (handles schema migration
+            # from older registry.duckdb files that pre-date matchup tracking).
+            try:
+                matchup_count = self.registry.con.execute(
+                    "SELECT count(*) FROM matchup_stats"
+                ).fetchone()
+                matchup_empty = (matchup_count[0] if matchup_count else 0) == 0
+            except Exception:
+                matchup_empty = True
+
+            needs_build = registry_empty or matchup_empty
+
+            if needs_build:
                 if not raw_data_present:
                     logger.info("No raw data found. Run loader.download() or call session.download_data() to fetch data.")
                 else:
+                    logger.info("Building registry & summary stats from raw data...")
                     try:
-                        count_row = self.registry.con.execute(
-                            "SELECT count(*) FROM player_stats"
-                        ).fetchone()
-                        count = count_row[0] if count_row else 0
-                    except Exception:
-                        count = 0
-
-                    if count == 0:
-                        logger.info("Building registry & summary stats from raw data...")
-                        try:
-                            build_registry_stats(self.loader, self.registry)
-                        except NotImplementedError:
-                            logger.warning(
-                                "build_registry_stats() is not yet implemented. "
-                                "The registry will be empty until it is provided. "
-                                "You can still load individual matches via session.load_match()."
-                            )
+                        build_registry_stats(self.loader, self.registry)
+                    except NotImplementedError:
+                        logger.warning(
+                            "build_registry_stats() is not yet implemented. "
+                            "The registry will be empty until it is provided. "
+                            "You can still load individual matches via session.load_match()."
+                        )
 
     def download_data(self, force: bool = False) -> None:
         """Download raw match data. Safe to call multiple times."""

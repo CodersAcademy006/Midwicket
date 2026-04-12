@@ -17,10 +17,10 @@ def main():
         venue_id = registry.resolve_venue(venue_name, match_date=today)
         print(f"Venue: {venue_name}")
         print(f"ID: {venue_id}")
-        
-    except ValueError:
-        print(f"Venue '{venue_name}' not found in registry.")
-        print("Try running 01_setup_data.py first.")
+
+    except Exception as e:
+        print(f"Venue '{venue_name}' not found: {e}")
+        print("Run 03_ingest_world.py first to populate the registry.")
 
 if __name__ == "__main__":
     main()

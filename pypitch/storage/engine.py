@@ -1,7 +1,8 @@
+import contextlib
 import duckdb
 import pyarrow as pa
 import logging
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 from pypitch.schema.v1 import BALL_EVENT_SCHEMA
 from pypitch.storage.connection_pool import ConnectionPool
 
@@ -155,6 +156,27 @@ class QueryEngine:
         except duckdb.Error as e:
             logger.warning("Error checking table existence: %s", e)
             return False
+
+    @contextlib.contextmanager
+    def raw_connection(self) -> Iterator[duckdb.DuckDBPyConnection]:
+        """
+        Yield a fresh persistent DuckDB connection to the same database.
+
+        Use this for advanced operations such as ``ATTACH`` that must
+        persist across multiple statements on the same connection.
+        The caller is responsible for any cleanup (e.g. ``DETACH``).
+
+        Example::
+
+            with session.engine.raw_connection() as con:
+                con.execute("ATTACH 'other.duckdb' AS other (READ_ONLY)")
+                df = con.execute("SELECT * FROM other.main.my_table").df()
+        """
+        con = duckdb.connect(self.db_path)
+        try:
+            yield con
+        finally:
+            con.close()
 
     def close(self) -> None:
         """Close the database connection pool."""
