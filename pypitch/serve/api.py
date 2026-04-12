@@ -67,15 +67,25 @@ class PyPitchAPI:
             openapi_url="/v1/openapi.json"
         )
 
-        # Enable CORS for web applications
-        origins = API_CORS_ORIGINS if API_CORS_ORIGINS != ["*"] else ["*"]
+        # CORS — never default to wildcard; require explicit config in production.
+        # When origins is empty (default) the middleware allows no cross-origin requests.
+        origins = [o for o in API_CORS_ORIGINS if o and o != "*"]
         self.app.add_middleware(
             CORSMiddleware,
             allow_origins=origins,
-            allow_credentials=True,
-            allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-            allow_headers=["*"],
+            allow_credentials=bool(origins),  # credentials forbidden with wildcard
+            allow_methods=["GET", "POST", "OPTIONS"],
+            allow_headers=["Authorization", "Content-Type"],
         )
+
+        # TrustedHost guard — protects against Host-header injection in
+        # reverse-proxy deployments.  PYPITCH_ALLOWED_HOSTS is comma-separated;
+        # defaults to localhost-only when not set.
+        import os as _os
+        _allowed_hosts_raw = _os.getenv("PYPITCH_ALLOWED_HOSTS", "localhost,127.0.0.1")
+        _allowed_hosts = [h.strip() for h in _allowed_hosts_raw.split(",") if h.strip()]
+        if _allowed_hosts:
+            self.app.add_middleware(TrustedHostMiddleware, allowed_hosts=_allowed_hosts)
 
         # Add rate limiting middleware
         @self.app.middleware("http")
@@ -350,24 +360,17 @@ class PyPitchAPI:
             }
 
         @self.app.get("/matches")
-        async def list_matches():
+        async def list_matches(authenticated: bool = Depends(verify_api_key)):
             """List all available matches."""
-            try:
-                # This would need to be implemented based on your data structure
-                # For now, return a placeholder
-                return {"matches": [], "count": 0}
-            except Exception as e:
-                raise HTTPException(status_code=500, detail=str(e))
+            return {"matches": [], "count": 0}
 
         @self.app.get("/matches/{match_id}")
-        async def get_match(match_id: str):
+        async def get_match(match_id: str, authenticated: bool = Depends(verify_api_key)):
             """Get details for a specific match."""
             try:
-                # Load match data
                 self.session.load_match(match_id)
 
-                # Query basic match info
-                query = f"""
+                sql = """
                     SELECT
                         inning,
                         MAX(over) as overs,
@@ -377,37 +380,37 @@ class PyPitchAPI:
                     WHERE match_id = ?
                     GROUP BY inning
                 """
-
-                result = self.session.engine.execute_sql(query, [match_id])
+                result = self.session.engine.execute_sql(sql, [match_id])
                 df = result.to_pandas()
+                return {"match_id": match_id, "innings": df.to_dict("records")}
 
-                return {
-                    "match_id": match_id,
-                    "innings": df.to_dict('records')
-                }
-
+            except HTTPException:
+                raise
             except Exception as e:
-                raise HTTPException(status_code=404, detail=f"Match {match_id} not found: {str(e)}")
+                logger.warning("get_match(%s) failed: %s", match_id, e)
+                raise HTTPException(status_code=404, detail="Match not found")
 
         @self.app.get("/players/{player_id}")
-        async def get_player_stats(player_id: int):
+        async def get_player_stats(player_id: int, authenticated: bool = Depends(verify_api_key)):
             """Get statistics for a specific player."""
             try:
                 stats = self.session.registry.get_player_stats(player_id)
                 if stats:
                     return stats
-                else:
-                    raise HTTPException(status_code=404, detail=f"Player {player_id} not found")
-
+                raise HTTPException(status_code=404, detail="Player not found")
+            except HTTPException:
+                raise
             except Exception as e:
-                raise HTTPException(status_code=500, detail=str(e))
+                logger.warning("get_player_stats(%s) failed: %s", player_id, e)
+                raise HTTPException(status_code=500, detail="Internal server error")
 
         @self.app.get("/win_probability")
         async def win_probability(
             target: int = 150,
             current_runs: int = 50,
             wickets_down: int = 2,
-            overs_done: float = 10.0
+            overs_done: float = 10.0,
+            authenticated: bool = Depends(verify_api_key),
         ):
             """Calculate win probability for current match state."""
             try:
@@ -415,112 +418,117 @@ class PyPitchAPI:
                     target=target,
                     current_runs=current_runs,
                     wickets_down=wickets_down,
-                    overs_done=overs_done
+                    overs_done=overs_done,
                 )
                 return result
-
             except Exception as e:
-                raise HTTPException(status_code=500, detail=str(e))
+                logger.warning("win_probability failed: %s", e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        _MAX_ANALYZE_ROWS = 100
+        _ANALYZE_ROW_LIMIT = 500  # enforced at SQL level to prevent full-scan materialisation
 
         @self.app.post("/analyze")
         async def custom_analysis(query: Dict[str, Any], authenticated: bool = Depends(verify_api_key)):
-            """Run custom analysis query."""
+            """Run a read-only SELECT query against ball_events."""
             try:
-                # Execute custom query (with safety checks)
-                sql = query.get("sql")
+                sql = query.get("sql", "").strip()
                 if not sql:
                     raise HTTPException(status_code=400, detail="SQL query required")
 
-                # Enhanced safety checks
-                sql_upper = sql.upper().strip()
-
-                # Block dangerous operations
-                dangerous_keywords = ["DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "CREATE", "TRUNCATE"]
-                if any(keyword in sql_upper for keyword in dangerous_keywords):
-                    raise HTTPException(status_code=403, detail="Dangerous SQL operations not allowed")
+                sql_upper = sql.upper()
 
                 # Only allow SELECT statements
                 if not sql_upper.startswith("SELECT"):
                     raise HTTPException(status_code=403, detail="Only SELECT queries are allowed")
 
-                # Block potential SQL injection patterns
-                injection_patterns = ["--", "/*", "*/", "UNION", "EXEC", "EXECUTE", "XP_", "SP_"]
-                if any(pattern in sql_upper for pattern in injection_patterns):
-                    raise HTTPException(status_code=403, detail="Potentially dangerous SQL patterns detected")
+                # Block write/DDL keywords (defence-in-depth on top of read_only=True)
+                _BLOCKED = {"DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "CREATE",
+                            "TRUNCATE", "EXEC", "EXECUTE", "XP_", "SP_", "PRAGMA",
+                            "ATTACH", "DETACH", "COPY"}
+                if any(kw in sql_upper.split() or sql_upper.find(kw) >= 0 for kw in _BLOCKED):
+                    raise HTTPException(status_code=403, detail="Query contains disallowed keywords")
 
-                # Limit query complexity (basic check)
-                if sql_upper.count("SELECT") > 3 or sql_upper.count("JOIN") > 5:
-                    raise HTTPException(status_code=403, detail="Query too complex")
+                # Inject a hard row-limit to prevent full-scan memory exhaustion
+                # Wrap the caller's query in a subquery with LIMIT applied.
+                safe_sql = f"SELECT * FROM ({sql}) AS _q LIMIT {_ANALYZE_ROW_LIMIT}"
 
-                result = self.session.engine.execute_sql(sql)
-                df = result.to_pandas()
+                result = self.session.engine.execute_sql(safe_sql, read_only=True)
+                rows = result.to_pydict()
+                # Convert list-of-columns to list-of-rows, capped at _MAX_ANALYZE_ROWS
+                keys = list(rows.keys())
+                n = min(len(rows[keys[0]]) if keys else 0, _MAX_ANALYZE_ROWS)
+                records = [{k: rows[k][i] for k in keys} for i in range(n)]
 
-                return {
-                    "query": sql,
-                    "rows": len(df),
-                    "data": df.to_dict('records')[:100]  # Limit to 100 rows
-                }
+                return {"rows": n, "data": records}
 
             except HTTPException:
                 raise
             except Exception as e:
-                raise HTTPException(status_code=500, detail=f"Query execution failed: {str(e)}")
+                logger.warning("custom_analysis failed: %s", e)
+                raise HTTPException(status_code=500, detail="Query execution failed")
 
         @self.app.post("/live/register")
-        async def register_live_match(request: LiveMatchRegistration):
+        async def register_live_match(
+            request: LiveMatchRegistration,
+            authenticated: bool = Depends(verify_api_key),
+        ):
             """Register a match for live tracking."""
             try:
                 if self.ingestor is None:
-                    # For testing, return success without actual registration
-                    logger.warning("register_live_match: Ingestor not available, returning synthetic success for match_id=%s", request.match_id)
+                    logger.warning("register_live_match: ingestor not available for match_id=%s", request.match_id)
                     return {"success": True, "match_id": request.match_id}
-                    
+
                 success = self.ingestor.register_match(
                     match_id=request.match_id,
                     source=request.source,
-                    metadata=request.metadata
+                    metadata=request.metadata,
                 )
-                
                 if not success:
-                    raise HTTPException(status_code=400, detail=f"Match {request.match_id} already registered")
-                
+                    raise HTTPException(status_code=409, detail="Match already registered")
                 return {"success": True, "match_id": request.match_id}
             except HTTPException:
                 raise
             except Exception as e:
-                raise HTTPException(status_code=500, detail=str(e))
+                logger.warning("register_live_match failed: %s", e)
+                raise HTTPException(status_code=500, detail="Internal server error")
 
         @self.app.post("/live/ingest")
-        async def ingest_delivery(data: DeliveryData):
+        async def ingest_delivery(
+            data: DeliveryData,
+            authenticated: bool = Depends(verify_api_key),
+        ):
             """Ingest live delivery data."""
             try:
                 if self.ingestor is None:
-                    # For testing, return success without actual ingestion
-                    logger.warning("ingest_delivery: Ingestor not available, returning synthetic success for match_id=%s", data.match_id)
+                    logger.warning("ingest_delivery: ingestor not available for match_id=%s", data.match_id)
                     return {"success": True}
-                    
-                # Convert Pydantic model to dict
+
                 delivery_dict = data.model_dump(exclude_none=True)
-                match_id = delivery_dict.pop('match_id')
-                
+                match_id = delivery_dict.pop("match_id")
                 self.ingestor.update_match_data(match_id, delivery_dict)
-                
                 return {"success": True}
+            except HTTPException:
+                raise
             except Exception as e:
-                raise HTTPException(status_code=500, detail=str(e))
+                from pypitch.exceptions import DataIngestionError
+                if isinstance(e, DataIngestionError):
+                    raise HTTPException(status_code=429, detail=str(e))
+                logger.warning("ingest_delivery failed: %s", e)
+                raise HTTPException(status_code=500, detail="Internal server error")
 
         @self.app.get("/live/matches")
-        async def get_live_matches():
+        async def get_live_matches(authenticated: bool = Depends(verify_api_key)):
             """Get list of currently live matches."""
             try:
                 if self.ingestor is None:
-                    # For testing, return empty list
-                    logger.info("get_live_matches: Ingestor not available, returning empty list")
+                    logger.info("get_live_matches: ingestor not available")
                     return []
                     
                 return self.ingestor.get_live_matches()
             except Exception as e:
-                raise HTTPException(status_code=500, detail=str(e))
+                logger.warning("get_live_matches failed: %s", e)
+                raise HTTPException(status_code=500, detail="Internal server error")
 
     def run(self, host: str = "0.0.0.0", port: int = 8000, reload: bool = False):
         """Run the API server."""

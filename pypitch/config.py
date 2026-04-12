@@ -22,7 +22,11 @@ DATABASE_MEMORY_LIMIT = os.getenv("PYPITCH_DB_MEMORY", "2GB")
 # API settings
 API_HOST = os.getenv("PYPITCH_API_HOST", "0.0.0.0")
 API_PORT = int(os.getenv("PYPITCH_API_PORT", "8000"))
-API_CORS_ORIGINS = os.getenv("PYPITCH_CORS_ORIGINS", "*").split(",")
+# Default to empty list (no cross-origin access) — operators must explicitly
+# allow origins via PYPITCH_CORS_ORIGINS="https://app.example.com".
+# Wildcards ("*") are intentionally not accepted as a default.
+_cors_raw = os.getenv("PYPITCH_CORS_ORIGINS", "")
+API_CORS_ORIGINS = [o.strip() for o in _cors_raw.split(",") if o.strip()]
 
 # Cache settings
 CACHE_TTL = int(os.getenv("PYPITCH_CACHE_TTL", "3600"))  # 1 hour default
@@ -97,7 +101,9 @@ def get_secret_key() -> str:
 # via a property-like pattern. For now, keep a module-level alias that defers.
 SECRET_KEY = os.getenv("PYPITCH_SECRET_KEY", "")
 
-API_KEY_REQUIRED = os.getenv("PYPITCH_API_KEY_REQUIRED", "false").lower() == "true"
+# Secure default: require API key authentication unless explicitly disabled.
+# Set PYPITCH_API_KEY_REQUIRED=false only for local development.
+API_KEY_REQUIRED = os.getenv("PYPITCH_API_KEY_REQUIRED", "true").lower() == "true"
 
 def set_debug(value: bool = True) -> None:
     """

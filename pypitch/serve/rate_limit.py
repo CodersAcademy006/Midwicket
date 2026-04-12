@@ -85,18 +85,37 @@ class RateLimiter:
 rate_limiter = RateLimiter()
 
 def get_client_key(request: Request) -> str:
-    """Get client identifier for rate limiting."""
-    # Use API key if available
-    api_key = request.headers.get("X-API-Key")
-    if api_key:
-        return f"api_key:{api_key}"
+    """
+    Derive a stable rate-limit key for this request.
 
-    # Prefer X-Forwarded-For for reverse-proxy setups
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return f"ip:{forwarded.split(',')[0].strip()}"
+    X-Forwarded-For is intentionally NOT trusted unless
+    ``PYPITCH_BEHIND_PROXY=true`` is set in the environment.  Trusting it
+    unconditionally lets an attacker rotate the header value to bypass
+    throttling (header-spoofing bypass).
 
-    # Fallback to direct client IP
+    When the server is behind a trusted reverse-proxy, set
+    ``PYPITCH_BEHIND_PROXY=true`` so the real client IP is used.
+    """
+    import hashlib
+    import os
+
+    behind_proxy = os.getenv("PYPITCH_BEHIND_PROXY", "false").lower() == "true"
+
+    # Prefer the authenticated bearer token as the rate-limit identity so a
+    # single key doesn't get bonus quota by rotating source IPs.
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        token = auth[7:]
+        digest = hashlib.sha256(token.encode(), usedforsecurity=False).hexdigest()[:16]
+        return f"key:{digest}"
+
+    # Only honour X-Forwarded-For when we know we are behind a trusted proxy.
+    if behind_proxy:
+        forwarded = request.headers.get("X-Forwarded-For", "")
+        if forwarded:
+            return f"ip:{forwarded.split(',')[0].strip()}"
+
+    # Always use the real TCP peer address otherwise.
     if request.client and request.client.host:
         return f"ip:{request.client.host}"
 
