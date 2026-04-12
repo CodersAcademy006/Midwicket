@@ -86,14 +86,21 @@ rate_limiter = RateLimiter()
 
 def get_client_key(request: Request) -> str:
     """Get client identifier for rate limiting."""
-    # Use API key if available, otherwise use IP
+    # Use API key if available
     api_key = request.headers.get("X-API-Key")
     if api_key:
         return f"api_key:{api_key}"
 
-    # Fallback to IP address
-    client_ip = request.client.host if request.client else "unknown"
-    return f"ip:{client_ip}"
+    # Prefer X-Forwarded-For for reverse-proxy setups
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return f"ip:{forwarded.split(',')[0].strip()}"
+
+    # Fallback to direct client IP
+    if request.client and request.client.host:
+        return f"ip:{request.client.host}"
+
+    return "ip:unknown"
 
 async def check_rate_limit(request: Request) -> None:
     """Middleware function to check rate limits."""

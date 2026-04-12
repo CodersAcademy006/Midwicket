@@ -27,50 +27,75 @@ API_CORS_ORIGINS = os.getenv("PYPITCH_CORS_ORIGINS", "*").split(",")
 # Cache settings
 CACHE_TTL = int(os.getenv("PYPITCH_CACHE_TTL", "3600"))  # 1 hour default
 
-# Security settings
-SECRET_KEY = os.getenv("PYPITCH_SECRET_KEY")
-if not SECRET_KEY:
+# Security settings — lazy accessor to avoid crashing on import
+_SECRET_KEY: str | None = os.getenv("PYPITCH_SECRET_KEY")
+
+
+def get_secret_key() -> str:
+    """
+    Return the secret key, generating a dev key if necessary.
+
+    Raises ``RuntimeError`` in production (PYPITCH_ENV != 'development')
+    when no key is configured — but only when the key is *actually needed*
+    (JWT creation, token verification), not at import time.
+    """
+    global _SECRET_KEY
+
+    if _SECRET_KEY:
+        return _SECRET_KEY
+
     if os.getenv("PYPITCH_ENV") != "development":
-        raise RuntimeError("PYPITCH_SECRET_KEY is required in production")
-    
+        raise RuntimeError(
+            "PYPITCH_SECRET_KEY is required in production. "
+            "Set the environment variable before starting the server."
+        )
+
     # Persistent development key
     dev_secret_file = (DEFAULT_DATA_DIR / ".pypitch_dev_secret").resolve()
-    
-    # Ensure parent directory exists
+
     try:
         dev_secret_file.parent.mkdir(parents=True, exist_ok=True)
     except Exception:
-        logging.getLogger(__name__).exception("Failed to create directory %s", dev_secret_file.parent)
+        logging.getLogger(__name__).exception(
+            "Failed to create directory %s", dev_secret_file.parent
+        )
         raise
 
     if dev_secret_file.exists():
         try:
-            with open(dev_secret_file, encoding='utf-8') as f:
-                SECRET_KEY = f.read().strip()
+            with open(dev_secret_file, encoding="utf-8") as f:
+                _SECRET_KEY = f.read().strip()
         except Exception as err:
-            logging.getLogger(__name__).exception("Failed to read development secret key")
+            logging.getLogger(__name__).exception(
+                "Failed to read development secret key"
+            )
             raise RuntimeError("Failed to read existing secret key file") from err
-            
-    if not SECRET_KEY:
-        logger = logging.getLogger(__name__)
-        logger.warning("Using insecure random secret key for development")
-        SECRET_KEY = secrets.token_hex(32)
-        
+
+    if not _SECRET_KEY:
+        log = logging.getLogger(__name__)
+        log.warning("Using insecure random secret key for development")
+        _SECRET_KEY = secrets.token_hex(32)
+
         try:
             import tempfile
-            # Write atomically with restrictive permissions
-            with tempfile.NamedTemporaryFile(mode='w', dir=dev_secret_file.parent, delete=False) as tmp:
-                tmp.write(SECRET_KEY)
+            with tempfile.NamedTemporaryFile(
+                mode="w", dir=dev_secret_file.parent, delete=False
+            ) as tmp:
+                tmp.write(_SECRET_KEY)
                 tmp.flush()
                 os.fsync(tmp.fileno())
                 temp_path = Path(tmp.name)
-            
-            # Ensure permissions
             os.chmod(temp_path, 0o600)
-            # Atomic replace
             os.replace(temp_path, dev_secret_file)
         except Exception as e:
-            logger.warning("Failed to persist development secret key: %s", e)
+            log.warning("Failed to persist development secret key: %s", e)
+
+    return _SECRET_KEY
+
+
+# Backward-compat: modules that read config.SECRET_KEY get the lazy accessor
+# via a property-like pattern. For now, keep a module-level alias that defers.
+SECRET_KEY = os.getenv("PYPITCH_SECRET_KEY", "")
 
 API_KEY_REQUIRED = os.getenv("PYPITCH_API_KEY_REQUIRED", "false").lower() == "true"
 

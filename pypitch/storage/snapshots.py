@@ -28,8 +28,16 @@ class SnapshotManager:
         self._save()
 
     def _save(self) -> None:
-        with open(self.meta_path, 'w') as f:
-            json.dump(self.history, f, indent=2)
+        import os
+        import tempfile
+        with tempfile.NamedTemporaryFile(
+            mode="w", dir=self.meta_path.parent,
+            suffix=".tmp", delete=False,
+        ) as tmp:
+            json.dump(self.history, tmp, indent=2)
+            tmp.flush()
+            os.fsync(tmp.fileno())
+        os.replace(tmp.name, self.meta_path)
 
     def get_latest(self) -> str:
         if not self.history["snapshots"]:

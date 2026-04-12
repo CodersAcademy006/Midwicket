@@ -19,12 +19,24 @@ def test_all_imports():
         )
     ]
 
+    # Optional dependency packages — modules that need them may fail
+    # gracefully when the extras are not installed.
+    OPTIONAL_PACKAGES = frozenset({
+        "plotly", "matplotlib", "reportlab", "sklearn", "scikit-learn",
+    })
+
     failed_imports: list[tuple[str, str]] = []
 
     for module_name in modules_to_test:
         try:
             importlib.import_module(module_name)
-        except (ImportError, SyntaxError) as exc:
+        except ImportError as exc:
+            # Skip failures caused by missing optional dependencies
+            msg = str(exc)
+            if any(pkg in msg for pkg in OPTIONAL_PACKAGES):
+                continue
+            failed_imports.append((module_name, msg))
+        except SyntaxError as exc:
             failed_imports.append((module_name, str(exc)))
         except Exception:
             # Runtime errors (e.g. missing optional deps) are not import failures

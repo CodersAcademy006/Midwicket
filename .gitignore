@@ -157,3 +157,7 @@ logs/
 # OS
 .DS_Store
 Thumbs.db
+
+# Security & local state
+.pypitch_dev_secret
+.schema_version

@@ -1,3 +1,5 @@
+import threading
+
 import duckdb
 from datetime import date
 from typing import Optional, Dict, cast, Any
@@ -9,6 +11,7 @@ class EntityNotFoundError(Exception):
 class IdentityRegistry:
     def __init__(self, db_path: str = "pypitch_registry.db") -> None:
         self.path = db_path
+        self._lock = threading.Lock()
         self._init_db()
         self._cache: Dict[str, int] = {}
 
@@ -79,34 +82,49 @@ class IdentityRegistry:
         return None
 
     def upsert_player_stats(self, stats: Dict[int, Dict[str, int]]) -> None:
-        """Bulk upsert player stats."""
-        # DuckDB doesn't have a simple UPSERT for batch, so we'll delete and insert
-        # In a real high-concurrency app, this would be a transaction.
+        """Bulk upsert player stats (thread-safe, parameterised)."""
         ids = list(stats.keys())
         if not ids:
             return
-            
-        self.con.execute(f"DELETE FROM player_stats WHERE entity_id IN ({','.join(map(str, ids))})")
-        
-        data = []
-        for pid, s in stats.items():
-            data.append((pid, s['matches'], s['runs'], s['balls_faced'], s['wickets'], s['balls_bowled'], s['runs_conceded']))
-            
-        self.con.executemany("INSERT INTO player_stats VALUES (?, ?, ?, ?, ?, ?, ?)", data)
+
+        data = [
+            (pid, s['matches'], s['runs'], s['balls_faced'],
+             s['wickets'], s['balls_bowled'], s['runs_conceded'])
+            for pid, s in stats.items()
+        ]
+
+        with self._lock:
+            # Parameterised DELETE – one placeholder per id
+            placeholders = ", ".join("?" for _ in ids)
+            self.con.execute(
+                f"DELETE FROM player_stats WHERE entity_id IN ({placeholders})",
+                ids,
+            )
+            self.con.executemany(
+                "INSERT INTO player_stats VALUES (?, ?, ?, ?, ?, ?, ?)", data
+            )
 
     def upsert_venue_stats(self, stats: Dict[int, Dict[str, int]]) -> None:
-        """Bulk upsert venue stats."""
+        """Bulk upsert venue stats (thread-safe, parameterised)."""
         ids = list(stats.keys())
         if not ids:
             return
 
-        self.con.execute(f"DELETE FROM venue_stats WHERE entity_id IN ({','.join(map(str, ids))})")
-        
-        data = []
-        for vid, s in stats.items():
-            data.append((vid, s['matches'], s['total_runs'], s['first_innings_runs'], s['first_innings_count']))
-            
-        self.con.executemany("INSERT INTO venue_stats VALUES (?, ?, ?, ?, ?)", data)
+        data = [
+            (vid, s['matches'], s['total_runs'],
+             s['first_innings_runs'], s['first_innings_count'])
+            for vid, s in stats.items()
+        ]
+
+        with self._lock:
+            placeholders = ", ".join("?" for _ in ids)
+            self.con.execute(
+                f"DELETE FROM venue_stats WHERE entity_id IN ({placeholders})",
+                ids,
+            )
+            self.con.executemany(
+                "INSERT INTO venue_stats VALUES (?, ?, ?, ?, ?)", data
+            )
 
 
     def _resolve_generic(self, name: str, entity_type: str, match_date: date, auto_ingest: bool = False) -> int:
@@ -115,37 +133,46 @@ class IdentityRegistry:
         if cache_key in self._cache:
             return self._cache[cache_key]
 
-        # Check Aliases
-        res = self.con.execute("""
-            SELECT entity_id 
-            FROM aliases 
-            WHERE alias = ? 
-              AND valid_from <= ? 
-              AND (valid_to IS NULL OR valid_to >= ?)
-        """, [name, match_date, match_date]).fetchone()
+        with self._lock:
+            # Double-check after acquiring lock
+            if cache_key in self._cache:
+                return self._cache[cache_key]
 
-        if res:
-            entity_id = cast(int, res[0])
+            # Check Aliases
+            res = self.con.execute("""
+                SELECT entity_id
+                FROM aliases
+                WHERE alias = ?
+                  AND valid_from <= ?
+                  AND (valid_to IS NULL OR valid_to >= ?)
+            """, [name, match_date, match_date]).fetchone()
+
+            if res:
+                entity_id = cast(int, res[0])
+                self._cache[cache_key] = entity_id
+                return entity_id
+
+            if not auto_ingest:
+                raise EntityNotFoundError(
+                    f"Entity '{name}' of type '{entity_type}' "
+                    f"not found for date {match_date}"
+                )
+
+            # Auto-Ingest
+            res_seq = self.con.execute("SELECT nextval('entity_id_seq')").fetchone()
+            if not res_seq:
+                raise RuntimeError("Failed to generate entity ID")
+            entity_id = cast(int, res_seq[0])
+
+            self.con.execute("INSERT INTO entities VALUES (?, ?, ?)",
+                             [entity_id, entity_type, name])
+            self.con.execute("""
+                INSERT INTO aliases (alias, entity_id, valid_from, valid_to)
+                VALUES (?, ?, ?, NULL)
+            """, [name, entity_id, match_date])
+
             self._cache[cache_key] = entity_id
             return entity_id
-
-        if not auto_ingest:
-            raise EntityNotFoundError(f"Entity '{name}' of type '{entity_type}' not found for date {match_date}")
-
-        # Auto-Ingest
-        res_seq = self.con.execute("SELECT nextval('entity_id_seq')").fetchone()
-        if not res_seq:
-            raise RuntimeError("Failed to generate entity ID")
-        entity_id = cast(int, res_seq[0])
-        
-        self.con.execute("INSERT INTO entities VALUES (?, ?, ?)", [entity_id, entity_type, name])
-        self.con.execute("""
-            INSERT INTO aliases (alias, entity_id, valid_from, valid_to)
-            VALUES (?, ?, ?, NULL)
-        """, [name, entity_id, match_date])
-        
-        self._cache[cache_key] = entity_id
-        return entity_id
 
     def resolve_player(self, name: str, match_date: Optional[date] = None, auto_ingest: bool = False) -> int:
         if match_date is None:

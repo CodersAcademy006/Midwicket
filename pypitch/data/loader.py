@@ -1,3 +1,4 @@
+import logging
 import requests
 import zipfile
 import json
@@ -7,6 +8,8 @@ from tqdm import tqdm
 
 # Constants
 from pypitch.config import CRICSHEET_URL, DEFAULT_DATA_DIR
+
+logger = logging.getLogger(__name__)
 
 class DataLoader:
     def __init__(self, data_dir: Optional[str] = None):
@@ -27,10 +30,10 @@ class DataLoader:
         Skips if already exists, unless force=True.
         """
         if self.zip_path.exists() and not force:
-            print(f"[OK] Data already exists at {self.zip_path}")
+            logger.info("Data already exists at %s", self.zip_path)
             return
 
-        print(f"[INFO] Downloading IPL Data from {CRICSHEET_URL}...")
+        logger.info("Downloading IPL Data from %s", CRICSHEET_URL)
         
         try:
             response = requests.get(CRICSHEET_URL, stream=True)
@@ -49,9 +52,9 @@ class DataLoader:
                     size = f.write(chunk)
                     bar.update(size)
             
-            print("[INFO] Extracting files...")
+            logger.info("Extracting files...")
             self._extract()
-            print("[SUCCESS] Download Complete.")
+            logger.info("Download complete.")
             
         except Exception as e:
             # Clean up partial downloads
@@ -68,11 +71,14 @@ class DataLoader:
         """
         Fetches a specific match by ID.
         """
-        # Try direct JSON
-        file_path = self.raw_dir / f"{match_id}.json"
+        # Sanitize match_id: only allow alphanumeric, hyphens, and underscores
+        # to prevent path traversal attacks (e.g. "../../../etc/passwd").
+        safe_id = Path(match_id).name
+        if safe_id != match_id or "/" in match_id or "\\" in match_id:
+            raise ValueError(f"Invalid match_id: {match_id!r}")
+
+        file_path = self.raw_dir / f"{safe_id}.json"
         if not file_path.exists():
-            # Try finding it if the ID format is different or just to be safe
-            # But for now, assume ID matches filename
             raise FileNotFoundError(f"Match {match_id} not found in {self.raw_dir}")
             
         with open(file_path, 'r') as f:
@@ -88,7 +94,7 @@ class DataLoader:
         if not json_files:
             raise FileNotFoundError("No JSON files found. Run loader.download() first.")
             
-        print(f"[INFO] Found {len(json_files)} matches in {self.raw_dir}...")
+        logger.info("Found %d matches in %s", len(json_files), self.raw_dir)
         
         for file_path in json_files:
             try:

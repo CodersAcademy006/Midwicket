@@ -1,7 +1,10 @@
+import logging
 import time
-from typing import Any, Dict, Optional, Callable
+from typing import Any, Dict, Optional, Callable, List
 import pyarrow as pa
 from pydantic import BaseModel, Field, ConfigDict
+
+_log = logging.getLogger(__name__)
 
 # Internal imports (mocked for structure, you must implement these interfaces)
 from pypitch.query.base import BaseQuery
@@ -92,12 +95,9 @@ class RuntimeExecutor:
             )
 
         # ── 0.1.x: legacy planning path ──────────────────────────────────────
-        # create_legacy_plan returns a dict with {"strategy", "sql", "cost"}.
+        # create_legacy_plan returns {"strategy", "sql", "params", "cost"}.
         # We enforce ExecutionMode here even though full Planner-first routing
         # (prefer-materialization, cost estimation) is planned for v0.2.x.
-        import logging
-        _log = logging.getLogger(__name__)
-
         plan = self.planner.create_legacy_plan(query)
 
         if mode == ExecutionMode.BUDGET and plan["strategy"] == "raw_scan":
@@ -114,7 +114,9 @@ class RuntimeExecutor:
                 query.__class__.__name__,
             )
 
-        result_table = self.engine.execute_sql(plan["sql"])
+        result_table = self.engine.execute_sql(
+            plan["sql"], params=plan.get("params")
+        )
         if modes.debug_mode and hasattr(result_table, 'collect'):
             result_table = result_table.collect()
         self.cache.set(query_hash, result_table)
@@ -160,11 +162,11 @@ class RuntimeExecutor:
                 )
 
         # 3. Plan: Generate the Complex SQL
-        sql_plan = self.planner.create_plan(query, metric_func)
+        sql, params = self.planner.create_plan(query, metric_func)
 
         # 4. Execute: Let DuckDB do the heavy lifting (JOIN)
         # This returns an Arrow Table with 'runs' AND 'venue_avg_sr' columns
-        enriched_events = self.engine.execute_sql(sql_plan)
+        enriched_events = self.engine.execute_sql(sql, params=params)
 
         # 5. Compute: Run the Pure Function
         # The metric simply expects column 'venue_avg_sr' to exist
