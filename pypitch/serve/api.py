@@ -524,8 +524,8 @@ class PyPitchAPI:
 
     def run(self, host: str = "0.0.0.0", port: int = 8000, reload: bool = False):
         """Run the API server."""
-        print(f"🚀 Starting PyPitch API server at http://{host}:{port}")
-        print(f"📚 API documentation at http://{host}:{port}/docs")
+        logger.info("Starting PyPitch API server at http://%s:%d", host, port)
+        logger.info("API documentation at http://%s:%d/docs", host, port)
 
         uvicorn.run(
             self.app,
@@ -620,6 +620,6 @@ coverage.xml
     with open(output_path / ".dockerignore", "w") as f:
         f.write(dockerignore_content.strip())
 
-    print(f"🐳 Docker files created in {output_path}")
+    print(f"Docker files created in {output_path}")
     print("Build with: docker build -t pypitch-api .")
     print("Run with: docker run -p 8000:8000 pypitch-api")

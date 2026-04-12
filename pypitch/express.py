@@ -16,7 +16,6 @@ from typing import Optional, Any, Dict
 from pypitch.api.session import PyPitchSession
 from pypitch.data.loader import DataLoader
 from pypitch.storage.engine import QueryEngine
-from pypitch.storage.registry import IdentityRegistry
 from pypitch.runtime.executor import RuntimeExecutor
 from pypitch.runtime.cache_duckdb import DuckDBCache
 from pypitch.core.match_config import MatchConfig
@@ -27,13 +26,14 @@ _DEBUG_MODE = False
 
 # Global session cache for quick_load
 _cached_session: Optional[PyPitchSession] = None
+_cached_session_dir: Optional[str] = None
 
 def set_debug_mode(enabled: bool = True) -> None:
     """Enable debug mode for eager execution and verbose logging."""
     global _DEBUG_MODE
     _DEBUG_MODE = enabled
     if enabled:
-        print("🐛 Debug mode enabled: Queries will execute eagerly for immediate error feedback.")
+        print("[PyPitch] Debug mode enabled: Queries will execute eagerly for immediate error feedback.")
 
 def _get_default_data_dir() -> Path:
     """Get default data directory (~/.pypitch_data)."""
@@ -48,99 +48,17 @@ def _ensure_data_dir(data_dir: Optional[str] = None) -> Path:
     path.mkdir(parents=True, exist_ok=True)
     return path
 
-def _load_bundled_registry(registry: IdentityRegistry, bundled_dir: Path) -> None:
-    """Load bundled registry data with improved error handling and efficiency."""
-    import pyarrow.parquet as pq
-    
-    # Check if registry already has bundled data (check for a specific entity that should be in bundled data)
-    try:
-        result = registry.con.execute("SELECT count(*) FROM entities WHERE id = 1").fetchone()
-        if result and result[0] > 0:
-            if _DEBUG_MODE:
-                print("📦 Bundled data already loaded.")
-            return
-    except Exception:
-        pass  # Table might not exist yet, continue with loading
-    
-    if _DEBUG_MODE:
-        print("📦 Loading bundled registry data...")
-    
-    try:
-        # Load entities
-        entities_file = bundled_dir / "entities.parquet"
-        if entities_file.exists():
-            entities_table = pq.read_table(str(entities_file))
-            if _DEBUG_MODE:
-                print(f"   Loading {entities_table.num_rows} entities...")
-            entities_data = list(zip(
-                entities_table['id'].to_pylist(),
-                entities_table['type'].to_pylist(),
-                entities_table['primary_name'].to_pylist()
-            ))
-            registry.con.executemany("INSERT INTO entities VALUES (?, ?, ?)", entities_data)
-        
-        # Load aliases
-        aliases_file = bundled_dir / "aliases.parquet"
-        if aliases_file.exists():
-            aliases_table = pq.read_table(str(aliases_file))
-            if _DEBUG_MODE:
-                print(f"   Loading {aliases_table.num_rows} aliases...")
-            aliases_data = list(zip(
-                aliases_table['alias'].to_pylist(),
-                aliases_table['entity_id'].to_pylist(),
-                aliases_table['valid_from'].to_pylist(),
-                aliases_table['valid_to'].to_pylist()
-            ))
-            registry.con.executemany("INSERT INTO aliases VALUES (?, ?, ?, ?)", aliases_data)
-        
-        # Load player stats
-        player_stats_file = bundled_dir / "player_stats.parquet"
-        if player_stats_file.exists():
-            stats_table = pq.read_table(str(player_stats_file))
-            if _DEBUG_MODE:
-                print(f"   Loading {stats_table.num_rows} player stats...")
-            stats_data = list(zip(
-                stats_table['entity_id'].to_pylist(),
-                stats_table['matches'].to_pylist(),
-                stats_table['runs'].to_pylist(),
-                stats_table['balls_faced'].to_pylist(),
-                stats_table['wickets'].to_pylist(),
-                stats_table['balls_bowled'].to_pylist(),
-                stats_table['runs_conceded'].to_pylist()
-            ))
-            registry.con.executemany("INSERT INTO player_stats VALUES (?, ?, ?, ?, ?, ?, ?)", stats_data)
-        
-        # Load venue stats
-        venue_stats_file = bundled_dir / "venue_stats.parquet"
-        if venue_stats_file.exists():
-            venue_table = pq.read_table(str(venue_stats_file))
-            if _DEBUG_MODE:
-                print(f"   Loading {venue_table.num_rows} venue stats...")
-            venue_data = list(zip(
-                venue_table['entity_id'].to_pylist(),
-                venue_table['matches'].to_pylist(),
-                venue_table['total_runs'].to_pylist(),
-                venue_table['first_innings_runs'].to_pylist(),
-                venue_table['first_innings_count'].to_pylist()
-            ))
-            registry.con.executemany("INSERT INTO venue_stats VALUES (?, ?, ?, ?, ?)", venue_data)
-        
-        if _DEBUG_MODE:
-            print("✅ Bundled data loaded successfully.")
-            
-    except Exception as e:
-        print(f"❌ Error loading bundled data: {e}")
-        raise
-
 def _auto_setup_session(data_dir: Optional[str] = None) -> PyPitchSession:
     """Auto-setup session with defaults and caching."""
-    global _cached_session
-    
-    # Return cached session if available and data_dir matches
-    if _cached_session is not None:
+    global _cached_session, _cached_session_dir
+
+    resolved = str(_ensure_data_dir(data_dir))
+
+    # Return cached session only if the data dir matches
+    if _cached_session is not None and _cached_session_dir == resolved:
         return _cached_session
-    
-    data_path = _ensure_data_dir(data_dir)
+
+    data_path = Path(resolved)
 
     # Download data on first run if not already present
     loader = DataLoader(str(data_path))
@@ -156,18 +74,29 @@ def _auto_setup_session(data_dir: Optional[str] = None) -> PyPitchSession:
                 print(f"Download failed: {exc}. Continuing without data.")
 
     _cached_session = PyPitchSession(str(data_path))
+    _cached_session_dir = resolved
     return _cached_session
 
 def load_competition(competition: str, season: int, data_dir: str = "./data"):
     """
     Loads all matches for a competition and season with one line.
-    Example:
+
+    .. note::
+       Competition/season filtering is not yet implemented (0.1.x).
+       Currently returns all available matches regardless of arguments.
+       This will be resolved in v0.2.x.
+
+    Example::
+
         ipl = px.load_competition("ipl", 2023)
-    Returns a loader object with match_ids and match_data access.
     """
-    # For now, just use CricsheetLoader. In future, can route by competition.
+    import logging as _log
+    _log.getLogger(__name__).warning(
+        "load_competition(competition=%r, season=%r): filtering by "
+        "competition/season is not yet implemented. Returning all matches.",
+        competition, season,
+    )
     loader = CricsheetLoader(data_dir)
-    # Optionally filter match_ids by competition/season here
     return loader
 
 def get_player_stats(player_name: str, data_dir: Optional[str] = None) -> Optional[Any]:

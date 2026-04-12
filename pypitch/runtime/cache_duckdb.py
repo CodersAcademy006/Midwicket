@@ -115,6 +115,10 @@ class DuckDBCache(CacheInterface):
                 con.close()
 
     def close(self) -> None:
-        """Close any persistent connections. For DuckDBCache, connections are managed per operation."""
-        pass  # Connections are opened/closed per operation, no persistent connection to close
+        """Close persistent connections (in-memory caches hold one)."""
+        if self.path == ":memory:" and hasattr(self, "con"):
+            try:
+                self.con.close()
+            except Exception:
+                pass
 

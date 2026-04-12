@@ -34,9 +34,12 @@ class QueryTimeoutError(QueryError):
     """Raised when a query exceeds the timeout limit."""
     pass
 
-class ConnectionError(PyPitchError):
+class DatabaseConnectionError(PyPitchError):
     """Raised when database connection fails."""
     pass
+
+# Backward-compat alias (deprecated — use DatabaseConnectionError)
+ConnectionError = DatabaseConnectionError  # noqa: A001
 
 class QueryExecutionError(QueryError):
     """Raised when query execution fails."""

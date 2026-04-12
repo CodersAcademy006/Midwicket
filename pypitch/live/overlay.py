@@ -4,14 +4,17 @@ PyPitch Live Plugin: Broadcaster Integration
 Provides real-time statistics overlays for live streaming.
 Perfect for local leagues, YouTubers, and broadcasters.
 """
-from typing import Dict, Any, Optional, List
-from dataclasses import dataclass
+import logging
 import json
 import time
-from pathlib import Path
 import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
 import socketserver
+from dataclasses import dataclass
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from pathlib import Path
+from typing import Dict, Any, Optional, List
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class LiveStats:
@@ -107,8 +110,8 @@ class OverlayServer:
             with socketserver.TCPServer((self.host, self.port), OverlayHandler) as httpd:
                 self.server = httpd
                 self.is_running = True
-                print(f"🎥 Live Overlay Server started at http://{self.host}:{self.port}/overlay")
-                print("📺 Add this URL as Browser Source in OBS")
+                logger.info("Live Overlay Server started at http://%s:%s/overlay", self.host, self.port)
+                logger.info("Add this URL as Browser Source in OBS")
                 httpd.serve_forever()
 
         server_thread = threading.Thread(target=run_server, daemon=True)
@@ -122,7 +125,7 @@ class OverlayServer:
         if self.server:
             self.server.shutdown()
             self.is_running = False
-            print("🎥 Live Overlay Server stopped")
+            logger.info("Live Overlay Server stopped")
 
     def update_stats(self, stats: LiveStats):
         """Update current live statistics."""
@@ -207,7 +210,7 @@ class LiveFeedSimulator:
 
                 # Complete over
                 over += 1
-                print(f"End of over {int(over)}: {score}/{wickets}")
+                logger.info("End of over %d: %d/%d", int(over), score, wickets)
 
                 time.sleep(10)  # 10 second break between overs
 
@@ -239,10 +242,8 @@ def simulate_live_match(match_id: str, port: int = 8000):
     simulator = LiveFeedSimulator(match_id, server)
     simulator.start_simulation()
 
-    print(f"📺 OBS Browser Source: http://localhost:{port}/overlay")
-    print("\n🎮 Simulation running!")
-    print(f"📺 OBS Browser Source: http://localhost:{port}/overlay")
-    print("Press Ctrl+C to stop")
+    print(f"OBS Browser Source: http://localhost:{port}/overlay")
+    print("Simulation running! Press Ctrl+C to stop")
 
     try:
         while True:

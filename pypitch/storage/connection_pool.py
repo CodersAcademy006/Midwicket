@@ -14,10 +14,21 @@ logger = logging.getLogger(__name__)
 class ConnectionPool:
     """Thread-safe connection pool for database connections."""
 
-    def __init__(self, db_path: str, max_connections: int = 10, max_idle_time: int = 300) -> None:
+    def __init__(
+        self,
+        db_path: str,
+        max_connections: int = 10,
+        max_idle_time: int = 300,
+        threads: Optional[int] = None,
+        memory_limit: Optional[str] = None,
+    ) -> None:
+        from pypitch.config import DATABASE_THREADS, DATABASE_MEMORY_LIMIT
+
         self.db_path = db_path
         self.max_connections = max_connections
         self.max_idle_time = max_idle_time
+        self._threads = threads or DATABASE_THREADS
+        self._memory_limit = memory_limit or DATABASE_MEMORY_LIMIT
         self._connections: list[dict[str, Any]] = []
         self._condition = threading.Condition(threading.Lock())
         self._closed = False
@@ -25,9 +36,8 @@ class ConnectionPool:
     def _create_connection(self) -> duckdb.DuckDBPyConnection:
         """Create a new database connection."""
         con = duckdb.connect(self.db_path)
-        # Performance tuning
-        con.execute("PRAGMA threads=4;")
-        con.execute("PRAGMA memory_limit='2GB';")
+        con.execute(f"PRAGMA threads={self._threads};")
+        con.execute(f"PRAGMA memory_limit='{self._memory_limit}';")
         return con
 
     def _is_connection_valid(self, conn_info: dict) -> bool:
@@ -57,7 +67,7 @@ class ConnectionPool:
                     pass
         self._connections = valid_connections
 
-    def get_connection(self, timeout: Optional[float] = None) -> duckdb.DuckDBPyConnection:
+    def get_connection(self, timeout: Optional[float] = 30.0) -> duckdb.DuckDBPyConnection:
         """Get a connection from the pool."""
         with self._condition:
             if self._closed:

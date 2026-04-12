@@ -142,10 +142,11 @@ class SchemaMigration:
 
             for table_name, expected_columns in expected_tables.items():
                 # Check if table exists
-                table_exists = con.execute(f"""
-                    SELECT COUNT(*) FROM information_schema.tables
-                    WHERE table_name = '{table_name}'
-                """).fetchone()[0] > 0
+                table_exists = con.execute(
+                    "SELECT COUNT(*) FROM information_schema.tables "
+                    "WHERE table_name = ?",
+                    [table_name],
+                ).fetchone()[0] > 0
 
                 if not table_exists:
                     results["issues"].append(f"Missing table: {table_name}")
@@ -153,12 +154,13 @@ class SchemaMigration:
                     continue
 
                 # Check columns
-                actual_columns = con.execute(f"""
-                    SELECT column_name
-                    FROM information_schema.columns
-                    WHERE table_name = '{table_name}'
-                    ORDER BY ordinal_position
-                """).fetchall()
+                actual_columns = con.execute(
+                    "SELECT column_name "
+                    "FROM information_schema.columns "
+                    "WHERE table_name = ? "
+                    "ORDER BY ordinal_position",
+                    [table_name],
+                ).fetchall()
 
                 actual_column_names = [col[0] for col in actual_columns]
 

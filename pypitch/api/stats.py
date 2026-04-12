@@ -11,7 +11,7 @@ def matchup(
     batter: str,
     bowler: str,
     venue: Optional[str] = None,
-    phases: List[str] = ["Powerplay", "Middle", "Death"],
+    phases: Optional[List[str]] = None,
 ) -> MatchupResult:
     """
     Analyze the head-to-head record between a batter and bowler.
@@ -22,6 +22,9 @@ def matchup(
         >>> result = pp.stats.matchup("V Kohli", "JJ Bumrah")
         >>> print(f"Average: {result.average}")
     """
+    if phases is None:
+        phases = ["Powerplay", "Middle", "Death"]
+
     reg = get_registry()
     exc = get_executor()
 

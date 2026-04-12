@@ -45,14 +45,25 @@ from .query.matchups import MatchupQuery
 # Debug / mode helpers
 from .runtime.modes import set_debug_mode
 
-# ML model
-from .models.win_predictor import WinPredictor
-
-# Win probability
-from .compute.winprob import win_probability, set_win_model
+# Head-to-head analysis (new convenience API)
+from .api.head_to_head import head_to_head, HeadToHeadSummary
 
 # Match configuration
 from .core.match_config import MatchConfig
+
+
+# --- Lazy imports for heavyweight modules (avoid scikit-learn at import time) ---
+def __getattr__(name: str) -> Any:
+    if name == "WinPredictor":
+        from .models.win_predictor import WinPredictor
+        return WinPredictor
+    if name == "win_probability":
+        from .compute.winprob import win_probability
+        return win_probability
+    if name == "set_win_model":
+        from .compute.winprob import set_win_model
+        return set_win_model
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 # Serve helper (lazy import avoids pulling fastapi at install time)
 def serve(*args: Any, **kwargs: Any) -> None:
@@ -83,12 +94,15 @@ __all__ = [
     # Helpers
     "set_debug_mode",
     "serve",
-    # ML
+    # ML (lazy)
     "WinPredictor",
     "win_probability",
     "set_win_model",
     # Config
     "MatchConfig",
+    # Head-to-head
+    "head_to_head",
+    "HeadToHeadSummary",
     # Meta
     "__version__",
 ]

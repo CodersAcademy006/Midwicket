@@ -149,7 +149,7 @@ class PyPitchSession:
         """Singleton Accessor"""
         if cls._instance is None:
             # AUTO-BOOT: If user forgot pp.init(), just do it for them.
-            print("⚙️  Auto-initializing PyPitch (defaulting to ./data)...")
+            logger.info("Auto-initializing PyPitch (defaulting to ./data)...")
             cls._instance = PyPitchSession(data_dir="./data")
         return cls._instance
 
