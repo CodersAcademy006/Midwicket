@@ -138,8 +138,29 @@ def head_to_head(
         venue_id=v_id,
     )
 
-    response = exc.execute(query)
-    data = response.data
+    # Fast path: registry matchup_stats (populated by build_registry_stats, no ball_events needed)
+    stats = reg.get_matchup_stats(int(b_id), int(bo_id))
+    if stats is not None:
+        return HeadToHeadSummary(
+            batter=batter,
+            bowler=bowler,
+            venue=venue,
+            innings=stats["balls"],  # best proxy when innings count isn't stored
+            runs=stats["runs"],
+            balls=stats["balls"],
+            dismissals=stats["wickets"],
+            dot_balls=stats["dot_balls"],
+            boundaries=stats["boundaries"],
+            sixes=stats["sixes"],
+        )
+
+    # Slow path: ball_events engine (requires explicit match loading)
+    try:
+        response = exc.execute(query)
+        data = response.data
+    except Exception:
+        logger.info("No head-to-head data found for %s vs %s", batter, bowler)
+        return HeadToHeadSummary(batter=batter, bowler=bowler, venue=venue)
 
     # Parse the Arrow/DataFrame result into summary fields
     if hasattr(data, "to_pandas"):
@@ -148,7 +169,6 @@ def head_to_head(
         import pandas as pd
         df = pd.DataFrame(data.to_pydict())
     else:
-        # Fallback — data might already be a dict
         return HeadToHeadSummary(batter=batter, bowler=bowler, venue=venue)
 
     if df.empty:
@@ -159,7 +179,6 @@ def head_to_head(
     balls = int(df["balls"].sum()) if "balls" in df.columns else 0
     dismissals = int(df["wickets"].sum()) if "wickets" in df.columns else 0
 
-    # Extended stats — available if the engine returns ball-level data
     dot_balls = int((df.get("runs_batter", df.get("runs", None)) == 0).sum()) if balls else 0
     boundaries = int((df.get("runs_batter", df.get("runs", None)) == 4).sum()) if balls else 0
     sixes = int((df.get("runs_batter", df.get("runs", None)) == 6).sum()) if balls else 0

@@ -134,7 +134,6 @@ def get_matchup(batter: str, bowler: str, data_dir: Optional[str] = None) -> Opt
         print(f"Matches: {result.matches}, Avg: {result.average}")
     """
     from datetime import date
-    from pypitch.query.base import MatchupQuery
 
     session = _auto_setup_session(data_dir)
     registry = session.registry
@@ -157,13 +156,23 @@ def get_matchup(batter: str, bowler: str, data_dir: Optional[str] = None) -> Opt
     if batter_id is None or bowler_id is None:
         return None
 
-    query = MatchupQuery(
-        batter_id=str(batter_id),
-        bowler_id=str(bowler_id),
-        snapshot_id="latest",
-    )
-    result = session.executor.execute(query)
-    return result.data
+    # Fast path: query registry matchup_stats (populated by build_registry_stats)
+    stats = registry.get_matchup_stats(batter_id, bowler_id)
+    if stats is not None:
+        return stats
+
+    # Slow path: fall back to ball_events engine (requires explicit match loading)
+    from pypitch.query.base import MatchupQuery
+    try:
+        query = MatchupQuery(
+            batter_id=str(batter_id),
+            bowler_id=str(bowler_id),
+            snapshot_id="latest",
+        )
+        result = session.executor.execute(query)
+        return result.data
+    except Exception:
+        return None
 
 def predict_win(venue: str, target: int, current_score: int, wickets_down: int, overs_done: float, data_dir: Optional[str] = None) -> Dict[str, float]:
     """

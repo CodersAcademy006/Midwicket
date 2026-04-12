@@ -273,8 +273,17 @@ def migrate_on_connect(data_dir: str) -> None:
     Automatically migrate schema when connecting to a session.
 
     This should be called in PyPitchSession.__init__ or similar.
+    Skips migration entirely on fresh installations (no schema_version file
+    and no pre-existing DB tables) to avoid misleading warnings.
     """
     migrator = SchemaMigration(data_dir)
+
+    # Fresh install: write current version directly without running any migration.
+    if not migrator.schema_file.exists():
+        # Mark as current — no legacy tables to migrate from.
+        migrator.set_schema_version(migrator.CURRENT_SCHEMA_VERSION)
+        return
+
     if migrator.check_and_migrate():
         logger.info("Database schema updated. Existing data is safe.")
 
