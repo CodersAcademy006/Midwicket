@@ -6,8 +6,13 @@ from pathlib import Path
 from typing import Iterator, Dict, Any, Optional
 from tqdm import tqdm
 
+import os
 # Constants
 from pypitch.config import CRICSHEET_URL, DEFAULT_DATA_DIR
+
+# M4: make timeouts configurable via env vars
+_DOWNLOAD_TIMEOUT = int(os.getenv("PYPITCH_DOWNLOAD_TIMEOUT", "60"))
+_EXTRACT_TIMEOUT = int(os.getenv("PYPITCH_EXTRACT_TIMEOUT", "120"))
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +41,7 @@ class DataLoader:
         logger.info("Downloading IPL Data from %s", CRICSHEET_URL)
         
         try:
-            response = requests.get(CRICSHEET_URL, stream=True, timeout=60)
+            response = requests.get(CRICSHEET_URL, stream=True, timeout=_DOWNLOAD_TIMEOUT)
             response.raise_for_status()
             
             total_size = int(response.headers.get('content-length', 0))
