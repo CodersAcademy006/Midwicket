@@ -1,10 +1,28 @@
 """
-CricAPIAdapter: Pre-built adapter for CricAPI cricket data (example for extensibility).
+CricAPIAdapter: Pre-built adapter for CricAPI cricket data.
 
-.. note::
-    This adapter is a **planned stub** — the scaffolding exists but CricAPI support is
-    not yet implemented.  All methods raise ``NotImplementedError`` until the feature is
-    completed.  Do not rely on this module in production code.
+This adapter is **implemented and functional**.  It normalises CricAPI responses
+into the standard PyPitch adapter contract (``match_id``, ``format``, ``info``,
+``events``, ``raw``) and includes automatic retry with exponential back-off for
+transient HTTP errors (429 / 5xx).
+
+Usage::
+
+    from pypitch.sources.cricapi_adapter import CricAPIAdapter
+
+    adapter = CricAPIAdapter(api_key="YOUR_KEY")
+    ids = adapter.get_match_ids()           # list of match ID strings
+    data = adapter.get_match_data(ids[0])   # normalised match dict
+
+Requirements:
+    - A valid CricAPI key (https://cricapi.com).
+    - ``requests`` package (included in PyPitch dependencies).
+
+Maturity: **Beta** — the normalisation layer covers the core CricAPI
+``/matches`` and ``/cricketScore`` endpoints.  Edge-case fields (player
+statistics, live ball-by-ball) are not yet extracted and will appear only
+in the ``raw`` key.  Production use is supported; file issues for missing
+field support.
 """
 
 
