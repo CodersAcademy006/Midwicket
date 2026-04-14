@@ -45,8 +45,9 @@ class StreamIngestor:
         self.max_workers = max_workers
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
 
-        # Live match tracking
+        # Live match tracking — protected by _matches_lock (C4)
         self.live_matches: Dict[str, LiveMatch] = {}
+        self._matches_lock = threading.Lock()
         # Bounded queue — 10 000 deliveries ≈ ~4 full T20 matches worth of
         # pending updates.  Callers that overflow get queue.Full and should
         # back off rather than silently exhausting server memory.
@@ -101,29 +102,31 @@ class StreamIngestor:
         Returns:
             True if registered successfully
         """
-        if match_id in self.live_matches:
-            logger.warning(f"Match {match_id} already registered")
-            return False
+        with self._matches_lock:
+            if match_id in self.live_matches:
+                logger.warning("Match %s already registered", match_id)
+                return False
 
-        if metadata is None:
-            metadata = {}
+            if metadata is None:
+                metadata = {}
 
-        self.live_matches[match_id] = LiveMatch(
-            match_id=match_id,
-            source=source,
-            last_update=time.time(),
-            status='active',
-            metadata=metadata
-        )
+            self.live_matches[match_id] = LiveMatch(
+                match_id=match_id,
+                source=source,
+                last_update=time.time(),
+                status='active',
+                metadata=metadata
+            )
 
-        logger.info(f"Registered live match: {match_id} (source: {source})")
+        logger.info("Registered live match: %s (source: %s)", match_id, source)
         return True
 
     def unregister_match(self, match_id: str):
         """Unregister a match from live tracking."""
-        if match_id in self.live_matches:
-            del self.live_matches[match_id]
-            logger.info(f"Unregistered live match: {match_id}")
+        with self._matches_lock:
+            if match_id in self.live_matches:
+                del self.live_matches[match_id]
+                logger.info("Unregistered live match: %s", match_id)
 
     def update_match_data(self, match_id: str, delivery_data: Dict[str, Any]):
         """
@@ -133,12 +136,14 @@ class StreamIngestor:
             match_id: Match identifier
             delivery_data: Delivery/ball data to ingest
         """
-        if match_id not in self.live_matches:
-            logger.warning(f"Match {match_id} not registered for live tracking")
-            return
+        with self._matches_lock:
+            if match_id not in self.live_matches:
+                logger.warning("Match %s not registered for live tracking", match_id)
+                return
+            self.live_matches[match_id].last_update = time.time()
 
-        # Add to processing queue — non-blocking; raise immediately if full
-        # so the caller (API layer) can return HTTP 429 instead of hanging.
+        # Add to processing queue outside the lock — non-blocking; raise
+        # immediately if full so the API layer can return HTTP 429.
         try:
             self.update_queue.put_nowait((match_id, delivery_data))
         except queue.Full:
@@ -146,7 +151,6 @@ class StreamIngestor:
                 "Live ingestion queue is full. "
                 "The server is under load; please retry after a short delay."
             )
-        self.live_matches[match_id].last_update = time.time()
 
     def add_api_endpoint(self, name: str, url: str, headers: Dict[str, str] = None):
         """
@@ -308,31 +312,32 @@ class StreamIngestor:
 
     def get_live_matches(self) -> List[Dict[str, Any]]:
         """Get list of currently tracked live matches."""
-        return [
-            {
+        with self._matches_lock:
+            return [
+                {
+                    'match_id': match.match_id,
+                    'source': match.source,
+                    'last_update': match.last_update,
+                    'status': match.status,
+                    'metadata': match.metadata
+                }
+                for match in self.live_matches.values()
+            ]
+
+    def get_match_status(self, match_id: str) -> Optional[Dict[str, Any]]:
+        """Get status of a specific match."""
+        with self._matches_lock:
+            if match_id not in self.live_matches:
+                return None
+            match = self.live_matches[match_id]
+            return {
                 'match_id': match.match_id,
                 'source': match.source,
                 'last_update': match.last_update,
                 'status': match.status,
-                'metadata': match.metadata
+                'metadata': match.metadata,
+                'seconds_since_update': time.time() - match.last_update
             }
-            for match in self.live_matches.values()
-        ]
-
-    def get_match_status(self, match_id: str) -> Optional[Dict[str, Any]]:
-        """Get status of a specific match."""
-        if match_id not in self.live_matches:
-            return None
-
-        match = self.live_matches[match_id]
-        return {
-            'match_id': match.match_id,
-            'source': match.source,
-            'last_update': match.last_update,
-            'status': match.status,
-            'metadata': match.metadata,
-            'seconds_since_update': time.time() - match.last_update
-        }
 
 # Convenience functions
 def create_stream_ingestor(query_engine: QueryEngine) -> StreamIngestor:
