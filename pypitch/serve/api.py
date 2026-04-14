@@ -449,6 +449,7 @@ class PyPitchAPI:
         async def custom_analysis(query: Dict[str, Any], authenticated: bool = Depends(verify_api_key)):
             """Run a read-only SELECT query against ball_events."""
             import os as _os
+            from pypitch.serve.sql_guard import validate_read_only_query, SQLValidationError
             if not _os.getenv("PYPITCH_ANALYZE_ENABLED", "false").lower() == "true":
                 raise HTTPException(
                     status_code=403,
@@ -459,30 +460,23 @@ class PyPitchAPI:
                 if not sql:
                     raise HTTPException(status_code=400, detail="SQL query required")
 
-                sql_upper = sql.upper()
+                # C1: Use dedicated sql_guard validator — strict keyword blocklist,
+                # comment stripping, single-statement enforcement, complexity bounds.
+                try:
+                    sql = validate_read_only_query(
+                        sql,
+                        max_selects=5,
+                        max_joins=8,
+                        max_unions=3,
+                    )
+                except SQLValidationError as exc:
+                    raise HTTPException(status_code=403, detail=str(exc))
 
-                # Only allow SELECT statements
-                if not sql_upper.startswith("SELECT"):
-                    raise HTTPException(status_code=403, detail="Only SELECT queries are allowed")
-
-                # Block write/DDL/filesystem keywords (defence-in-depth on top of read_only=True)
-                _BLOCKED = {
-                    "DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "CREATE",
-                    "TRUNCATE", "EXEC", "EXECUTE", "XP_", "SP_", "PRAGMA",
-                    "ATTACH", "DETACH", "COPY", "EXPORT", "IMPORT", "LOAD",
-                    "INSTALL", "HTTPFS", "READ_CSV", "READ_JSON", "READ_PARQUET",
-                    "WRITE_CSV", "WRITE_PARQUET", "TO_CSV",
-                }
-                if any(kw in sql_upper.split() or sql_upper.find(kw) >= 0 for kw in _BLOCKED):
-                    raise HTTPException(status_code=403, detail="Query contains disallowed keywords")
-
-                # Inject a hard row-limit to prevent full-scan memory exhaustion
-                # Wrap the caller's query in a subquery with LIMIT applied.
-                safe_sql = f"SELECT * FROM ({sql}) AS _q LIMIT {_ANALYZE_ROW_LIMIT}"  # nosec B608 – blocklist checked above
+                # Inject a hard row-limit to prevent full-scan memory exhaustion.
+                safe_sql = f"SELECT * FROM ({sql}) AS _q LIMIT {_ANALYZE_ROW_LIMIT}"  # nosec B608 – sql_guard validated above
 
                 result = self.session.engine.execute_sql(safe_sql, read_only=True)
                 rows = result.to_pydict()
-                # Convert list-of-columns to list-of-rows, capped at _MAX_ANALYZE_ROWS
                 keys = list(rows.keys())
                 n = min(len(rows[keys[0]]) if keys else 0, _MAX_ANALYZE_ROWS)
                 records = [{k: rows[k][i] for k in keys} for i in range(n)]
