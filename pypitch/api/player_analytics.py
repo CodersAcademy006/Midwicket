@@ -1157,6 +1157,9 @@ def compare_players(player1: str, player2: str) -> Dict[str, Any]:
 # PA-25  Batting leaderboard
 # ---------------------------------------------------------------------------
 
+_MAX_LEADERBOARD_N = 100  # M7: cap unbounded top_n to prevent full-sort DOS
+
+
 def batting_leaderboard(
     sort_by: str = "runs",
     top_n: int = 10,
@@ -1201,7 +1204,7 @@ def batting_leaderboard(
         key_map = {"runs": "runs", "average": "average", "strike_rate": "strike_rate"}
         sort_key = key_map.get(sort_by, "runs")
         result.sort(key=lambda x: x[sort_key] or 0, reverse=True)
-        return result[:top_n]
+        return result[:min(top_n, _MAX_LEADERBOARD_N)]
     finally:
         con.close()
 
@@ -1259,7 +1262,7 @@ def bowling_leaderboard(
             result.sort(key=lambda x: x["bowling_average"] or 99)
         else:
             result.sort(key=lambda x: x["wickets"], reverse=True)
-        return result[:top_n]
+        return result[:min(top_n, _MAX_LEADERBOARD_N)]
     finally:
         con.close()
 
