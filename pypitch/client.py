@@ -31,7 +31,10 @@ class PyPitchClient:
         self.session = requests.Session()
 
         if api_key:
-            self.session.headers.update({"X-API-Key": api_key})
+            self.session.headers.update({
+                "X-API-Key": api_key,
+                "Authorization": f"Bearer {api_key}",
+            })
 
     def _get(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Make a GET request to the API."""
