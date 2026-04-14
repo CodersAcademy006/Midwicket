@@ -35,8 +35,13 @@ class ConnectionPool:
 
     def _create_connection(self) -> duckdb.DuckDBPyConnection:
         """Create a new database connection."""
+        # Validate before use — config.py enforces [1, 16] at import time,
+        # but defensive check here in case _threads is set directly in tests.
+        threads = int(self._threads)
+        if not (1 <= threads <= 16):
+            raise ValueError(f"Invalid thread count {threads}; must be 1-16")
         con = duckdb.connect(self.db_path)
-        con.execute(f"PRAGMA threads={self._threads};")
+        con.execute(f"PRAGMA threads={threads};")  # nosec B608 – integer validated above
         con.execute(f"PRAGMA memory_limit='{self._memory_limit}';")
         return con
 
