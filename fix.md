@@ -1,7 +1,138 @@
 # PyPitch Fix Ledger (Conversation-Wide)
 
-Date compiled: 2026-04-12
+Date compiled: 2026-04-12 (updated 2026-04-14)
 Scope: consolidated from all review/fix/re-check passes in this conversation.
+
+---
+
+## Go 13 - Session 2 Resume: Commit Cleanup + Player Analytics Plan (2026-04-14)
+
+### What Got Done This Session (Go 13)
+
+Iteration count: **Session 2, Go 13** (continuing from Go 12 close).
+
+#### Commits Pushed (this session)
+
+| Commit | Hash | What |
+|--------|------|------|
+| 1 | `3f50cda` | Fix type errors + bandit (mypy.ini, nosec B104/B608, Optional types, fetchone None-safety) |
+| 2 | `a6ba018` | CI/config/docs (CORS hardening, pytest coverage gate, .env.example, .gitignore) |
+| 3 | `abd3f7a` | Runtime bug fixes (serve/api.py ingestor Optional, metadata None guard, storage fixes) |
+| 4 | `3372cbb` | New test suites (test_executor_planner, test_schema_and_utils, test_storage_and_monitoring) |
+| 5 | `99a249a` | Integrate remote features (rate_limit, sql_guard, auth, win_model, monitoring, new tests) |
+
+#### Author rewrite
+- All commit history rewritten to `srjnupadhyay@gmail.com` via `git filter-branch --env-filter`.
+- Force-pushed to origin/main.
+
+#### Merge decision
+- Remote (origin/main) had 104 diverged commits with new features (rate-limit, sql-guard, readiness probes, Prometheus).
+- Local had 67 diverged commits with security hardening + type fixes.
+- **Decision:** kept our security fixes (CORS no-wildcard, fetchone None-safety, mypy.ini). Cherry-picked remote's new-only files. Did NOT do full merge (47 conflicts, unrelated histories).
+
+---
+
+## Go 14 - Player Performance Analytics (2026-04-14)
+
+### Scope
+Full player analytics module. Model training excluded (other dev, lands tomorrow).
+All items below implement against `ball_events` table (DuckDB).
+
+### Player Analytics — Complete List
+
+#### P1 — Core Career Stats (implement first)
+- **PA-01** Career batting aggregate: matches, innings, runs, balls faced, avg, SR, 50s, 100s, highest score, not-outs
+- **PA-02** Career bowling aggregate: matches, innings, wickets, balls bowled, runs conceded, economy, bowling avg, bowling SR, best figures (e.g. 5/23), 3-wicket hauls, 5-wicket hauls
+- **PA-03** Career fielding: catches, run-outs (from ball_events is_wicket + dismissal_kind where available)
+
+#### P2 — Phase Breakdown
+- **PA-04** Batting by phase (Powerplay overs 0-5, Middle overs 6-14, Death overs 15-19): runs, balls, SR, avg per phase
+- **PA-05** Bowling by phase: wickets, economy, avg per phase
+
+#### P3 — Venue Performance
+- **PA-06** Batting stats split by venue: runs, SR, avg at each ground
+- **PA-07** Bowling stats split by venue: economy, wickets, avg at each ground
+- **PA-08** Best and worst venue for player (top/bottom 3 by SR for batting, by economy for bowling)
+
+#### P4 — Seasonal / Temporal Trends
+- **PA-09** Season-by-season batting: runs, avg, SR per season (group by season column)
+- **PA-10** Season-by-season bowling: wickets, economy per season
+- **PA-11** Form tracker: last N matches batting (runs, SR per match); configurable N default 5
+- **PA-12** Form tracker: last N matches bowling (wickets, economy per match)
+
+#### P5 — Opposition Breakdown
+- **PA-13** Batting vs each opposition team: runs, avg, SR vs each team name
+- **PA-14** Bowling vs each opposition team: wickets, economy vs each team
+- **PA-15** Weakness detector: bowler types / teams where player avg drops >30% vs career avg
+
+#### P6 — Match Situation Analysis
+- **PA-16** Batting by innings (1st vs 2nd innings): runs, avg, SR split
+- **PA-17** Batting in chases: avg SR when target > 0, win/loss contribution proxy
+- **PA-18** High-pressure batting: performance when wickets_fallen >= 5 at time of ball
+- **PA-19** Death-over specialist score: batting SR in overs 16-19 vs career SR ratio
+
+#### P7 — Milestone & Records
+- **PA-20** Highest individual score in a single match
+- **PA-21** Best bowling figures (lowest runs for highest wickets in single innings)
+- **PA-22** Consecutive match streaks: most matches scoring 20+, most matches taking 1+ wicket
+- **PA-23** Duck count (batting) and economy cap breaks (bowling runs > 10 per over)
+
+#### P8 — Comparison & Ranking
+- **PA-24** Player comparison: side-by-side career batting/bowling for two player IDs
+- **PA-25** Leaderboard: top N batters by runs/avg/SR across all players in DB
+- **PA-26** Leaderboard: top N bowlers by wickets/economy/bowling-avg
+
+#### P9 — Matchup-Aware (builds on head_to_head.py)
+- **PA-27** Batter's record vs left-arm vs right-arm bowling (requires bowler handedness metadata — fallback: skip if not in data)
+- **PA-28** Bowler's record vs left-hand vs right-hand batters (same caveat)
+
+### API Endpoints to Add (FastAPI in serve/api.py)
+- `GET /v1/players/{player_id}/batting` → PA-01, PA-04, PA-06, PA-09, PA-11, PA-16, PA-17, PA-18, PA-19
+- `GET /v1/players/{player_id}/bowling` → PA-02, PA-05, PA-07, PA-10, PA-12
+- `GET /v1/players/{player_id}/milestones` → PA-20, PA-21, PA-22, PA-23
+- `GET /v1/players/{player_id}/vs/{opponent_id}` → already head_to_head.py; extend with phase+venue breakdown
+- `GET /v1/players/{player_id}/vs-team/{team_name}` → PA-13, PA-14, PA-15
+- `GET /v1/players/leaderboard/batting` → PA-25
+- `GET /v1/players/leaderboard/bowling` → PA-26
+- `GET /v1/players/compare` → PA-24 (query params: ?p1=id&p2=id)
+
+### Implementation Plan (one commit per item group)
+1. `pypitch/api/player_analytics.py` — core analytics functions (PA-01 to PA-28)
+2. `pypitch/serve/api.py` — wire all endpoints
+3. `tests/test_player_analytics.py` — unit tests for each function
+4. Update `pypitch/__init__.py` exports
+
+### Status
+- [ ] PA-01 Career batting
+- [ ] PA-02 Career bowling
+- [ ] PA-03 Fielding
+- [ ] PA-04 Batting by phase
+- [ ] PA-05 Bowling by phase
+- [ ] PA-06 Batting by venue
+- [ ] PA-07 Bowling by venue
+- [ ] PA-08 Best/worst venue
+- [ ] PA-09 Season batting
+- [ ] PA-10 Season bowling
+- [ ] PA-11 Form batting
+- [ ] PA-12 Form bowling
+- [ ] PA-13 Batting vs team
+- [ ] PA-14 Bowling vs team
+- [ ] PA-15 Weakness detector
+- [ ] PA-16 Batting by innings
+- [ ] PA-17 Batting in chases
+- [ ] PA-18 High-pressure batting
+- [ ] PA-19 Death-over specialist
+- [ ] PA-20 Highest score
+- [ ] PA-21 Best bowling figures
+- [ ] PA-22 Streaks
+- [ ] PA-23 Ducks/economy breaks
+- [ ] PA-24 Player comparison
+- [ ] PA-25 Batting leaderboard
+- [ ] PA-26 Bowling leaderboard
+- [ ] PA-27 vs bowler hand
+- [ ] PA-28 vs batter hand
+- [ ] API endpoints wired
+- [ ] Tests written
 
 ## Go 12 - Re-Verification Delta (Current Truth)
 
