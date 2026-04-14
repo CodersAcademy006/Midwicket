@@ -103,36 +103,39 @@ All items below implement against `ball_events` table (DuckDB).
 4. Update `pypitch/__init__.py` exports
 
 ### Status
-- [ ] PA-01 Career batting
-- [ ] PA-02 Career bowling
-- [ ] PA-03 Fielding
-- [ ] PA-04 Batting by phase
-- [ ] PA-05 Bowling by phase
-- [ ] PA-06 Batting by venue
-- [ ] PA-07 Bowling by venue
-- [ ] PA-08 Best/worst venue
-- [ ] PA-09 Season batting
-- [ ] PA-10 Season bowling
-- [ ] PA-11 Form batting
-- [ ] PA-12 Form bowling
-- [ ] PA-13 Batting vs team
-- [ ] PA-14 Bowling vs team
-- [ ] PA-15 Weakness detector
-- [ ] PA-16 Batting by innings
-- [ ] PA-17 Batting in chases
-- [ ] PA-18 High-pressure batting
-- [ ] PA-19 Death-over specialist
-- [ ] PA-20 Highest score
-- [ ] PA-21 Best bowling figures
-- [ ] PA-22 Streaks
-- [ ] PA-23 Ducks/economy breaks
-- [ ] PA-24 Player comparison
-- [ ] PA-25 Batting leaderboard
-- [ ] PA-26 Bowling leaderboard
-- [ ] PA-27 vs bowler hand
-- [ ] PA-28 vs batter hand
-- [ ] API endpoints wired
-- [ ] Tests written
+- [x] PA-01 Career batting
+- [x] PA-02 Career bowling
+- [x] PA-03 Fielding
+- [x] PA-04 Batting by phase
+- [x] PA-05 Bowling by phase
+- [x] PA-06 Batting by venue
+- [x] PA-07 Bowling by venue
+- [x] PA-08 Best/worst venue
+- [x] PA-09 Season batting
+- [x] PA-10 Season bowling
+- [x] PA-11 Form batting
+- [x] PA-12 Form bowling
+- [x] PA-13 Batting vs team
+- [x] PA-14 Bowling vs team
+- [x] PA-15 Weakness detector
+- [x] PA-16 Batting by innings
+- [x] PA-17 Batting in chases
+- [x] PA-18 High-pressure batting
+- [x] PA-19 Death-over specialist
+- [x] PA-20 Highest score
+- [x] PA-21 Best bowling figures
+- [x] PA-22 Streaks
+- [x] PA-23 Ducks/economy breaks
+- [x] PA-24 Player comparison
+- [x] PA-25 Batting leaderboard
+- [x] PA-26 Bowling leaderboard
+- [x] PA-27 vs bowler hand (best-effort, metadata note)
+- [x] PA-28 vs batter hand (best-effort, metadata note)
+- [x] API endpoints wired (7 new /v1/players/* routes)
+- [x] Tests written (40 tests, 40/40 pass)
+- [x] pypitch.__init__ exports updated
+
+**COMPLETED 2026-04-14. All PA items done.**
 
 ## Go 12 - Re-Verification Delta (Current Truth)
 
