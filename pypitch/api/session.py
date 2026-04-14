@@ -110,7 +110,8 @@ class PyPitchSession:
                     if resolved_id:
                         entity_id = resolved_id
                         break
-                except Exception:
+                except Exception as _exc:  # nosec B112
+                    logger.debug("resolve_player attempt failed for date=%s: %s", try_date, _exc)
                     continue
         
         if entity_id is None:
@@ -137,11 +138,36 @@ class PyPitchSession:
             runs_conceded=stats_dict["runs_conceded"]
         )
 
-    def get_match_stats(self, match_id: str) -> Optional[Any]:
-        """Get match statistics by ID."""
-        # This would need to be implemented based on what match stats are needed
-        # For now, return None as placeholder
-        return None
+    def get_match_stats(self, match_id: str) -> Optional[dict]:
+        """Get aggregate match statistics for a given match_id.
+
+        Queries the ball_events table (must be loaded first via load_match).
+        Returns a dict of match-level aggregates, or None if the match has no
+        data or the table does not exist yet.
+        """
+        try:
+            result = self.engine.execute_sql(
+                """
+                SELECT
+                    match_id,
+                    COUNT(*) AS total_balls,
+                    SUM(runs_batter + runs_extras) AS total_runs,
+                    SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END) AS total_wickets,
+                    MAX(over) + 1 AS overs_played
+                FROM ball_events
+                WHERE match_id = ?
+                GROUP BY match_id
+                """,
+                params=[match_id],
+            )
+            rows = result.to_pydict()
+            if not rows.get("match_id"):
+                return None
+            # Return first (and only) row as a flat dict
+            return {k: v[0] for k, v in rows.items()}
+        except Exception:
+            logger.debug("get_match_stats: no ball_events data for match_id=%s", match_id)
+            return None
 
     def _setup_db(self) -> None:
         """Deprecated: Use lazy loading."""
@@ -182,8 +208,8 @@ class PyPitchSession:
         """Fallback cleanup in case close() wasn't called explicitly."""
         try:
             self.close()
-        except:
-            pass  # Ignore errors during cleanup
+        except Exception:  # nosec B110 — best-effort; __del__ must never raise
+            logger.debug("PyPitchSession.__del__: close() raised during GC (ignored)")
 
 # Helper to expose the executor directly to API modules
 def get_executor() -> RuntimeExecutor:

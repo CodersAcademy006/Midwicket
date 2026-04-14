@@ -884,7 +884,7 @@ def plot_wagon_wheel(match_id: str, batsman_id: int, session: Any, ax: Optional[
     ax.legend(handles=legend_elements, loc='upper right')
 
     ax.set_title(f"Wagon Wheel: Boundaries by Batsman {batsman_id} (Match {match_id})")
-    ax.set_rlim(0, 15)
+    ax.set_rlim(0, 15)  # type: ignore[union-attr]  # polar axes guaranteed by subplot_kw
     
     return ax
 

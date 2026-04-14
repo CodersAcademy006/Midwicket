@@ -179,7 +179,7 @@ class LiveFeedSimulator:
                     # Random ball outcome (simplified)
                     import random
                     outcomes = [0, 1, 2, 3, 4, 6, 'W']
-                    outcome = random.choice(outcomes)
+                    outcome = random.choice(outcomes)  # nosec B311 — simulation only, not security-sensitive
 
                     if outcome == 'W':
                         wickets += 1

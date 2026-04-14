@@ -74,7 +74,7 @@ class QueryEngine:
             finally:
                 try:
                     con.unregister('arrow_view')
-                except Exception:
+                except Exception:  # nosec B110 — view may not be registered if ingest failed early
                     pass
 
     def execute_sql(self, sql: str, params: Optional[list] = None, read_only: bool = True) -> pa.Table:

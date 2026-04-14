@@ -63,7 +63,7 @@ class ConnectionPool:
                 # Close invalid connection
                 try:
                     conn_info['connection'].close()
-                except Exception:
+                except Exception:  # nosec B110 — connection may already be closed during cleanup
                     pass
         self._connections = valid_connections
 
@@ -87,7 +87,7 @@ class ConnectionPool:
                             self._connections.remove(conn_info)
                             try:
                                 conn_info['connection'].close()
-                            except Exception:
+                            except Exception:  # nosec B110 — connection may already be closed
                                 pass
                             break # Restart loop
 

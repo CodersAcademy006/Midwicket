@@ -218,7 +218,7 @@ class ThreadSafeQueryEngine:
             finally:
                 try:
                     conn.unregister('arrow_view')
-                except Exception:
+                except Exception:  # nosec B110 — view may not be registered if ingest failed early
                     pass
 
         with self._state_lock:

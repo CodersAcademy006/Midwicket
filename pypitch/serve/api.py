@@ -20,7 +20,7 @@ from pypitch.live.ingestor import StreamIngestor
 from pypitch.serve.auth import verify_api_key
 from pypitch.serve.rate_limit import check_rate_limit, rate_limiter, get_client_key
 from pypitch.serve.monitoring import record_request_metrics, record_error_metrics, metrics_collector
-from pypitch.config import API_CORS_ORIGINS
+from pypitch.config import API_CORS_ORIGINS, is_production
 from pypitch.api.session import PyPitchSession
 from pypitch.compute.winprob import win_probability as wp_func
 
@@ -50,6 +50,8 @@ class PyPitchAPI:
     Automatically creates endpoints for common operations.
     """
 
+    ingestor: Optional["StreamIngestor"]
+
     def __init__(self, session=None, *, start_ingestor: bool = True) -> None:
         """
         Initialize the PyPitch API.
@@ -58,13 +60,17 @@ class PyPitchAPI:
             session: PyPitch session instance. If None, uses singleton.
             start_ingestor: Whether to start the live ingestor (disable for testing).
         """
+        # Disable interactive docs in production — they expose the full API
+        # surface and schema to unauthenticated users.  Set PYPITCH_ENV=development
+        # (the default) to enable them locally.
+        _prod = is_production()
         self.app = FastAPI(
             title="PyPitch API",
             description="Cricket Analytics API powered by PyPitch",
             version="1.0.0",
-            docs_url="/v1/docs",
-            redoc_url="/v1/redoc",
-            openapi_url="/v1/openapi.json"
+            docs_url=None if _prod else "/v1/docs",
+            redoc_url=None if _prod else "/v1/redoc",
+            openapi_url=None if _prod else "/v1/openapi.json",
         )
 
         # CORS — never default to wildcard; require explicit config in production.
@@ -84,6 +90,9 @@ class PyPitchAPI:
         import os as _os
         _allowed_hosts_raw = _os.getenv("PYPITCH_ALLOWED_HOSTS", "localhost,127.0.0.1")
         _allowed_hosts = [h.strip() for h in _allowed_hosts_raw.split(",") if h.strip()]
+        # In testing mode, also allow the "testserver" host used by FastAPI TestClient
+        if _os.getenv("PYPITCH_ENV") == "testing" and "testserver" not in _allowed_hosts:
+            _allowed_hosts.append("testserver")
         if _allowed_hosts:
             self.app.add_middleware(TrustedHostMiddleware, allowed_hosts=_allowed_hosts)
 
@@ -298,6 +307,14 @@ class PyPitchAPI:
     def _setup_routes(self):
         """Setup all API routes."""
 
+        # ── Internal health probe (no auth) — for Docker / k8s healthchecks ──
+        # Bind this path to the PYPITCH_ALLOWED_HOSTS guard but not to auth so
+        # that container orchestrators can probe liveness without an API key.
+        @self.app.get("/_internal/health", include_in_schema=False)
+        async def internal_health():
+            """Unauthenticated liveness probe for orchestrators."""
+            return {"status": "ok"}
+
         @self.app.get("/")
         async def root():
             """API root with available endpoints."""
@@ -431,6 +448,12 @@ class PyPitchAPI:
         @self.app.post("/analyze")
         async def custom_analysis(query: Dict[str, Any], authenticated: bool = Depends(verify_api_key)):
             """Run a read-only SELECT query against ball_events."""
+            import os as _os
+            if not _os.getenv("PYPITCH_ANALYZE_ENABLED", "false").lower() == "true":
+                raise HTTPException(
+                    status_code=403,
+                    detail="Custom SQL analysis is disabled. Set PYPITCH_ANALYZE_ENABLED=true to enable.",
+                )
             try:
                 sql = query.get("sql", "").strip()
                 if not sql:
@@ -442,16 +465,20 @@ class PyPitchAPI:
                 if not sql_upper.startswith("SELECT"):
                     raise HTTPException(status_code=403, detail="Only SELECT queries are allowed")
 
-                # Block write/DDL keywords (defence-in-depth on top of read_only=True)
-                _BLOCKED = {"DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "CREATE",
-                            "TRUNCATE", "EXEC", "EXECUTE", "XP_", "SP_", "PRAGMA",
-                            "ATTACH", "DETACH", "COPY"}
+                # Block write/DDL/filesystem keywords (defence-in-depth on top of read_only=True)
+                _BLOCKED = {
+                    "DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "CREATE",
+                    "TRUNCATE", "EXEC", "EXECUTE", "XP_", "SP_", "PRAGMA",
+                    "ATTACH", "DETACH", "COPY", "EXPORT", "IMPORT", "LOAD",
+                    "INSTALL", "HTTPFS", "READ_CSV", "READ_JSON", "READ_PARQUET",
+                    "WRITE_CSV", "WRITE_PARQUET", "TO_CSV",
+                }
                 if any(kw in sql_upper.split() or sql_upper.find(kw) >= 0 for kw in _BLOCKED):
                     raise HTTPException(status_code=403, detail="Query contains disallowed keywords")
 
                 # Inject a hard row-limit to prevent full-scan memory exhaustion
                 # Wrap the caller's query in a subquery with LIMIT applied.
-                safe_sql = f"SELECT * FROM ({sql}) AS _q LIMIT {_ANALYZE_ROW_LIMIT}"
+                safe_sql = f"SELECT * FROM ({sql}) AS _q LIMIT {_ANALYZE_ROW_LIMIT}"  # nosec B608 – blocklist checked above
 
                 result = self.session.engine.execute_sql(safe_sql, read_only=True)
                 rows = result.to_pydict()
@@ -482,7 +509,7 @@ class PyPitchAPI:
                 success = self.ingestor.register_match(
                     match_id=request.match_id,
                     source=request.source,
-                    metadata=request.metadata,
+                    metadata=request.metadata or {},
                 )
                 if not success:
                     raise HTTPException(status_code=409, detail="Match already registered")
@@ -530,7 +557,7 @@ class PyPitchAPI:
                 logger.warning("get_live_matches failed: %s", e)
                 raise HTTPException(status_code=500, detail="Internal server error")
 
-    def run(self, host: str = "0.0.0.0", port: int = 8000, reload: bool = False):
+    def run(self, host: str = "0.0.0.0", port: int = 8000, reload: bool = False):  # nosec B104
         """Run the API server."""
         logger.info("Starting PyPitch API server at http://%s:%d", host, port)
         logger.info("API documentation at http://%s:%d/docs", host, port)
@@ -552,7 +579,7 @@ def create_app(session=None, *, start_ingestor: bool = True) -> FastAPI:
     api = PyPitchAPI(session=session, start_ingestor=start_ingestor)
     return api.app
 
-def serve(host: str = "0.0.0.0", port: int = 8000, reload: bool = False):
+def serve(host: str = "0.0.0.0", port: int = 8000, reload: bool = False):  # nosec B104
     """
     One-command API deployment.
 

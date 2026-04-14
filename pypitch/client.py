@@ -69,27 +69,41 @@ class PyPitchClient:
 
     def predict_win_probability(
         self,
-        venue: str,
         target: int,
-        current_score: int,
+        current_runs: int,
         wickets_down: int,
-        overs_remaining: float,
+        overs_done: float,
+        venue: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Predict win probability for a match situation."""
-        params = {
-            "venue": venue,
+        """Predict win probability for a match situation.
+
+        Args:
+            target: Target score to chase.
+            current_runs: Runs scored so far in the chase.
+            wickets_down: Wickets lost so far.
+            overs_done: Overs completed so far.
+            venue: Optional venue name (informational only).
+        """
+        query_params: Dict[str, Any] = {
             "target": target,
-            "current_score": current_score,
+            "current_runs": current_runs,
             "wickets_down": wickets_down,
-            "overs_remaining": overs_remaining,
+            "overs_done": overs_done,
         }
-        return self._get("/win_probability", params=params)
+        if venue is not None:
+            query_params["venue"] = venue
+        return self._get("/win_probability", params=query_params)
 
     def analyze_custom(
-        self, query: str, params: Optional[Dict[str, Any]] = None
+        self, sql: str, params: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Run custom analysis query."""
-        data: Dict[str, Any] = {"query": query}
+        """Run a read-only SELECT query against the ball_events table.
+
+        Args:
+            sql: A SELECT statement to execute.
+            params: Reserved for future parameterised query support.
+        """
+        data: Dict[str, Any] = {"sql": sql}
         if params:
             data["params"] = params
         return self._post("/analyze", data)
