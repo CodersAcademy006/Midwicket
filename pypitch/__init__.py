@@ -48,6 +48,38 @@ from .runtime.modes import set_debug_mode
 # Head-to-head analysis (new convenience API)
 from .api.head_to_head import head_to_head, HeadToHeadSummary
 
+# Player analytics (PA-01 to PA-28)
+from .api.player_analytics import (
+    career_batting,
+    career_bowling,
+    career_fielding,
+    batting_by_phase,
+    bowling_by_phase,
+    batting_by_venue,
+    bowling_by_venue,
+    best_worst_venues,
+    batting_by_season,
+    bowling_by_season,
+    batting_form,
+    bowling_form,
+    batting_vs_teams,
+    bowling_vs_teams,
+    weakness_detector,
+    batting_by_innings_number,
+    batting_in_chases,
+    batting_under_pressure,
+    death_over_specialist,
+    highest_score,
+    best_bowling_figures,
+    match_streaks,
+    milestones_and_failures,
+    compare_players,
+    batting_leaderboard,
+    bowling_leaderboard,
+    batting_vs_bowler_hand,
+    bowling_vs_batter_hand,
+)
+
 # Match configuration
 from .core.match_config import MatchConfig
 
