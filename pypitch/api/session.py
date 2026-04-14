@@ -162,11 +162,35 @@ class PyPitchSession:
             )
             rows = result.to_pydict()
             if not rows.get("match_id"):
+                logger.debug("get_match_stats: no rows for match_id=%s", match_id)
                 return None
-            # Return first (and only) row as a flat dict
-            return {k: v[0] for k, v in rows.items()}
+
+            # Per-inning breakdown
+            inning_result = self.engine.execute_sql(
+                """
+                SELECT
+                    inning,
+                    SUM(runs_batter + runs_extras) AS runs,
+                    SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END) AS wickets,
+                    MAX(over) + 1 AS overs
+                FROM ball_events
+                WHERE match_id = ?
+                GROUP BY inning
+                ORDER BY inning
+                """,
+                params=[match_id],
+            )
+            inning_rows = inning_result.to_pydict()
+            innings = []
+            if inning_rows.get("inning"):
+                for i in range(len(inning_rows["inning"])):
+                    innings.append({k: inning_rows[k][i] for k in inning_rows})
+
+            summary = {k: v[0] for k, v in rows.items()}
+            summary["innings"] = innings
+            return summary
         except Exception:
-            logger.debug("get_match_stats: no ball_events data for match_id=%s", match_id)
+            logger.warning("get_match_stats: failed for match_id=%s", match_id, exc_info=True)
             return None
 
     def _setup_db(self) -> None:
