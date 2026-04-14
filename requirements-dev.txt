@@ -1,5 +1,7 @@
 # Development extras — install with: pip install -r requirements-dev.txt
+# To regenerate pinned lock: pip-compile requirements.in -o requirements-lock.txt
 -r requirements.txt
+pip-tools>=7.0.0
 pytest>=7.0.0
 pytest-benchmark>=4.0.0
 mypy>=1.0.0
