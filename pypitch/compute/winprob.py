@@ -3,14 +3,42 @@
 Robust Win Probability Model for T20 Cricket
 Implements a logistic regression-based model using historical data and cricket domain logic.
 """
+import os
+import pickle
 import threading
 import numpy as np
 from typing import Dict
 from ..models.win_predictor import WinPredictor
 
+def _load_initial_model() -> WinPredictor:
+    """Load model on module init: path from env if PYPITCH_WIN_MODEL_MODE=path, else default.
+
+    Path mode is disabled when PYPITCH_ENV=production to prevent arbitrary
+    pickle deserialization in production deployments.  Use the default shipped
+    model or rebuild from source data instead.
+    """
+    mode = os.environ.get("PYPITCH_WIN_MODEL_MODE", "default").lower()
+    if mode == "path":
+        env = os.environ.get("PYPITCH_ENV", "development").lower()
+        if env == "production":
+            import warnings
+            warnings.warn(
+                "PYPITCH_WIN_MODEL_MODE=path is disabled in production "
+                "(PYPITCH_ENV=production). Falling back to the default model. "
+                "Rebuild the model from source data to deploy a custom model.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+        else:
+            model_path = os.environ.get("PYPITCH_WIN_MODEL_PATH", "")
+            if model_path:
+                with open(model_path, "rb") as f:
+                    return pickle.load(f)  # nosec B301 — path is admin-controlled env var; dev/staging only
+    return WinPredictor.load_default()
+
 # Global default model instance — protected by lock (M3)
 _model_lock = threading.Lock()
-_default_model = WinPredictor.load_default()
+_default_model = _load_initial_model()
 
 def win_probability(
     target: int,
