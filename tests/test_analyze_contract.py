@@ -19,6 +19,7 @@ class _MockSession:
 
 def test_analyze_accepts_sql_key(monkeypatch):
     monkeypatch.setattr("pypitch.serve.auth.API_KEY_REQUIRED", False)
+    monkeypatch.setenv("PYPITCH_ANALYZE_ENABLED", "true")
     app = create_app(session=_MockSession(), start_ingestor=False)
 
     with TestClient(app) as client:
@@ -31,6 +32,7 @@ def test_analyze_accepts_sql_key(monkeypatch):
 
 def test_analyze_accepts_legacy_query_key(monkeypatch):
     monkeypatch.setattr("pypitch.serve.auth.API_KEY_REQUIRED", False)
+    monkeypatch.setenv("PYPITCH_ANALYZE_ENABLED", "true")
     app = create_app(session=_MockSession(), start_ingestor=False)
 
     with TestClient(app) as client:
@@ -43,6 +45,7 @@ def test_analyze_accepts_legacy_query_key(monkeypatch):
 
 def test_analyze_binds_positional_params(monkeypatch):
     monkeypatch.setattr("pypitch.serve.auth.API_KEY_REQUIRED", False)
+    monkeypatch.setenv("PYPITCH_ANALYZE_ENABLED", "true")
     app = create_app(session=_MockSession(), start_ingestor=False)
 
     with TestClient(app) as client:
@@ -55,6 +58,7 @@ def test_analyze_binds_positional_params(monkeypatch):
 
 def test_analyze_rejects_non_list_params(monkeypatch):
     monkeypatch.setattr("pypitch.serve.auth.API_KEY_REQUIRED", False)
+    monkeypatch.setenv("PYPITCH_ANALYZE_ENABLED", "true")
     app = create_app(session=_MockSession(), start_ingestor=False)
 
     with TestClient(app) as client:
@@ -65,6 +69,7 @@ def test_analyze_rejects_non_list_params(monkeypatch):
 
 def test_analyze_rejects_comment_injection(monkeypatch):
     monkeypatch.setattr("pypitch.serve.auth.API_KEY_REQUIRED", False)
+    monkeypatch.setenv("PYPITCH_ANALYZE_ENABLED", "true")
     app = create_app(session=_MockSession(), start_ingestor=False)
 
     with TestClient(app) as client:
