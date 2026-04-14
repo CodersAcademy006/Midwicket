@@ -330,4 +330,4 @@ class TestRateLimiter:
         req.client = None
         req.headers = {"Authorization": "Bearer mytoken123"}
         key = get_client_key(req)
-        assert key.startswith("key:")
+        assert key.startswith("api_key:")
