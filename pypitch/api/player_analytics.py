@@ -47,7 +47,7 @@ _MIDDLE_MAX = 14      # overs 6-14
 # Death = overs 15-19
 
 
-def _get_con():
+def _get_con() -> Any:
     """Return live DuckDB connection from the active storage engine."""
     from pypitch.api.session import get_session
     session = get_session()

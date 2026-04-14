@@ -2,11 +2,14 @@
 Security and authentication utilities for PyPitch API.
 """
 
+import logging
 import secrets
 from typing import Optional
 from fastapi import HTTPException, Depends, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from datetime import datetime, timedelta, timezone
+
+logger = logging.getLogger(__name__)
 
 # JWT handling (conditional import)
 try:
@@ -55,6 +58,7 @@ def verify_api_key(
             token = legacy_token.strip()
 
     if not token:
+        logger.info("auth: rejected request — no API key presented")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="API key required",
@@ -69,6 +73,7 @@ def verify_api_key(
         if k.strip()
     ]
     if not valid_keys:
+        logger.warning("auth: PYPITCH_API_KEYS not configured — rejecting all requests")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Server misconfiguration: no API keys configured",
@@ -76,6 +81,7 @@ def verify_api_key(
 
     # Constant-time comparison to prevent timing attacks
     if not any(hmac.compare_digest(token, k) for k in valid_keys):
+        logger.info("auth: rejected request — invalid API key presented")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid API key",
