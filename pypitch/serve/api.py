@@ -316,7 +316,7 @@ class PyPitchAPI:
             return {"status": "ok"}
 
         @self.app.get("/")
-        async def root():
+        async def root(authenticated: bool = Depends(verify_api_key)):
             """API root with available endpoints."""
             return {
                 "message": "PyPitch API is running",
