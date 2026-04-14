@@ -505,9 +505,15 @@ class PyPitchAPI:
                     detail="Custom SQL analysis is disabled. Set PYPITCH_ANALYZE_ENABLED=true to enable.",
                 )
             try:
-                sql = query.get("sql", "").strip()
+                # Accept both "sql" and legacy "query" key
+                sql = (query.get("sql") or query.get("query") or "").strip()
                 if not sql:
                     raise HTTPException(status_code=400, detail="SQL query required")
+
+                # Validate params is a list when provided
+                params = query.get("params")
+                if params is not None and not isinstance(params, list):
+                    raise HTTPException(status_code=400, detail="params must be a list of positional values")
 
                 # C1: Use dedicated sql_guard validator — strict keyword blocklist,
                 # comment stripping, single-statement enforcement, complexity bounds.
@@ -524,7 +530,7 @@ class PyPitchAPI:
                 # Inject a hard row-limit to prevent full-scan memory exhaustion.
                 safe_sql = f"SELECT * FROM ({sql}) AS _q LIMIT {_ANALYZE_ROW_LIMIT}"  # nosec B608 – sql_guard validated above
 
-                result = self.session.engine.execute_sql(safe_sql, read_only=True)
+                result = self.session.engine.execute_sql(safe_sql, params=params, read_only=True)
                 rows = result.to_pydict()
                 keys = list(rows.keys())
                 n = min(len(rows[keys[0]]) if keys else 0, _MAX_ANALYZE_ROWS)
