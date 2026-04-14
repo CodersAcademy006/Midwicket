@@ -21,17 +21,22 @@ from pypitch.runtime.cache_duckdb import DuckDBCache
 from pypitch.core.match_config import MatchConfig
 from pypitch.sources.cricsheet_loader import CricsheetLoader
 
-# Global debug mode
+# Global debug mode — protected by lock (M3)
+import threading as _threading
 _DEBUG_MODE = False
+_debug_lock = _threading.Lock()
 
 # Global session cache for quick_load
 _cached_session: Optional[PyPitchSession] = None
 _cached_session_dir: Optional[str] = None
+_session_lock = _threading.Lock()
+
 
 def set_debug_mode(enabled: bool = True) -> None:
     """Enable debug mode for eager execution and verbose logging."""
     global _DEBUG_MODE
-    _DEBUG_MODE = enabled
+    with _debug_lock:
+        _DEBUG_MODE = enabled
     if enabled:
         print("[PyPitch] Debug mode enabled: Queries will execute eagerly for immediate error feedback.")
 
