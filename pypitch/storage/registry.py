@@ -228,17 +228,38 @@ class IdentityRegistry:
             return entity_id
 
     def resolve_player(self, name: str, match_date: Optional[date] = None, auto_ingest: bool = False) -> int:
+        # C2: defaulting to today() for historical queries returns wrong IDs
+        # when a player/team was renamed between the match date and today.
+        # Callers should always pass an explicit match_date.
         if match_date is None:
+            logger.warning(
+                "resolve_player called without match_date for %r — "
+                "defaulting to today() may return wrong ID for historical queries. "
+                "Pass an explicit match_date.",
+                name,
+            )
             match_date = date.today()
         return self._resolve_generic(name, "player", match_date, auto_ingest)
 
     def resolve_venue(self, name: str, match_date: Optional[date] = None, auto_ingest: bool = False) -> int:
         if match_date is None:
+            logger.warning(
+                "resolve_venue called without match_date for %r — "
+                "defaulting to today() may return wrong ID for historical queries. "
+                "Pass an explicit match_date.",
+                name,
+            )
             match_date = date.today()
         return self._resolve_generic(name, "venue", match_date, auto_ingest)
 
     def resolve_team(self, name: str, match_date: Optional[date] = None, auto_ingest: bool = False) -> int:
         if match_date is None:
+            logger.warning(
+                "resolve_team called without match_date for %r — "
+                "defaulting to today() may return wrong ID for historical queries. "
+                "Pass an explicit match_date.",
+                name,
+            )
             match_date = date.today()
         return self._resolve_generic(name, "team", match_date, auto_ingest)
 
