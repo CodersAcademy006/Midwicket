@@ -3,6 +3,162 @@
 Date compiled: 2026-04-12
 Scope: consolidated from all review/fix/re-check passes in this conversation.
 
+## Go 12 - Re-Verification Delta (Current Truth)
+
+Status: re-verified on 2026-04-12 with fresh command runs in this session.
+
+### Commands Re-Run
+
+- Command: `python -m mypy pypitch/visuals/worm.py --ignore-missing-imports`
+  - Result: pass
+  - Output: `Success: no issues found in 1 source file`
+
+- Command: `python -m mypy pypitch/ --ignore-missing-imports --no-incremental`
+  - Result: pass
+  - Output: `Success: no issues found in 87 source files`
+
+- Command: `python -m bandit -r pypitch/ --severity-level low --confidence-level high`
+  - Result: pass
+  - Output: `No issues identified`
+  - Exit behavior: `BANDIT_EXIT=0`
+
+- Command (as written in Go 11):
+  - `pytest ... test_report_plugin.py -q`
+  - Result: fail (path error)
+  - Output: `ERROR: file or directory not found: test_report_plugin.py`
+
+- Corrected command:
+  - `pytest tests/test_plugins_validation.py tests/test_serve.py tests/test_auth.py tests/test_cache_security.py tests/test_migration.py tests/test_report_plugin.py -q`
+  - Result: pass (`PYTEST_BUNDLE_EXIT=0`)
+  - Notes: 1 expected skip from bcrypt backend limitation in `tests/test_auth.py`.
+
+### Ledger Corrections
+
+1. The Go 11 pytest command path was incorrect (`test_report_plugin.py`); the correct path is `tests/test_report_plugin.py`.
+2. The Go 11 bandit note about expected exit code 1 due `# nosec` does not match current behavior; current run exits 0 with no findings.
+
+### Current P0 Blocker Count
+
+**0 — no open P0 blockers.**
+
+## Go 11 - Post-Fix Verification Delta
+
+Status: executed 2026-04-12. Closes the last remaining P0 blocker from Go 9/Go 10.
+
+### Fix Applied
+
+- File: `pypitch/visuals/worm.py:887`
+- Change: added `# type: ignore[union-attr]` to the `ax.set_rlim(0, 15)` call.
+- Root cause: `plt.subplots(subplot_kw={'projection': 'polar'})` at line 868 returns
+  `tuple[Figure, Axes]`, so mypy narrows `ax` from `Optional[Any]` to `Axes | Any`
+  after the `if ax is None` branch. The `Axes` stub does not expose `set_rlim`
+  (a polar-only method on `PolarAxes`), triggering the `[union-attr]` error.
+  At runtime the polar axes is guaranteed by `subplot_kw`, but mypy cannot know this
+  statically without an explicit cast. A targeted `# type: ignore[union-attr]` with an
+  explanatory comment is the minimal, zero-runtime-impact fix.
+- No runtime behaviour changed.
+
+### Commands Run (using `.venv` interpreter — exact same as user's failing invocation)
+
+- Command: `& .venv/Scripts/python.exe -m mypy pypitch/visuals/worm.py --ignore-missing-imports`
+  - Exit code: 0
+  - Output: `Success: no issues found in 1 source file`
+
+- Command: `& .venv/Scripts/python.exe -m mypy pypitch/ --ignore-missing-imports`
+  - Exit code: 0
+  - Output: `Success: no issues found in 87 source files`
+
+### Current Open P0 Blocker Count
+
+**0 — all P0 blockers are closed.**
+
+### What Remains Before PyPI Tag (P2, non-blocking)
+
+1. `thread_safe_engine.py` — 0% test coverage (DuckDB read-only pool conflicts with in-memory test setup).
+2. `models/train.py`, `features.py`, `report/pdf.py` — 0% because optional deps not installed in base env; covered by `pip install 'pypitch[report]'`.
+3. Dependency locking — run `pip-compile requirements.in > requirements.txt` before tagging.
+4. Final tag: `git tag v0.1.0 && git push --tags`.
+
+## Go 10 - Fast Re-Check Delta (What Is Left)
+
+Status: quick verification update to avoid long reruns; based on explicit command exits captured in this session.
+
+### Verified Now (Fast Pass)
+
+- `pytest tests/test_plugins_validation.py -q`
+  - Result: pass (`PLUGIN_EXIT=0`)
+
+- `pytest tests/test_serve.py -q`
+  - Result: pass (`SERVE_EXIT=0`)
+
+- `pytest tests/test_auth.py tests/test_cache_security.py tests/test_migration.py -q`
+  - Result: pass (`SECURITY_MIGRATION_EXIT=0`)
+  - Note: 1 skipped auth test due bcrypt backend limitation on password length.
+
+- `mypy pypitch/visuals/worm.py --ignore-missing-imports`
+  - Result: fail (`WORM_MYPY_EXIT=1`)
+  - Error: `pypitch/visuals/worm.py:887: error: Item "Axes" of "Axes | Any" has no attribute "set_rlim"  [union-attr]`
+
+### What Is Left (Current)
+
+1. P0: fix typing at `pypitch/visuals/worm.py:887` before `set_rlim`.
+2. Re-run type gates after that fix:
+   - `mypy pypitch/visuals/worm.py --ignore-missing-imports`
+   - `mypy pypitch/ --ignore-missing-imports`
+
+### Current Release-Blocker Count
+
+- Open P0 blockers: 1
+- Remaining blocker: worm mypy union-attr error at line 887.
+
+## Go 9 - Verification Update (Current State)
+
+Status: verified against live commands on 2026-04-12. This section supersedes Go 8 status while retaining Go 8 evidence history.
+
+### Validation Evidence (This Run)
+
+- Command: `pytest tests/test_plugins_validation.py -q`
+  - Result: pass (`PLUGIN_EXIT=0`)
+  - Outcome: allowlist-aware tests now align with runtime policy.
+
+- Command: `pytest tests/test_serve.py -q`
+  - Result: pass (`SERVE_EXIT=0`)
+  - Outcome: serve tests are green with auth-aware expectations.
+
+- Command: `pytest tests/test_auth.py tests/test_cache_security.py tests/test_migration.py -q`
+  - Result: pass with 1 skip (`SECURITY_MIGRATION_EXIT=0`)
+  - Skip detail: bcrypt backend limitation for password length in one auth test.
+
+- Command: `mypy pypitch/visuals/worm.py --ignore-missing-imports`
+  - Result: fail (`WORM_MYPY_EXIT=1`)
+  - Error: `pypitch/visuals/worm.py:887: error: Item "Axes" of "Axes | Any" has no attribute "set_rlim"  [union-attr]`
+
+- Source check: `tests/test_serve.py` now has 2 uses of `raise_server_exceptions=False`, both in auth-specific tests.
+- Source check: `.gitignore` has no global `*.ipynb` wildcard; only explicit notebook exclusions.
+
+### Current Blocker Status
+
+- Done: plugin validation blocker from Go 8.
+- Done: notebook ignore policy blocker from Go 8.
+- Done: serve exception-masking blocker from Go 8 (now targeted usage only).
+- Open (P0): mypy failure in `pypitch/visuals/worm.py` at line 887.
+
+### Minimum Remaining Path To Green
+
+1. Fix worm axis typing before calling `set_rlim` (guard with `hasattr` or cast to polar axes).
+2. Re-run:
+   - `mypy pypitch/visuals/worm.py --ignore-missing-imports`
+   - `mypy pypitch/ --ignore-missing-imports`
+   - `pytest tests/ -q`
+3. If all gates pass, mark release blockers closed.
+
+### Delta Gain Since Go 8
+
+- Plugin contract tests are now green.
+- Auth, cache security, and migration tests are green (with one non-blocking skip).
+- Serve test suite is green with updated auth behavior.
+- Remaining release blocker count reduced from 2 P0 items to 1 P0 item.
+
 ## Go 8 - Strict Senior Review Delta (Current Blockers)
 
 Status: this section is the live blocker list. The older sections below are retained as audit history and may include items that are already fixed.
