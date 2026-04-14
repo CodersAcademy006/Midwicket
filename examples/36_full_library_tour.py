@@ -11,10 +11,16 @@ Usage:
     python examples/36_full_library_tour.py
 """
 
+import sys
 import os
 import pyarrow as pa
+from datetime import date
 
 os.environ.setdefault("PYPITCH_ENV", "development")
+
+# Ensure UTF-8 stdout on Windows (CP1252 crashes on non-ASCII output)
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -88,19 +94,22 @@ from pypitch.storage.engine import QueryEngine
 n = 8
 sample = pa.table(
     {
-        "match_id":    pa.array(["m1"] * n,               type=pa.string()),
-        "inning":      pa.array([1] * n,                   type=pa.int32()),
-        "over":        pa.array(list(range(n)),             type=pa.int32()),
-        "ball":        pa.array([1] * n,                   type=pa.int32()),
-        "batter_id":   pa.array([1, 1, 1, 2, 2, 2, 1, 1], type=pa.int32()),
-        "bowler_id":   pa.array([3] * n,                   type=pa.int32()),
-        "venue_id":    pa.array([10] * n,                  type=pa.int32()),
-        "runs_batter": pa.array([4, 0, 6, 1, 2, 0, 1, 4], type=pa.int32()),
-        "runs_extras": pa.array([0] * n,                   type=pa.int32()),
-        "is_wicket":   pa.array([False] * 7 + [True],      type=pa.bool_()),
-        "wicket_type": pa.array([""] * 7 + ["bowled"],     type=pa.string()),
-        "phase":       pa.array(["Powerplay"] * n,         type=pa.string()),
-        "season":      pa.array([2023] * n,                type=pa.int32()),
+        "match_id":         pa.array(["m1"] * n,               type=pa.string()),
+        "date":             pa.array([date(2023, 4, 1)] * n,        type=pa.date32()),
+        "venue_id":         pa.array([10] * n,                  type=pa.int32()),
+        "inning":           pa.array([1] * n,                   type=pa.int8()),
+        "over":             pa.array(list(range(n)),             type=pa.int8()),
+        "ball":             pa.array([1] * n,                   type=pa.int8()),
+        "batter_id":        pa.array([1, 1, 1, 2, 2, 2, 1, 1], type=pa.int32()),
+        "bowler_id":        pa.array([3] * n,                   type=pa.int32()),
+        "non_striker_id":   pa.array([2] * n,                   type=pa.int32()),
+        "batting_team_id":  pa.array([1] * n,                   type=pa.int16()),
+        "bowling_team_id":  pa.array([2] * n,                   type=pa.int16()),
+        "runs_batter":      pa.array([4, 0, 6, 1, 2, 0, 1, 4], type=pa.int8()),
+        "runs_extras":      pa.array([0] * n,                   type=pa.int8()),
+        "is_wicket":        pa.array([False] * 7 + [True],      type=pa.bool_()),
+        "wicket_type":      pa.array([""] * 7 + ["bowled"],     type=pa.dictionary(pa.int8(), pa.string())),
+        "phase":            pa.array(["Powerplay"] * n,         type=pa.dictionary(pa.int8(), pa.string())),
     },
     schema=BALL_EVENT_SCHEMA,
 )

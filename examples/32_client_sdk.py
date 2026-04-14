@@ -10,6 +10,12 @@ Usage:
     python examples/32_client_sdk.py
 """
 
+import sys
+
+# Ensure UTF-8 stdout on Windows (CP1252 crashes on non-ASCII output)
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+
 from pypitch.client import PyPitchClient, connect, quick_health_check
 
 SERVER_URL = "http://localhost:8000"
@@ -67,11 +73,11 @@ def main() -> None:
             print(f"  Matches available: {len(matches)}")
 
             prob = client.predict_win_probability(
-                venue="Wankhede Stadium",
                 target=180,
-                current_score=95,
+                current_runs=95,
                 wickets_down=3,
-                overs_remaining=10.0,
+                overs_done=10.0,
+                venue="Wankhede Stadium",
             )
             print(f"  Win probability: {prob}")
         except Exception as exc:

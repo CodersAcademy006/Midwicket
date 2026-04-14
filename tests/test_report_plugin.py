@@ -2,6 +2,15 @@
 Tests for PyPitch Report Plugin
 
 Tests PDF generation, chart creation, and template rendering.
+
+Note: This module is skipped automatically when the optional ``reportlab``
+dependency is not installed.  Install it with::
+
+    pip install reportlab
+
+or::
+
+    pip install 'pypitch[report]'
 """
 
 import pytest
@@ -11,7 +20,11 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 from dataclasses import dataclass
 from datetime import datetime
-from reportlab.lib.pagesizes import A4
+
+# Skip the entire module when reportlab is absent — prevents collection failure
+# when the optional PDF dependency is not installed in the current environment.
+reportlab = pytest.importorskip("reportlab", reason="reportlab not installed; skipping PDF tests")
+from reportlab.lib.pagesizes import A4  # noqa: E402 — after importorskip guard
 
 from pypitch.report.pdf import PDFGenerator, ChartConfig, create_scouting_report, create_match_report
 from pypitch.api.session import PyPitchSession

@@ -260,17 +260,27 @@ class TestFastAPIApp:
 
     @pytest.fixture
     def client(self, mock_session):
-        """Create a test client for the FastAPI app."""
+        """Create a test client for the FastAPI app.
+
+        Auth is disabled via PYPITCH_API_KEY_REQUIRED=false in conftest.py.
+        TrustedHostMiddleware allows 'testserver' when PYPITCH_ENV=testing.
+        """
         from fastapi.testclient import TestClient
-        
+
         session = mock_session
         app = create_app(session=session, start_ingestor=False)
-        with TestClient(app) as client:
+        with TestClient(app) as client:  # default: raise_server_exceptions=True so real bugs surface
             yield client
 
+    def test_internal_health_endpoint(self, client):
+        """Unauthenticated internal health probe must always return 200."""
+        response = client.get("/_internal/health")
+        assert response.status_code == 200
+        assert response.json()["status"] == "ok"
+
     def test_health_endpoint(self, client):
-        """Test the health check endpoint."""
-        response = client.get("/health")
+        """Test the v1 health check endpoint."""
+        response = client.get("/v1/health")
 
         assert response.status_code == 200
         data = response.json()
@@ -280,89 +290,110 @@ class TestFastAPIApp:
         assert "uptime_seconds" in data
         assert "database_status" in data
 
+    def test_health_legacy_endpoint(self, client):
+        """Legacy /health path must still work."""
+        response = client.get("/health")
+        assert response.status_code == 200
+
     def test_predict_win_endpoint_valid(self, client):
         """Test the win prediction endpoint with valid data."""
-        # Use GET request with query parameters
         response = client.get("/win_probability", params={
             "target": 150,
             "current_runs": 50,
             "wickets_down": 2,
-            "overs_done": 10.0
+            "overs_done": 10.0,
         })
 
         assert response.status_code == 200
         data = response.json()
-
         assert "win_prob" in data
         assert "confidence" in data
 
-    def test_predict_win_endpoint_invalid(self, client):
-        """Test the win prediction endpoint with invalid data."""
-        # Test with invalid wickets_down
+    def test_predict_win_endpoint_invalid_wickets(self, client):
+        """Overs or wickets beyond valid range returns 500 from win_probability."""
         response = client.get("/win_probability", params={
             "target": 150,
             "current_runs": 50,
-            "wickets_down": 12,  # Invalid: > 10
-            "overs_done": 10.0
+            "wickets_down": 12,  # invalid: > 10
+            "overs_done": 10.0,
         })
-
-        # The function raises an exception for invalid inputs
+        # Function raises, API catches and returns 500
         assert response.status_code == 500
-        data = response.json()
-        assert "detail" in data
+        assert "detail" in response.json()
 
-    # @pytest.mark.skip(reason="Live match registration endpoint not implemented")
+    def test_analyze_disabled_by_default(self, client):
+        """Custom SQL analysis must be disabled when PYPITCH_ANALYZE_ENABLED is not set."""
+        response = client.post("/analyze", json={"sql": "SELECT 1"})
+        # Should return 403 when PYPITCH_ANALYZE_ENABLED != 'true'
+        assert response.status_code == 403
+
+    def test_auth_required_without_key(self, mock_session, monkeypatch):
+        """When auth IS required, missing key returns 401."""
+        import os
+        import pypitch.serve.auth as auth_mod
+
+        monkeypatch.setenv("PYPITCH_API_KEYS", "valid-key")
+        # Patch the module-level constant directly since it's bound at import time
+        monkeypatch.setattr(auth_mod, "API_KEY_REQUIRED", True)
+
+        from fastapi.testclient import TestClient
+        app = create_app(session=mock_session, start_ingestor=False)
+        with TestClient(app, raise_server_exceptions=False) as c:
+            response = c.get("/win_probability", params={
+                "target": 150, "current_runs": 50,
+                "wickets_down": 2, "overs_done": 10.0,
+            })
+            assert response.status_code == 401
+
+    def test_auth_accepted_with_valid_key(self, mock_session, monkeypatch):
+        """Valid X-API-Key header is accepted."""
+        import pypitch.serve.auth as auth_mod
+
+        monkeypatch.setenv("PYPITCH_API_KEYS", "valid-key")
+        monkeypatch.setattr(auth_mod, "API_KEY_REQUIRED", True)
+
+        from fastapi.testclient import TestClient
+        app = create_app(session=mock_session, start_ingestor=False)
+        with TestClient(app, raise_server_exceptions=False) as c:
+            response = c.get(
+                "/win_probability",
+                params={"target": 150, "current_runs": 50,
+                        "wickets_down": 2, "overs_done": 10.0},
+                headers={"X-API-Key": "valid-key"},
+            )
+            assert response.status_code == 200
+
     def test_register_live_match_endpoint(self, client):
-        """Test the live match registration endpoint."""
+        """Live match registration returns success."""
         payload = {
             "match_id": "test_match_456",
             "source": "webhook",
-            "metadata": {"venue": "Test Stadium"}
+            "metadata": {"venue": "Test Stadium"},
         }
-
         response = client.post("/live/register", json=payload)
-
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
         assert data["match_id"] == "test_match_456"
 
-    # @pytest.mark.skip(reason="Delivery data ingestion endpoint not implemented")
     def test_ingest_delivery_endpoint(self, client):
-        """Test the delivery data ingestion endpoint."""
-        # First register a match
-        register_payload = {
-            "match_id": "test_match_789",
-            "source": "webhook"
-        }
-        client.post("/live/register", json=register_payload)
-
-        # Then ingest delivery data
+        """Delivery ingestion endpoint returns success."""
+        client.post("/live/register", json={"match_id": "test_match_789", "source": "webhook"})
         delivery_payload = {
             "match_id": "test_match_789",
-            "inning": 1,
-            "over": 5,
-            "ball": 3,
-            "runs_total": 45,
-            "wickets_fallen": 1,
-            "target": 150,
-            "venue": "Test Stadium"
+            "inning": 1, "over": 5, "ball": 3,
+            "runs_total": 45, "wickets_fallen": 1,
+            "target": 150, "venue": "Test Stadium",
         }
-
         response = client.post("/live/ingest", json=delivery_payload)
-
         assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is True
+        assert response.json()["success"] is True
 
-    # @pytest.mark.skip(reason="Live matches endpoint not implemented")
     def test_get_live_matches_endpoint(self, client):
-        """Test the get live matches endpoint."""
+        """Live matches endpoint returns a list."""
         response = client.get("/live/matches")
-
         assert response.status_code == 200
-        data = response.json()
-        assert isinstance(data, list)
+        assert isinstance(response.json(), list)
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
