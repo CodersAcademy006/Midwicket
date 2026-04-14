@@ -16,6 +16,13 @@ from typing import Dict, Any, Optional, List
 
 logger = logging.getLogger(__name__)
 
+# C5: module-level lock guards the overlay_server global singleton.
+# Without this, two threads calling OverlayServer.start() concurrently
+# could create competing instances and race on the global reference.
+overlay_server: "Optional[OverlayServer]" = None
+_overlay_lock = threading.Lock()
+
+
 @dataclass
 class LiveStats:
     """Real-time statistics for live broadcasting."""
@@ -101,9 +108,10 @@ class OverlayServer:
                     self.send_response(404)
                     self.end_headers()
 
-        # Store reference for handler
+        # C5: acquire lock before mutating global singleton reference.
         global overlay_server
-        overlay_server = self
+        with _overlay_lock:
+            overlay_server = self
 
         # Start server in background thread
         def run_server():
