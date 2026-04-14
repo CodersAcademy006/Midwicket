@@ -6,7 +6,7 @@ Perfect for enterprise engineers and startups.
 """
 from typing import Dict, Any, Optional, List
 import uvicorn
-from fastapi import FastAPI, Request, HTTPException, Depends
+from fastapi import FastAPI, Request, HTTPException, Depends, Query
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -205,81 +205,126 @@ class PyPitchAPI:
             raise Exception(f"Win probability calculation failed: {str(e)}")
 
     def lookup_player(self, request):
-        """Lookup player information."""
+        """Lookup player by name via identity registry."""
+        from datetime import date as _date
         try:
-            # This would need to be implemented based on your registry
-            # For now, return a placeholder
+            player_id = self.session.registry.resolve_player(
+                request.name, _date.today()
+            )
+            stats = self.session.registry.get_player_stats(player_id)
+            return {
+                "player_name": request.name,
+                "player_id": player_id,
+                "found": True,
+                "stats": stats or {},
+            }
+        except Exception as exc:
+            logger.warning("lookup_player(%r) failed: %s", request.name, exc)
             return {"player_name": request.name, "found": False}
-        except Exception as e:
-            raise Exception(f"Player lookup failed: {str(e)}")
 
     def lookup_venue(self, request):
-        """Lookup venue information."""
+        """Lookup venue by name via identity registry."""
+        from datetime import date as _date
         try:
-            # This would need to be implemented based on your data
-            # For now, return a placeholder
+            venue_id = self.session.registry.resolve_venue(
+                request.name, _date.today()
+            )
+            stats = self.session.registry.get_venue_stats(venue_id)
+            return {
+                "venue_name": request.name,
+                "venue_id": venue_id,
+                "found": True,
+                "stats": stats or {},
+            }
+        except Exception as exc:
+            logger.warning("lookup_venue(%r) failed: %s", request.name, exc)
             return {"venue_name": request.name, "found": False}
-        except Exception as e:
-            raise Exception(f"Venue lookup failed: {str(e)}")
 
     def get_matchup_stats(self, request):
-        """Get matchup statistics between batter and bowler."""
+        """Get head-to-head matchup stats from registry."""
+        from datetime import date as _date
         try:
-            # This would need to be implemented based on your data
-            # For now, return a placeholder
+            reg = self.session.registry
+            b_id = reg.resolve_player(request.batter, _date.today())
+            bo_id = reg.resolve_player(request.bowler, _date.today())
+            stats = reg.get_matchup_stats(b_id, bo_id)
             return {
                 "batter": request.batter,
                 "bowler": request.bowler,
-                "matches": 0,
-                "stats": {}
+                "found": stats is not None,
+                "stats": stats or {},
             }
-        except Exception as e:
-            raise Exception(f"Matchup stats retrieval failed: {str(e)}")
+        except Exception as exc:
+            logger.warning("get_matchup_stats failed: %s", exc)
+            return {"batter": request.batter, "bowler": request.bowler, "found": False, "stats": {}}
 
     def get_fantasy_points(self, request):
-        """Calculate fantasy points for a player."""
+        """Return career batting + bowling aggregates as fantasy-relevant stats."""
+        from pypitch.api.player_analytics import career_batting, career_bowling
         try:
-            # This would need to be implemented based on your fantasy logic
-            # For now, return a placeholder
-            return {"player": request.player_name, "points": 0}
-        except Exception as e:
-            raise Exception(f"Fantasy points calculation failed: {str(e)}")
+            batting = career_batting(request.player_name)
+            bowling = career_bowling(request.player_name)
+            return {
+                "player": request.player_name,
+                "batting": batting,
+                "bowling": bowling,
+                "note": "Full fantasy scoring requires loaded fantasy_points_avg table.",
+            }
+        except Exception as exc:
+            logger.warning("get_fantasy_points(%r) failed: %s", request.player_name, exc)
+            return {"player": request.player_name, "points": 0, "found": False}
 
     def get_player_stats(self, request):
-        """Get player statistics with filters."""
+        """Get player career stats via player_analytics."""
+        from pypitch.api.player_analytics import career_batting, career_bowling
         try:
-            # This would need to be implemented based on your stats logic
-            # For now, return a placeholder
+            return {
+                "player": request.player_name,
+                "batting": career_batting(request.player_name),
+                "bowling": career_bowling(request.player_name),
+            }
+        except Exception as exc:
+            logger.warning("get_player_stats(%r) failed: %s", request.player_name, exc)
             return {"player": request.player_name, "stats": {}}
-        except Exception as e:
-            raise Exception(f"Player stats retrieval failed: {str(e)}")
 
     def register_live_match(self, request):
-        """Register a match for live tracking."""
+        """Register a match for live tracking via ingestor."""
+        if self.ingestor is None:
+            return {"match_id": request.match_id, "registered": False, "error": "ingestor not running"}
         try:
-            # This would need to be implemented based on your live tracking
-            # For now, return a placeholder
-            return {"match_id": request.match_id, "registered": True}
-        except Exception as e:
-            raise Exception(f"Live match registration failed: {str(e)}")
+            ok = self.ingestor.register_match(
+                request.match_id,
+                source=getattr(request, "source", "webhook"),
+                metadata=getattr(request, "metadata", {}),
+            )
+            return {"match_id": request.match_id, "registered": ok}
+        except Exception as exc:
+            logger.warning("register_live_match failed: %s", exc)
+            return {"match_id": request.match_id, "registered": False, "error": str(exc)}
 
     def ingest_delivery_data(self, request):
-        """Ingest live delivery data."""
+        """Ingest a live delivery into the active match via ingestor."""
+        if self.ingestor is None:
+            return {"match_id": request.match_id, "ingested": False, "error": "ingestor not running"}
         try:
-            # This would need to be implemented based on your live ingestion
-            # For now, return a placeholder
+            self.ingestor.update_match_data(
+                request.match_id,
+                delivery_data=getattr(request, "delivery", {}),
+            )
             return {"match_id": request.match_id, "ingested": True}
-        except Exception as e:
-            raise Exception(f"Delivery data ingestion failed: {str(e)}")
+        except Exception as exc:
+            logger.warning("ingest_delivery_data failed: %s", exc)
+            return {"match_id": request.match_id, "ingested": False, "error": str(exc)}
 
     def get_live_matches(self):
-        """Get list of currently live matches."""
-        try:
-            # This would need to be implemented based on your live tracking
-            # For now, return a placeholder
+        """Return live match list from ingestor."""
+        if self.ingestor is None:
             return {"matches": []}
-        except Exception as e:
-            raise Exception(f"Live matches retrieval failed: {str(e)}")
+        try:
+            return {"matches": self.ingestor.get_live_matches()}
+        except Exception as exc:
+            logger.warning("get_live_matches failed: %s", exc)
+            return {"matches": []}
 
     def get_health_status(self):
         """Get health status of the API."""
@@ -423,13 +468,15 @@ class PyPitchAPI:
 
         @self.app.get("/win_probability")
         async def win_probability(
-            target: int = 150,
-            current_runs: int = 50,
-            wickets_down: int = 2,
-            overs_done: float = 10.0,
+            target: int = Query(150, gt=0, le=720, description="Target score (1-720)"),
+            current_runs: int = Query(50, ge=0, le=720, description="Runs scored so far"),
+            wickets_down: int = Query(2, ge=0, le=10, description="Wickets fallen (0-10)"),
+            overs_done: float = Query(10.0, ge=0.0, le=20.0, description="Overs completed (0-20)"),
             authenticated: bool = Depends(verify_api_key),
         ):
             """Calculate win probability for current match state."""
+            if current_runs > target:
+                raise HTTPException(status_code=400, detail="current_runs cannot exceed target")
             try:
                 result = wp_func(
                     target=target,
@@ -438,6 +485,8 @@ class PyPitchAPI:
                     overs_done=overs_done,
                 )
                 return result
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
             except Exception as e:
                 logger.warning("win_probability failed: %s", e)
                 raise HTTPException(status_code=500, detail="Internal server error")

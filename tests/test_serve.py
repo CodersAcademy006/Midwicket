@@ -124,7 +124,8 @@ class TestPyPitchAPI:
         assert isinstance(response, dict)
         assert "batter" in response
         assert "bowler" in response
-        assert "matches" in response
+        # H1 fix: returns found + stats (not matches)
+        assert "found" in response
         assert "stats" in response
 
     def test_get_fantasy_points(self, api_instance):
@@ -310,15 +311,15 @@ class TestFastAPIApp:
         assert "confidence" in data
 
     def test_predict_win_endpoint_invalid_wickets(self, client):
-        """Overs or wickets beyond valid range returns 500 from win_probability."""
+        """Wickets beyond valid range now returns 422 (FastAPI Query validation)."""
         response = client.get("/win_probability", params={
             "target": 150,
             "current_runs": 50,
             "wickets_down": 12,  # invalid: > 10
             "overs_done": 10.0,
         })
-        # Function raises, API catches and returns 500
-        assert response.status_code == 500
+        # H5 fix: Query(le=10) enforced at FastAPI layer → 422 Unprocessable Entity
+        assert response.status_code == 422
         assert "detail" in response.json()
 
     def test_analyze_disabled_by_default(self, client):
