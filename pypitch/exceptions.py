@@ -107,6 +107,9 @@ class WebhookError(LiveError):
 
 # Legacy exceptions for backward compatibility
 MatchDataMissing = DataError  # Alias for existing usage
+# Backward-compat alias — ingestor.py imports ConnectionError directly.
+# New code must use DatabaseConnectionError.
+ConnectionError = DatabaseConnectionError  # noqa: A001
 
 __all__ = [
     'PyPitchError',
@@ -116,5 +119,5 @@ __all__ = [
     'SessionError', 'SessionInitializationError', 'DependencyError',
     'PluginError', 'PluginLoadError', 'PluginNotFoundError',
     'LiveError', 'StreamError', 'WebhookError',
-    'MatchDataMissing'  # Backward compatibility
+    'MatchDataMissing', 'ConnectionError',
 ]
