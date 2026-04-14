@@ -14,8 +14,14 @@ Usage:
     python examples/33_session_and_registry.py
 """
 
+import sys
 import duckdb
 from datetime import date
+
+# Ensure UTF-8 stdout on Windows (CP1252 crashes on non-ASCII output)
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+
 from pypitch.storage.registry import IdentityRegistry
 
 

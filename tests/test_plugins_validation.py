@@ -38,17 +38,18 @@ class TestPluginManager:
         plugins = plugin_manager.discover_plugins()
         assert plugins == []
 
-    @patch.dict('os.environ', {'PYPITCH_PLUGINS': 'test_plugin:test_module'})
+    @patch.dict('os.environ', {'PYPITCH_PLUGINS': 'test_plugin:test_module', 'PYPITCH_PLUGIN_ALLOWLIST': 'test_module'})
     def test_discover_plugins_with_env(self, plugin_manager):
-        """Test plugin discovery with environment variable."""
+        """Test plugin discovery with environment variable and matching allowlist."""
         plugins = plugin_manager.discover_plugins()
         assert len(plugins) == 1
         assert plugins[0].name == "test_plugin"
         assert plugins[0].entry_point == "test_module"
 
+    @patch.dict('os.environ', {'PYPITCH_PLUGIN_ALLOWLIST': 'test_module'})
     @patch('importlib.import_module')
     def test_load_plugin_success(self, mock_import, plugin_manager):
-        """Test successful plugin loading."""
+        """Test successful plugin loading with allowlist set."""
         # Mock the plugin module
         mock_module = Mock()
         mock_module.register_metrics.return_value = {"test_metric": lambda x: x}
