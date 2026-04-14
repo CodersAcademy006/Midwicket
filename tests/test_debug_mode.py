@@ -35,7 +35,7 @@ def test_executor_debug_forces_collect():
 
     # Mock planner
     executor.planner = Mock()
-    executor.planner.create_legacy_plan.return_value = {"sql": "SELECT * FROM test"}
+    executor.planner.plan.return_value = {"sql": "SELECT * FROM test"}
 
     result = executor.execute(mock_query)
 

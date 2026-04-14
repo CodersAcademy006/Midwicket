@@ -10,6 +10,16 @@ _VALID_TABLES = frozenset({
     "venue_bias", "chase_history", "venue_baselines",
 })
 
+# Map from query class name → preferred materialized table.
+# The executor will pick "materialized_view" strategy when the table is loaded.
+_QUERY_PREFERRED_TABLES: Dict[str, List[str]] = {
+    "MatchupQuery": ["matchup_stats"],
+    "FantasyQuery": ["fantasy_points_avg"],
+    "PhaseQuery": ["phase_stats"],
+    "VenueBiasQuery": ["venue_bias", "chase_history"],
+    "WinProbQuery": [],  # routed directly to win_probability(), never hits SQL
+}
+
 
 def _validate_table(name: str) -> str:
     """Ensure *name* is a known table identifier (defence-in-depth)."""
@@ -67,20 +77,44 @@ class QueryPlanner:
         """  # nosec B608 – all interpolated values are internal schema names/params, not user input
         return sql, params
 
+    def plan(self, query: BaseQuery) -> Dict[str, Any]:
+        """
+        Unified query planner — the preferred, non-legacy entry point.
+
+        Identical contract to ``create_legacy_plan`` but uses the built-in
+        ``_QUERY_PREFERRED_TABLES`` map as the primary routing authority.
+        Call this from new code; ``create_legacy_plan`` is retained for
+        backwards compatibility only.
+        """
+        return self.create_legacy_plan(query)
+
     def create_legacy_plan(self, query: BaseQuery) -> Dict[str, Any]:
         """
         Creates an execution plan by analysing query dependencies.
 
+        Prefers materialized views registered in ``engine.derived_versions``
+        using either the query's own ``requires`` dict or the built-in
+        ``_QUERY_PREFERRED_TABLES`` map (whichever fires first).
+
         Returns a dict with ``strategy``, ``target_table``, ``sql``,
         ``params``, and ``cost``.
         """
-        reqs = query.requires
-        available_tables = self.engine.derived_versions.keys()
+        reqs = getattr(query, "requires", {})
+        available_tables = getattr(self.engine, "derived_versions", {}).keys()
+
+        # Merge preferred tables: built-in map wins over query-level hints so
+        # newly-registered query types automatically participate in optimisation.
+        query_type = query.__class__.__name__
+        builtin_preferred = _QUERY_PREFERRED_TABLES.get(query_type, [])
+        query_preferred = reqs.get("preferred_tables", [])
+        preferred_tables = builtin_preferred + [
+            t for t in query_preferred if t not in builtin_preferred
+        ]
 
         strategy = "raw_scan"
         target_table = reqs.get("fallback_table", "ball_events")
 
-        for table in reqs.get("preferred_tables", []):
+        for table in preferred_tables:
             if table in available_tables:
                 strategy = "materialized_view"
                 target_table = table
@@ -136,26 +170,36 @@ class QueryPlanner:
         """Return ``(sql, params)`` for the given query type."""
         table = _validate_table(table)
 
-        if query.__class__.__name__ == "MatchupQuery":
+        qtype = query.__class__.__name__
+
+        if qtype == "MatchupQuery":
             batter_id = getattr(query, "batter_id")
             bowler_id = getattr(query, "bowler_id")
             sql = f"""
                 SELECT
-                    sum(runs_batter) as runs,
-                    count(*) as balls,
-                    sum(case when is_wicket=true then 1 else 0 end) as wickets
+                    sum(runs_batter)                                        AS runs,
+                    count(*)                                                AS balls,
+                    sum(case when is_wicket=true then 1 else 0 end)        AS wickets,
+                    ROUND(sum(runs_batter)*100.0/NULLIF(count(*),0), 2)    AS strike_rate,
+                    ROUND(sum(runs_batter)*1.0/NULLIF(
+                        sum(case when is_wicket=true then 1 else 0 end),0), 2) AS average
                 FROM {table}
                 WHERE batter_id = ?
                   AND bowler_id = ?
             """  # nosec B608 – {table} is an internal constant; user values are parameterised
             return sql, [batter_id, bowler_id]
 
-        if query.__class__.__name__ == "FantasyQuery":
+        if qtype == "FantasyQuery":
             venue_id = getattr(query, "venue_id")
             sql = f"""
                 SELECT
-                    batter_id as player_id,
-                    SUM(runs_batter) + SUM(CASE WHEN is_wicket THEN 20 ELSE 0 END) as avg_points
+                    batter_id                                                       AS player_id,
+                    SUM(runs_batter)                                                AS runs,
+                    SUM(CASE WHEN runs_batter = 4 THEN 1 ELSE 0 END)               AS fours,
+                    SUM(CASE WHEN runs_batter = 6 THEN 1 ELSE 0 END)               AS sixes,
+                    SUM(CASE WHEN is_wicket THEN 20 ELSE 0 END)
+                        + SUM(runs_batter)                                          AS avg_points,
+                    COUNT(DISTINCT match_id)                                        AS matches
                 FROM {table}
                 WHERE venue_id = ?
                 GROUP BY batter_id
@@ -163,11 +207,43 @@ class QueryPlanner:
             """  # nosec B608
             return sql, [venue_id]
 
-        # Generic fallback
+        if qtype == "PhaseQuery":
+            batter_id = getattr(query, "batter_id", None)
+            phase = getattr(query, "phase", "all")
+            where, params = self._build_where_clause(query)
+            sql = f"""
+                SELECT
+                    phase,
+                    count(*)                                                AS balls,
+                    sum(runs_batter)                                        AS runs,
+                    sum(case when is_wicket then 1 else 0 end)             AS wickets,
+                    ROUND(sum(runs_batter)*100.0/NULLIF(count(*),0), 2)   AS strike_rate
+                FROM {table}
+                WHERE {where}
+                GROUP BY phase
+                ORDER BY phase
+            """  # nosec B608
+            return sql, params
+
+        if qtype == "VenueBiasQuery":
+            venue_id = getattr(query, "venue_id", None)
+            sql = f"""
+                SELECT
+                    inning,
+                    COUNT(DISTINCT match_id)        AS matches,
+                    SUM(runs_batter + runs_extras)  AS total_runs,
+                    AVG(runs_batter + runs_extras)  AS avg_runs_per_ball
+                FROM {table}
+                WHERE venue_id = ?
+                GROUP BY inning
+            """  # nosec B608
+            return sql, [venue_id]
+
+        # Generic fallback — warns so developers know to add an explicit handler
         logger.warning(
             "No specialised SQL handler for %s — falling back to full scan. "
             "Consider adding an explicit handler in QueryPlanner._generate_sql.",
-            query.__class__.__name__,
+            qtype,
         )
         where, params = self._build_where_clause(query)
         return f"SELECT * FROM {table} WHERE {where}", params  # nosec B608
