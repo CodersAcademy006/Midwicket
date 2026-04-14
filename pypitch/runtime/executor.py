@@ -94,23 +94,35 @@ class RuntimeExecutor:
                 )
             )
 
-        # ── 0.1.x: legacy planning path ──────────────────────────────────────
-        # create_legacy_plan returns {"strategy", "sql", "params", "cost"}.
-        # We enforce ExecutionMode here even though full Planner-first routing
-        # (prefer-materialization, cost estimation) is planned for v0.2.x.
+        # ── Planner-first routing ─────────────────────────────────────────────
+        # create_legacy_plan checks query.requires["preferred_tables"] against
+        # engine.derived_versions and selects "materialized_view" if any match,
+        # otherwise "raw_scan".  We honour BUDGET/APPROX constraints here.
         plan = self.planner.create_legacy_plan(query)
+        strategy = plan.get("strategy", "raw_scan")
 
-        if mode == ExecutionMode.BUDGET and plan["strategy"] == "raw_scan":
+        if strategy == "materialized_view":
+            _log.debug(
+                "Planner: using materialized view %r for %s",
+                plan.get("target_table"),
+                query.__class__.__name__,
+            )
+        elif mode == ExecutionMode.BUDGET:
             raise RuntimeError(
                 f"ExecutionMode.BUDGET forbids raw scans, but no materialized "
                 f"view covers query {query.__class__.__name__}. "
                 f"Either materialise the required table first or use "
                 f"ExecutionMode.EXACT."
             )
-        if mode == ExecutionMode.APPROX and plan["strategy"] == "raw_scan":
+        elif mode == ExecutionMode.APPROX:
             _log.warning(
-                "ExecutionMode.APPROX: falling back to raw_scan for %s "
-                "(no materialized view available)",
+                "ExecutionMode.APPROX: no materialized view available for %s, "
+                "falling back to raw_scan",
+                query.__class__.__name__,
+            )
+        else:
+            _log.debug(
+                "Planner: raw_scan for %s (no materialized view registered)",
                 query.__class__.__name__,
             )
 
