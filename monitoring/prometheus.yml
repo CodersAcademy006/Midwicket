@@ -13,6 +13,6 @@ scrape_configs:
   - job_name: "pypitch-api"
     static_configs:
       - targets: ["pypitch-api:8000"]
-    metrics_path: /v1/metrics
-    # API key auth header (set PYPITCH_API_KEY in your shell before `docker compose up`)
-    # bearer_token: "${PYPITCH_API_KEY}"
+    metrics_path: /metrics
+    # If API key auth is enabled, set bearer_token to one key listed in PYPITCH_API_KEYS.
+    # bearer_token: "replace-with-one-api-key"
