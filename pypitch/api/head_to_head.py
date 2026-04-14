@@ -158,8 +158,8 @@ def head_to_head(
     try:
         response = exc.execute(query)
         data = response.data
-    except Exception:
-        logger.info("No head-to-head data found for %s vs %s", batter, bowler)
+    except (RuntimeError, LookupError, TypeError, ValueError) as e:
+        logger.info("No head-to-head data found for %s vs %s: %s", batter, bowler, e)
         return HeadToHeadSummary(batter=batter, bowler=bowler, venue=venue)
 
     # Parse the Arrow/DataFrame result into summary fields
