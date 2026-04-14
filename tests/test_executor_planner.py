@@ -6,7 +6,7 @@ import pytest
 import pyarrow as pa
 from unittest.mock import MagicMock, patch
 from pypitch.runtime.executor import RuntimeExecutor, ExecutionMode, ExecutionResult
-from pypitch.runtime.planner import QueryPlanner, _validate_table
+from pypitch.runtime.planner import QueryPlanner, _validate_table, _QUERY_PREFERRED_TABLES
 from pypitch.query.base import MatchupQuery
 
 
@@ -411,3 +411,92 @@ class TestValidateTable:
         from pypitch.runtime.planner import _VALID_TABLES
         for t in _VALID_TABLES:
             assert _validate_table(t) == t
+
+
+# ---------------------------------------------------------------------------
+# Go-18 (High-2): Unified plan() — non-legacy entry point
+# ---------------------------------------------------------------------------
+
+class TestUnifiedPlanMethod:
+    """planner.plan() is the promoted interface; must be equivalent to create_legacy_plan."""
+
+    def test_plan_returns_same_as_legacy(self):
+        engine = _make_engine(derived_versions={"matchup_stats": "v1"})
+        planner = QueryPlanner(engine)
+        query = _matchup_query()
+
+        via_plan = planner.plan(query)
+        via_legacy = planner.create_legacy_plan(query)
+
+        assert via_plan["strategy"] == via_legacy["strategy"]
+        assert via_plan["target_table"] == via_legacy["target_table"]
+        assert via_plan["cost"] == via_legacy["cost"]
+
+    def test_plan_uses_builtin_preferred_tables(self):
+        """MatchupQuery prefers matchup_stats from the built-in map even without query.requires."""
+        engine = _make_engine(derived_versions={"matchup_stats": "v2"})
+        planner = QueryPlanner(engine)
+        query = _matchup_query()
+
+        plan = planner.plan(query)
+        assert plan["strategy"] == "materialized_view"
+        assert plan["target_table"] == "matchup_stats"
+
+    def test_plan_falls_back_for_unregistered_query_type(self):
+        """A query type not in _QUERY_PREFERRED_TABLES falls back to raw_scan."""
+        from pypitch.query.defs import WinProbQuery
+        engine = _make_engine(derived_versions={})
+        planner = QueryPlanner(engine)
+        q = WinProbQuery(
+            snapshot_id="s",
+            venue_id=1,
+            target_score=180,
+            current_runs=90,
+            current_wickets=3,
+            overs_remaining=5.0,
+        )
+        plan = planner.plan(q)
+        # WinProbQuery maps to [] preferred tables → always raw_scan
+        assert plan["strategy"] == "raw_scan"
+
+    def test_executor_uses_plan_not_legacy(self):
+        """executor.execute() should call planner.plan(), not create_legacy_plan."""
+        cache = _FakeCache()
+        engine = _make_engine()
+        executor = RuntimeExecutor(cache, engine)
+
+        with patch.object(executor.planner, "plan", wraps=executor.planner.plan) as mock_plan, \
+             patch.object(executor.planner, "create_legacy_plan", wraps=executor.planner.create_legacy_plan) as mock_legacy:
+            query = _matchup_query(snapshot_id="probe-snap")
+            executor.execute(query)
+
+        mock_plan.assert_called_once()
+
+
+class TestQueryPreferredTablesRegistry:
+    """_QUERY_PREFERRED_TABLES covers all supported query types."""
+
+    def test_matchup_prefers_matchup_stats(self):
+        assert "matchup_stats" in _QUERY_PREFERRED_TABLES["MatchupQuery"]
+
+    def test_fantasy_prefers_fantasy_points_avg(self):
+        assert "fantasy_points_avg" in _QUERY_PREFERRED_TABLES["FantasyQuery"]
+
+    def test_winprobquery_has_empty_preference(self):
+        # WinProbQuery routes to model, never SQL — empty preferred tables
+        assert _QUERY_PREFERRED_TABLES["WinProbQuery"] == []
+
+    def test_phase_query_registered(self):
+        assert "PhaseQuery" in _QUERY_PREFERRED_TABLES
+
+    def test_venue_bias_registered(self):
+        assert "VenueBiasQuery" in _QUERY_PREFERRED_TABLES
+
+    def test_all_entries_reference_valid_tables(self):
+        """Every table listed in preferred tables is in _VALID_TABLES (or empty)."""
+        from pypitch.runtime.planner import _VALID_TABLES
+        for qtype, tables in _QUERY_PREFERRED_TABLES.items():
+            for t in tables:
+                assert t in _VALID_TABLES, (
+                    f"_QUERY_PREFERRED_TABLES[{qtype!r}] references unknown table {t!r}"
+                )

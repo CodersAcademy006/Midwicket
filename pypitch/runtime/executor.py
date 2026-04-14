@@ -94,11 +94,12 @@ class RuntimeExecutor:
                 )
             )
 
-        # ── Planner-first routing ─────────────────────────────────────────────
-        # create_legacy_plan checks query.requires["preferred_tables"] against
-        # engine.derived_versions and selects "materialized_view" if any match,
-        # otherwise "raw_scan".  We honour BUDGET/APPROX constraints here.
-        plan = self.planner.create_legacy_plan(query)
+        # ── Planner routing ───────────────────────────────────────────────────
+        # planner.plan() is the unified entry point; it checks the built-in
+        # _QUERY_PREFERRED_TABLES map and query.requires["preferred_tables"]
+        # against engine.derived_versions, selecting "materialized_view" when
+        # a registered table is found, otherwise "raw_scan".
+        plan = self.planner.plan(query)
         strategy = plan.get("strategy", "raw_scan")
 
         if strategy == "materialized_view":
