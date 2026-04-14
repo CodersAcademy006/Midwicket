@@ -15,6 +15,23 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+
+# Proxy helpers — defined at module level so tests can patch them via
+# "pypitch.api.fantasy.get_session" etc. without circular-import issues.
+def get_session():
+    from pypitch.api.session import PyPitchSession
+    return PyPitchSession.get()
+
+
+def get_executor():
+    from pypitch.api.session import get_executor as _get_executor
+    return _get_executor()
+
+
+def get_registry():
+    from pypitch.api.session import get_registry as _get_registry
+    return _get_registry()
+
 _SORT_CANDIDATES = ("avg_points", "fantasy_points_avg", "runs", "strike_rate")
 
 # Standard T20 fantasy scoring weights (customisable by league)
@@ -53,8 +70,6 @@ def fantasy_score(
         Dict with player, season, matches, batting_pts, bowling_pts,
         total_pts, per_match_avg, and breakdown sub-dicts.
     """
-    from pypitch.api.session import get_session
-
     weights = {**_DEFAULT_SCORING, **(scoring or {})}
 
     season_clause = "AND season = ?" if season else ""
@@ -79,16 +94,27 @@ def fantasy_score(
         session = get_session()
 
         # --- Batting stats ---
+        # Aggregate to per-match totals first so 50s/100s are counted on
+        # match-level scores, not individual delivery values (which top out at 6).
         bat_sql = f"""  -- nosec B608
+            WITH per_match AS (
+                SELECT
+                    match_id,
+                    SUM(runs_batter)                                    AS match_runs,
+                    SUM(CASE WHEN runs_batter = 4 THEN 1 ELSE 0 END)   AS match_fours,
+                    SUM(CASE WHEN runs_batter = 6 THEN 1 ELSE 0 END)   AS match_sixes
+                FROM ball_events
+                WHERE batter = ? {season_clause}
+                GROUP BY match_id
+            )
             SELECT
-                COUNT(DISTINCT match_id)                                 AS matches,
-                SUM(runs_batter)                                         AS runs,
-                SUM(CASE WHEN runs_batter = 4 THEN 1 ELSE 0 END)        AS fours,
-                SUM(CASE WHEN runs_batter = 6 THEN 1 ELSE 0 END)        AS sixes,
-                COUNT(DISTINCT CASE WHEN runs_batter >= 50 THEN match_id END) AS fifties,
-                COUNT(DISTINCT CASE WHEN runs_batter >= 100 THEN match_id END) AS hundreds
-            FROM ball_events
-            WHERE batter = ? {season_clause}
+                COUNT(*)                                                     AS matches,
+                SUM(match_runs)                                              AS runs,
+                SUM(match_fours)                                             AS fours,
+                SUM(match_sixes)                                             AS sixes,
+                COUNT(CASE WHEN match_runs >= 50 AND match_runs < 100 THEN 1 END) AS fifties,
+                COUNT(CASE WHEN match_runs >= 100 THEN 1 END)               AS hundreds
+            FROM per_match
         """
         bat_res = session.engine.execute_sql(bat_sql, params=params_bat).to_pydict()
         matches = int((bat_res.get("matches") or [0])[0] or 0)
@@ -172,27 +198,23 @@ def cheat_sheet(venue: str, last_n_years: int = 3) -> pd.DataFrame:
     Returns a DataFrame sorted by best available fantasy-value column.
     At minimum returns career batting SR and runs at the venue.
     """
-    from pypitch.api.session import get_executor, get_registry, get_session
     from pypitch.query.defs import FantasyQuery
-
-    reg = get_registry()
-    exc = get_executor()
-
-    v_id = reg.resolve_venue(venue, date.today())
-
-    q = FantasyQuery(
-        venue_id=v_id,
-        roles=["all"],
-        min_matches=5,
-        snapshot_id="latest",
-    )
 
     df: Optional[pd.DataFrame] = None
     try:
+        reg = get_registry()
+        exc = get_executor()
+        v_id = reg.resolve_venue(venue, date.today())
+        q = FantasyQuery(
+            venue_id=v_id,
+            roles=["all"],
+            min_matches=5,
+            snapshot_id="latest",
+        )
         response = exc.execute(q)
         df = response.data.to_pandas()
     except (RuntimeError, AttributeError, TypeError, ValueError) as e:
-        logger.debug("cheat_sheet: executor failed for venue=%r: %s — falling back", venue, e)
+        logger.debug("cheat_sheet: executor/registry failed for venue=%r: %s — falling back", venue, e)
 
     # Fallback: aggregate from ball_events directly
     if df is None or df.empty:
@@ -239,8 +261,6 @@ def venue_bias(venue: str) -> Dict[str, Any]:
 
     Falls back to neutral 50/50 when no data is available.
     """
-    from pypitch.api.session import get_session
-
     try:
         session = get_session()
         result = session.engine.execute_sql(
