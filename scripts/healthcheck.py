@@ -4,7 +4,7 @@ import sys
 
 def check_health():
     try:
-        with urllib.request.urlopen('http://localhost:8000/health', timeout=5) as response:
+        with urllib.request.urlopen('http://localhost:8000/_internal/health', timeout=5) as response:
             if response.getcode() == 200:
                 sys.exit(0)
             else:

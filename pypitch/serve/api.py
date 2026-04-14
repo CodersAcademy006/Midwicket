@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel
+from datetime import date as _date_type
 import json
 from pathlib import Path
 import time
@@ -27,6 +28,19 @@ from pypitch.compute.winprob import win_probability as wp_func
 logger = logging.getLogger(__name__)
 
 # Pydantic models for request validation
+class PlayerLookupRequest(BaseModel):
+    name: str
+    match_date: Optional[_date_type] = None  # ISO date string; used for historical alias resolution
+
+class VenueLookupRequest(BaseModel):
+    name: str
+    match_date: Optional[_date_type] = None
+
+class MatchupRequest(BaseModel):
+    batter: str
+    bowler: str
+    match_date: Optional[_date_type] = None  # pass match date for correct historical resolution
+
 class LiveMatchRegistration(BaseModel):
     match_id: str
     source: str
@@ -100,7 +114,7 @@ class PyPitchAPI:
         @self.app.middleware("http")
         async def rate_limit_middleware(request: Request, call_next):
             # Skip rate limiting for docs and health endpoints
-            if request.url.path in ["/v1/docs", "/v1/redoc", "/v1/openapi.json", "/health", "/"]:
+            if request.url.path in ["/v1/docs", "/v1/redoc", "/v1/openapi.json", "/health", "/_internal/health", "/"]:
                 return await call_next(request)
 
             await check_rate_limit(request)
@@ -205,11 +219,25 @@ class PyPitchAPI:
             raise Exception(f"Win probability calculation failed: {str(e)}")
 
     def lookup_player(self, request):
-        """Lookup player by name via identity registry."""
+        """Lookup player by name via identity registry.
+
+        Uses ``request.match_date`` (date object) when present so that
+        historical alias resolution is correct for old data queries.
+        Falls back to today only if no date is supplied — callers should
+        always supply a date for historical data queries.
+        """
         from datetime import date as _date
+        explicit_date = getattr(request, "match_date", None)
+        if explicit_date is None:
+            logger.warning(
+                "lookup_player: no match_date supplied for %r — "
+                "falling back to today(), which may give incorrect results for historical data.",
+                request.name,
+            )
+        resolve_date = explicit_date or _date.today()
         try:
             player_id = self.session.registry.resolve_player(
-                request.name, _date.today()
+                request.name, resolve_date
             )
             stats = self.session.registry.get_player_stats(player_id)
             return {
@@ -217,17 +245,31 @@ class PyPitchAPI:
                 "player_id": player_id,
                 "found": True,
                 "stats": stats or {},
+                "resolved_as_of": resolve_date.isoformat(),
             }
         except Exception as exc:
             logger.warning("lookup_player(%r) failed: %s", request.name, exc)
             return {"player_name": request.name, "found": False}
 
     def lookup_venue(self, request):
-        """Lookup venue by name via identity registry."""
+        """Lookup venue by name via identity registry.
+
+        Uses ``request.match_date`` when present for correct historical alias
+        resolution (e.g. venue renames across seasons).
+        Logs a warning when falling back to today() for historical queries.
+        """
         from datetime import date as _date
+        explicit_date = getattr(request, "match_date", None)
+        if explicit_date is None:
+            logger.warning(
+                "lookup_venue: no match_date supplied for %r — "
+                "falling back to today(), which may be incorrect for historical data.",
+                request.name,
+            )
+        resolve_date = explicit_date or _date.today()
         try:
             venue_id = self.session.registry.resolve_venue(
-                request.name, _date.today()
+                request.name, resolve_date
             )
             stats = self.session.registry.get_venue_stats(venue_id)
             return {
@@ -235,24 +277,40 @@ class PyPitchAPI:
                 "venue_id": venue_id,
                 "found": True,
                 "stats": stats or {},
+                "resolved_as_of": resolve_date.isoformat(),
             }
         except Exception as exc:
             logger.warning("lookup_venue(%r) failed: %s", request.name, exc)
             return {"venue_name": request.name, "found": False}
 
     def get_matchup_stats(self, request):
-        """Get head-to-head matchup stats from registry."""
+        """Get head-to-head matchup stats from registry.
+
+        Uses ``request.match_date`` when present so resolution is historically
+        correct (avoids mis-resolving a player who was known under a different
+        alias in an earlier season).
+        Logs a warning when falling back to today() without explicit date.
+        """
         from datetime import date as _date
+        explicit_date = getattr(request, "match_date", None)
+        if explicit_date is None:
+            logger.warning(
+                "get_matchup_stats: no match_date supplied for %r vs %r — "
+                "falling back to today(); pass match_date for accurate historical resolution.",
+                request.batter, request.bowler,
+            )
+        resolve_date = explicit_date or _date.today()
         try:
             reg = self.session.registry
-            b_id = reg.resolve_player(request.batter, _date.today())
-            bo_id = reg.resolve_player(request.bowler, _date.today())
+            b_id = reg.resolve_player(request.batter, resolve_date)
+            bo_id = reg.resolve_player(request.bowler, resolve_date)
             stats = reg.get_matchup_stats(b_id, bo_id)
             return {
                 "batter": request.batter,
                 "bowler": request.bowler,
                 "found": stats is not None,
                 "stats": stats or {},
+                "resolved_as_of": resolve_date.isoformat(),
             }
         except Exception as exc:
             logger.warning("get_matchup_stats failed: %s", exc)
@@ -428,7 +486,15 @@ class PyPitchAPI:
         @self.app.get("/matches")
         async def list_matches(authenticated: bool = Depends(verify_api_key)):
             """List all available matches."""
-            return {"matches": [], "count": 0}
+            try:
+                result = self.session.engine.execute_sql(
+                    "SELECT DISTINCT match_id FROM ball_events ORDER BY match_id"
+                )
+                rows = result.to_pydict()
+                match_ids = rows.get("match_id", [])
+                return {"matches": match_ids, "count": len(match_ids)}
+            except (RuntimeError, AttributeError, TypeError):
+                return {"matches": [], "count": 0}
 
         @self.app.get("/matches/{match_id}")
         async def get_match(match_id: str, authenticated: bool = Depends(verify_api_key)):
@@ -455,6 +521,33 @@ class PyPitchAPI:
             except Exception as e:
                 logger.warning("get_match(%s) failed: %s", match_id, e)
                 raise HTTPException(status_code=404, detail="Match not found")
+
+        @self.app.get("/teams/{team_id}")
+        async def get_team_stats(team_id: str, authenticated: bool = Depends(verify_api_key)):
+            """Get statistics for a specific team."""
+            try:
+                result = self.session.engine.execute_sql(
+                    """
+                    SELECT
+                        batting_team AS team,
+                        COUNT(DISTINCT match_id) AS matches,
+                        SUM(runs_batter + runs_extras) AS total_runs,
+                        SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END) AS total_wickets
+                    FROM ball_events
+                    WHERE LOWER(batting_team) = LOWER(?)
+                    GROUP BY batting_team
+                    """,
+                    [team_id],
+                )
+                rows = result.to_pydict()
+                if not rows.get("team"):
+                    raise HTTPException(status_code=404, detail="Team not found")
+                return {k: rows[k][0] for k in rows}
+            except HTTPException:
+                raise
+            except (RuntimeError, AttributeError, TypeError, ValueError) as e:
+                logger.warning("get_team_stats(%s) failed: %s", team_id, e)
+                raise HTTPException(status_code=404, detail="Team not found")
 
         @self.app.get("/players/{player_id}")
         async def get_player_stats(player_id: int, authenticated: bool = Depends(verify_api_key)):
@@ -755,6 +848,81 @@ class PyPitchAPI:
             except Exception as e:
                 logger.warning("compare_players failed: %s", e)
                 raise HTTPException(status_code=500, detail="Internal server error")
+
+        # ------------------------------------------------------------------
+        # Identity resolution endpoints — typed routes with explicit date
+        # ------------------------------------------------------------------
+
+        @self.app.get("/v1/players/resolve")
+        async def resolve_player(
+            name: str = Query(..., description="Player name as stored in registry"),
+            match_date: _date_type = Query(
+                ...,
+                description="ISO date of the match/query (YYYY-MM-DD). "
+                            "Required for accurate historical alias resolution.",
+            ),
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """Resolve a player name to its canonical entity ID.
+
+            Pass ``match_date`` for any historical queries — without it the
+            resolution uses today's date which may return the wrong alias for
+            players who changed teams or were renamed across seasons.
+            """
+
+            class _Req:
+                pass
+
+            req = _Req()
+            req.name = name
+            req.match_date = match_date
+            return self.lookup_player(req)
+
+        @self.app.get("/v1/venues/resolve")
+        async def resolve_venue(
+            name: str = Query(..., description="Venue name as stored in registry"),
+            match_date: _date_type = Query(
+                ...,
+                description="ISO date of the match (YYYY-MM-DD). "
+                            "Required for venues that were renamed across seasons.",
+            ),
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """Resolve a venue name to its canonical entity ID."""
+
+            class _Req:
+                pass
+
+            req = _Req()
+            req.name = name
+            req.match_date = match_date
+            return self.lookup_venue(req)
+
+        @self.app.get("/v1/matchup")
+        async def matchup_stats(
+            batter: str = Query(..., description="Batter name"),
+            bowler: str = Query(..., description="Bowler name"),
+            match_date: _date_type = Query(
+                ...,
+                description="ISO date for historical alias resolution (YYYY-MM-DD). "
+                            "Required for accurate historical data queries.",
+            ),
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """Return head-to-head matchup stats from the registry.
+
+            Passing ``match_date`` ensures the batter and bowler names are
+            resolved against aliases that were valid on that date.
+            """
+
+            class _Req:
+                pass
+
+            req = _Req()
+            req.batter = batter
+            req.bowler = bowler
+            req.match_date = match_date
+            return self.get_matchup_stats(req)
 
         @self.app.get("/v1/players/leaderboard/batting")
         async def batting_leaderboard_endpoint(
