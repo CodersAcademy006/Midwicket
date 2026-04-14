@@ -157,7 +157,7 @@ def plot_worm_graph(match_id: str, bowler_id: int, session: Any, ax: Optional[An
         # Execute with parameters
         arrow_table = session.engine.execute_sql(query, [match_id, bowler_id])
         df = arrow_table.to_pandas()
-    except Exception:
+    except (RuntimeError, AttributeError, TypeError, ValueError):
         # DuckDB throws if table doesn't exist or other SQL errors
         # We assume mostly it's missing data if the query fails on a valid schema
         raise MatchDataMissing(f"Match ID {match_id} does not have ball-by-ball data")
@@ -172,12 +172,12 @@ def plot_worm_graph(match_id: str, bowler_id: int, session: Any, ax: Optional[An
                 try:
                     name = session.registry.con.execute("SELECT primary_name FROM entities WHERE id = ?", [bid]).fetchone()
                     bowler_names.append(f"{name[0] if name else 'Unknown'} (ID: {bid})")
-                except Exception:
+                except (RuntimeError, AttributeError):
                     bowler_names.append(f"ID: {bid}")
             
             bowlers_list = "\n".join(f"  - {name}" for name in bowler_names)
             error_msg = f"No data found for bowler {bowler_id} in match {match_id}.\n\nBowlers who bowled in this match:\n{bowlers_list}\n\nTip: Try a different match where this bowler participated."
-        except Exception:
+        except (RuntimeError, AttributeError, TypeError):
             error_msg = f"No data found for bowler {bowler_id} in match {match_id}. Ensure the match data is loaded."
         
         raise MatchDataMissing(error_msg)
@@ -242,7 +242,7 @@ def plot_match_worm(match_id: str, session: Any, ax: Optional[Any] = None) -> An
     try:
         arrow_table = session.engine.execute_sql(query, [match_id])
         df = arrow_table.to_pandas()
-    except Exception:
+    except (RuntimeError, AttributeError, TypeError, ValueError):
         raise MatchDataMissing(f"Match ID {match_id} does not have ball-by-ball data")
 
     if df.empty:
@@ -332,7 +332,7 @@ def plot_run_pressure(match_id: str, session: Any, ax: Optional[Any] = None) -> 
     try:
         arrow_table = session.engine.execute_sql(query, [match_id])
         df = arrow_table.to_pandas()
-    except Exception:
+    except (RuntimeError, AttributeError, TypeError, ValueError):
         raise MatchDataMissing(f"Match ID {match_id} does not have ball-by-ball data")
 
     if df.empty:
@@ -425,7 +425,7 @@ def plot_batter_pacing(match_id: str, batsman_id: int, session: Any, ax: Optiona
     try:
         arrow_table = session.engine.execute_sql(query, [match_id, batsman_id])
         df = arrow_table.to_pandas()
-    except Exception:
+    except (RuntimeError, AttributeError, TypeError, ValueError):
         raise MatchDataMissing(f"Match ID {match_id} does not have ball-by-ball data")
 
     if df.empty:
@@ -437,12 +437,12 @@ def plot_batter_pacing(match_id: str, batsman_id: int, session: Any, ax: Optiona
                 try:
                     name = session.registry.con.execute("SELECT primary_name FROM entities WHERE id = ?", [bid]).fetchone()
                     batsman_names.append(f"{name[0] if name else 'Unknown'} (ID: {bid})")
-                except Exception:
+                except (RuntimeError, AttributeError):
                     batsman_names.append(f"ID: {bid}")
             
             batsmen_list = "\n".join(f"  - {name}" for name in batsman_names)
             error_msg = f"No data found for batsman {batsman_id} in match {match_id}.\n\nBatsmen who batted in this match:\n{batsmen_list}\n\nTip: Try a different match where this batsman participated."
-        except Exception:
+        except (RuntimeError, AttributeError, TypeError):
             error_msg = f"No data found for batsman {batsman_id} in match {match_id}. Ensure the match data is loaded."
         
         raise MatchDataMissing(error_msg)
@@ -539,7 +539,7 @@ def plot_momentum_swings(match_id: str, session: Any, ax: Optional[Any] = None) 
     try:
         arrow_table = session.engine.execute_sql(query, [match_id])
         df = arrow_table.to_pandas()
-    except Exception:
+    except (RuntimeError, AttributeError, TypeError, ValueError):
         raise MatchDataMissing(f"Match ID {match_id} does not have ball-by-ball data")
 
     if df.empty:
@@ -607,7 +607,7 @@ def plot_momentum_swings(match_id: str, session: Any, ax: Optional[Any] = None) 
     try:
         arrow_table = session.engine.execute_sql(query, [match_id])
         df = arrow_table.to_pandas()
-    except Exception:
+    except (RuntimeError, AttributeError, TypeError, ValueError):
         raise MatchDataMissing(f"Match ID {match_id} does not have ball-by-ball data")
 
     if df.empty:
@@ -662,7 +662,7 @@ def plot_manhattan(match_id: str, session: Any, ax: Optional[Any] = None) -> Any
     try:
         arrow_table = session.engine.execute_sql(query, [match_id])
         df = arrow_table.to_pandas()
-    except Exception:
+    except (RuntimeError, AttributeError, TypeError, ValueError):
         raise MatchDataMissing(f"Match ID {match_id} does not have ball-by-ball data")
 
     if df.empty:
@@ -759,7 +759,7 @@ def plot_beehive(match_id: str, bowler_id: int, session: Any, ax: Optional[Any] 
     try:
         arrow_table = session.engine.execute_sql(query, [match_id, bowler_id])
         df = arrow_table.to_pandas()
-    except Exception:
+    except (RuntimeError, AttributeError, TypeError, ValueError):
         raise MatchDataMissing(f"Match ID {match_id} does not have ball-by-ball data")
 
     if df.empty:
@@ -858,7 +858,7 @@ def plot_wagon_wheel(match_id: str, batsman_id: int, session: Any, ax: Optional[
     try:
         arrow_table = session.engine.execute_sql(query, [match_id, batsman_id])
         df = arrow_table.to_pandas()
-    except Exception:
+    except (RuntimeError, AttributeError, TypeError, ValueError):
         raise MatchDataMissing(f"Match ID {match_id} does not have ball-by-ball data")
 
     if df.empty:
@@ -918,7 +918,7 @@ def plot_partnership_flow(match_id: str, session: Any, ax: Optional[Any] = None)
     try:
         arrow_table = session.engine.execute_sql(query, [match_id])
         df = arrow_table.to_pandas()
-    except Exception:
+    except (RuntimeError, AttributeError, TypeError, ValueError):
         raise MatchDataMissing(f"Match ID {match_id} does not have ball-by-ball data")
 
     if df.empty:

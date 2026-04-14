@@ -189,7 +189,7 @@ class PyPitchSession:
             summary = {k: v[0] for k, v in rows.items()}
             summary["innings"] = innings
             return summary
-        except Exception:
+        except (RuntimeError, AttributeError, TypeError, ValueError):
             logger.warning("get_match_stats: failed for match_id=%s", match_id, exc_info=True)
             return None
 
@@ -222,10 +222,10 @@ class PyPitchSession:
         if PyPitchSession._instance is self:
             PyPitchSession._instance = None
 
-    def __enter__(self):
+    def __enter__(self) -> "PyPitchSession":
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         self.close()
 
     def __del__(self):
