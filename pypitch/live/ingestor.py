@@ -6,10 +6,11 @@ Supports webhooks, API polling, and streaming data sources.
 """
 
 import asyncio
+import hashlib
 import threading
 import time
-from typing import Dict, Any, Optional, Callable, List
-from dataclasses import dataclass
+from typing import Dict, Any, Optional, Callable, List, Set
+from dataclasses import dataclass, field
 import json
 import requests
 import logging
@@ -20,6 +21,11 @@ from ..storage.engine import QueryEngine
 from ..exceptions import DataIngestionError, ConnectionError
 
 logger = logging.getLogger(__name__)
+
+# Retry policy constants
+_MAX_RETRY_ATTEMPTS = 3
+_RETRY_BACKOFF_BASE = 0.5   # seconds; actual delay = base * 2^attempt
+_DEAD_LETTER_MAX = 1_000    # cap dead-letter queue to prevent unbounded growth
 
 @dataclass
 class LiveMatch:
@@ -48,11 +54,23 @@ class StreamIngestor:
         # Live match tracking — protected by _matches_lock (C4)
         self.live_matches: Dict[str, LiveMatch] = {}
         self._matches_lock = threading.Lock()
+
         # Bounded queue — 10 000 deliveries ≈ ~4 full T20 matches worth of
         # pending updates.  Callers that overflow get queue.Full and should
         # back off rather than silently exhausting server memory.
         self.update_queue: queue.Queue = queue.Queue(maxsize=10_000)
         self.stop_event = threading.Event()
+
+        # Durable deduplication — keyed by (match_id, inning, over, ball).
+        # Protected by _seen_lock so concurrent ingestion threads never
+        # insert the same delivery twice.
+        self._seen_delivery_keys: Set[str] = set()
+        self._seen_lock = threading.Lock()
+
+        # Dead-letter storage for deliveries that exhausted all retries.
+        # A bounded list; oldest entries are dropped when the cap is hit.
+        self.dead_letter: List[Dict[str, Any]] = []
+        self._dead_letter_lock = threading.Lock()
 
         # Webhook server
         self.webhook_server = None
@@ -226,52 +244,119 @@ class StreamIngestor:
         except Exception as e:
             logger.error(f"Failed to start webhook server: {e}")
 
+    @staticmethod
+    def _delivery_key(match_id: str, delivery_data: Dict[str, Any]) -> str:
+        """
+        Build a stable deduplication key for a delivery.
+
+        Uses (match_id, inning, over, ball) — the natural primary key for a
+        ball in a cricket match.  Falls back to a content hash so that
+        deliveries without full coordinates are still deduplicated when the
+        identical payload is enqueued twice.
+        """
+        inning = delivery_data.get("inning")
+        over = delivery_data.get("over")
+        ball = delivery_data.get("ball")
+        if inning is not None and over is not None and ball is not None:
+            return f"{match_id}:{inning}:{over}:{ball}"
+        # Fallback: hash the full payload
+        payload = json.dumps({**delivery_data, "_mid": match_id}, sort_keys=True)
+        return hashlib.sha256(payload.encode()).hexdigest()
+
+    def _is_duplicate(self, key: str) -> bool:
+        """Thread-safe duplicate check + mark-seen in one atomic operation."""
+        with self._seen_lock:
+            if key in self._seen_delivery_keys:
+                return True
+            self._seen_delivery_keys.add(key)
+            return False
+
+    def _send_to_dead_letter(
+        self,
+        match_id: str,
+        delivery_data: Dict[str, Any],
+        reason: str,
+    ) -> None:
+        """Append to dead-letter list; drops the oldest entry when at cap."""
+        entry = {
+            "match_id": match_id,
+            "delivery": delivery_data,
+            "reason": reason,
+            "failed_at": time.time(),
+        }
+        with self._dead_letter_lock:
+            if len(self.dead_letter) >= _DEAD_LETTER_MAX:
+                self.dead_letter.pop(0)  # evict oldest
+            self.dead_letter.append(entry)
+        logger.error(
+            "ingestor: delivery sent to dead-letter — match=%s reason=%s",
+            match_id, reason,
+        )
+
     def _process_updates(self):
-        """Process match updates from the queue."""
+        """Process match updates from the queue with deduplication and retry."""
         while not self.stop_event.is_set():
             try:
-                # Get update with timeout
                 match_id, delivery_data = self.update_queue.get(timeout=1.0)
 
-                # Process the update
-                self._ingest_delivery_data(match_id, delivery_data)
+                key = self._delivery_key(match_id, delivery_data)
+                if self._is_duplicate(key):
+                    logger.debug(
+                        "ingestor: duplicate delivery dropped — match=%s key=%s",
+                        match_id, key,
+                    )
+                    self.update_queue.task_done()
+                    continue
 
-                # Notify callbacks
-                if self.on_match_update:
+                # Retry loop with exponential back-off
+                last_exc: Optional[Exception] = None
+                for attempt in range(_MAX_RETRY_ATTEMPTS):
                     try:
-                        self.on_match_update(match_id, delivery_data)
-                    except Exception as e:
-                        logger.error(f"Update callback error: {e}")
+                        self._ingest_delivery_data(match_id, delivery_data)
+                        last_exc = None
+                        break
+                    except Exception as exc:
+                        last_exc = exc
+                        delay = _RETRY_BACKOFF_BASE * (2 ** attempt)
+                        logger.warning(
+                            "ingestor: attempt %d/%d failed for match=%s (%s); "
+                            "retrying in %.1fs",
+                            attempt + 1, _MAX_RETRY_ATTEMPTS, match_id, exc, delay,
+                        )
+                        time.sleep(delay)
+
+                if last_exc is not None:
+                    self._send_to_dead_letter(
+                        match_id, delivery_data,
+                        reason=f"exhausted {_MAX_RETRY_ATTEMPTS} retries: {last_exc}",
+                    )
+                else:
+                    # Notify callbacks only on success
+                    if self.on_match_update:
+                        try:
+                            self.on_match_update(match_id, delivery_data)
+                        except Exception as cb_exc:
+                            logger.error("ingestor: update callback error: %s", cb_exc)
 
                 self.update_queue.task_done()
 
             except queue.Empty:
                 continue
-            except Exception as e:
-                logger.error(f"Update processing error: {e}")
+            except Exception as exc:
+                logger.error("ingestor: unexpected processing error: %s", exc)
 
     def _ingest_delivery_data(self, match_id: str, delivery_data: Dict[str, Any]):
-        """Ingest delivery data into the database."""
-        try:
-            # Validate required fields
-            required_fields = ['inning', 'over', 'ball', 'runs_total', 'wickets_fallen']
-            missing = [f for f in required_fields if f not in delivery_data]
-            if missing:
-                raise DataIngestionError(f"Missing required fields: {missing}")
+        """Ingest a single delivery into the database (raises on failure)."""
+        required_fields = ['inning', 'over', 'ball', 'runs_total', 'wickets_fallen']
+        missing = [f for f in required_fields if f not in delivery_data]
+        if missing:
+            raise DataIngestionError(f"Missing required fields: {missing}")
 
-            # Add match_id and timestamp
-            delivery_data['match_id'] = match_id
-            delivery_data['timestamp'] = time.time()
+        delivery_data['match_id'] = match_id
+        delivery_data['timestamp'] = time.time()
 
-            # Insert into database
-            # This assumes the query engine has a method for live data insertion
-            self.query_engine.insert_live_delivery(delivery_data)
-
-            logger.debug(f"Ingested delivery for match {match_id}: {delivery_data}")
-
-        except Exception as e:
-            logger.error(f"Failed to ingest delivery data for {match_id}: {e}")
-            raise
+        self.query_engine.insert_live_delivery(delivery_data)
+        logger.debug("ingestor: ingested delivery for match %s: %s", match_id, delivery_data)
 
     def _poll_apis(self):
         """Poll configured API endpoints for updates."""
@@ -323,6 +408,18 @@ class StreamIngestor:
                 }
                 for match in self.live_matches.values()
             ]
+
+    def get_dead_letter_items(self) -> List[Dict[str, Any]]:
+        """Return a snapshot of the dead-letter list (failed deliveries)."""
+        with self._dead_letter_lock:
+            return list(self.dead_letter)
+
+    def clear_dead_letter(self) -> int:
+        """Clear dead-letter list; returns number of entries removed."""
+        with self._dead_letter_lock:
+            count = len(self.dead_letter)
+            self.dead_letter.clear()
+        return count
 
     def get_match_status(self, match_id: str) -> Optional[Dict[str, Any]]:
         """Get status of a specific match."""
