@@ -46,8 +46,8 @@ def cheat_sheet(venue: str, last_n_years: int = 3) -> pd.DataFrame:
     try:
         response = exc.execute(q)
         df = response.data.to_pandas()
-    except Exception:
-        logger.debug("cheat_sheet: executor failed for venue=%r, falling back", venue)
+    except (RuntimeError, AttributeError, TypeError, ValueError) as e:
+        logger.debug("cheat_sheet: executor failed for venue=%r: %s — falling back", venue, e)
 
     # Fallback: aggregate from ball_events directly
     if df is None or df.empty:
@@ -73,8 +73,8 @@ def cheat_sheet(venue: str, last_n_years: int = 3) -> pd.DataFrame:
                 params=[venue],
             )
             df = result.to_pandas()
-        except Exception:
-            logger.warning("cheat_sheet: ball_events fallback also failed for venue=%r", venue, exc_info=True)
+        except (RuntimeError, AttributeError, TypeError, ValueError) as e:
+            logger.warning("cheat_sheet: ball_events fallback also failed for venue=%r: %s", venue, e, exc_info=True)
             return pd.DataFrame()
 
     if df.empty:
@@ -171,8 +171,8 @@ def venue_bias(venue: str) -> Dict[str, Any]:
             "win_chase_pct": chase_pct,
             "verdict": verdict,
         }
-    except Exception:
-        logger.debug("venue_bias: no data for %r, returning neutral", venue)
+    except (RuntimeError, AttributeError, TypeError, ValueError, ZeroDivisionError) as e:
+        logger.debug("venue_bias: no data for %r (%s), returning neutral", venue, e)
         return {
             "venue": venue,
             "total_matches_analysed": 0,

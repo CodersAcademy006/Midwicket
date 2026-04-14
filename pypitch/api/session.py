@@ -58,7 +58,7 @@ class PyPitchSession:
                     "SELECT count(*) FROM matchup_stats"
                 ).fetchone()
                 matchup_empty = (matchup_count[0] if matchup_count else 0) == 0
-            except Exception:
+            except (RuntimeError, AttributeError, OSError):
                 matchup_empty = True
 
             needs_build = registry_empty or matchup_empty
@@ -91,7 +91,7 @@ class PyPitchSession:
             table = canonicalize_match(data, self.registry, match_id)
             self.engine.ingest_events(table, snapshot_tag=f"match_{match_id}", append=True)
             logger.info("Match %s loaded successfully.", match_id)
-        except Exception as e:
+        except (FileNotFoundError, ValueError, RuntimeError) as e:
             logger.error("Failed to load match %s: %s", match_id, e)
 
     def get_player_stats(self, player_id: str) -> Optional[PlayerStats]:
