@@ -11,7 +11,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.metrics import accuracy_score, log_loss, roc_auc_score
 from sklearn.preprocessing import StandardScaler
-from typing import Dict, Any, Optional, Tuple, List
+from typing import Any, Dict, Optional, Tuple, List
 import logging
 from datetime import datetime
 
@@ -140,7 +140,8 @@ class WinProbabilityTrainer:
         return venue_adjustments.get(venue.lower(), 0.0)
 
     def train_model(self, features: pd.DataFrame, target: pd.Series,
-                   test_size: float = 0.2, random_state: int = 42) -> Tuple[LogisticRegression, Dict[str, Any]]:
+                   test_size: float = 0.2, random_state: int = 42,
+                   match_ids: Optional[List[str]] = None) -> Tuple[LogisticRegression, Dict[str, Any]]:
         """
         Train a logistic regression model for win probability.
 
@@ -149,6 +150,7 @@ class WinProbabilityTrainer:
             target: Target series
             test_size: Fraction of data for testing
             random_state: Random seed
+            match_ids: Optional list of match IDs per row for grouped split
 
         Returns:
             Tuple of (trained_model, training_metrics)
@@ -159,10 +161,28 @@ class WinProbabilityTrainer:
         if len(features) < 100:
             raise DataValidationError("Insufficient training data (minimum 100 samples)")
 
-        # Split data
-        X_train, X_test, y_train, y_test = train_test_split(
-            features, target, test_size=test_size, random_state=random_state, stratify=target
-        )
+        # Grouped-by-match split when match_ids provided
+        split_strategy = "grouped_by_match"
+        training_matches: Optional[int] = None
+        if match_ids is not None and len(match_ids) == len(features):
+            unique_ids = list(dict.fromkeys(match_ids))  # preserve order, deduplicate
+            n_test = max(1, int(len(unique_ids) * test_size))
+            rng = np.random.RandomState(random_state)
+            rng.shuffle(unique_ids)
+            test_ids = set(unique_ids[:n_test])
+            train_ids = set(unique_ids[n_test:])
+            mask_train = pd.Series([mid not in test_ids for mid in match_ids], index=features.index)
+            X_train = features[mask_train]
+            X_test = features[~mask_train]
+            y_train = target[mask_train]
+            y_test = target[~mask_train]
+            training_matches = len(train_ids)
+        else:
+            # Split data
+            X_train, X_test, y_train, y_test = train_test_split(
+                features, target, test_size=test_size, random_state=random_state, stratify=target
+            )
+            training_matches = None
 
         # Scale features
         X_train_scaled = self.scaler.fit_transform(X_train)
@@ -176,17 +196,35 @@ class WinProbabilityTrainer:
         train_pred = model.predict_proba(X_train_scaled)[:, 1]
         test_pred = model.predict_proba(X_test_scaled)[:, 1]
 
+        # Compute metrics; guard against single-class test sets (small grouped splits)
+        def _safe_log_loss(y_true: Any, y_pred: Any) -> float:
+            try:
+                return log_loss(y_true, y_pred, labels=[0, 1])
+            except ValueError:
+                return float("nan")
+
+        def _safe_auc(y_true: Any, y_pred: Any) -> float:
+            try:
+                return roc_auc_score(y_true, y_pred)
+            except ValueError:
+                return float("nan")
+
         metrics = {
             'train_accuracy': accuracy_score(y_train, train_pred > 0.5),
             'test_accuracy': accuracy_score(y_test, test_pred > 0.5),
-            'train_log_loss': log_loss(y_train, train_pred),
-            'test_log_loss': log_loss(y_test, test_pred),
-            'train_auc': roc_auc_score(y_train, train_pred),
-            'test_auc': roc_auc_score(y_test, test_pred),
-            'cross_val_scores': cross_val_score(model, X_train_scaled, y_train, cv=5).tolist(),
+            'train_log_loss': _safe_log_loss(y_train, train_pred),
+            'test_log_loss': _safe_log_loss(y_test, test_pred),
+            'train_auc': _safe_auc(y_train, train_pred),
+            'test_auc': _safe_auc(y_test, test_pred),
+            'cross_val_scores': cross_val_score(
+                model, X_train_scaled, y_train,
+                cv=min(5, len(X_train)),
+            ).tolist(),
             'training_samples': len(X_train),
             'test_samples': len(X_test),
-            'feature_importance': dict(zip(features.columns, model.coef_[0]))
+            'feature_importance': dict(zip(features.columns, model.coef_[0])),
+            'split_strategy': split_strategy,
+            'training_matches': training_matches,
         }
 
         logger.info(f"Model trained with {metrics['training_samples']} samples")
@@ -195,13 +233,15 @@ class WinProbabilityTrainer:
         return model, metrics
 
     def create_win_predictor(self, trained_model: LogisticRegression,
-                           training_metrics: Dict[str, Any]) -> WinPredictor:
+                           training_metrics: Dict[str, Any],
+                           scaler: Optional[StandardScaler] = None) -> WinPredictor:
         """
         Convert trained sklearn model to WinPredictor format.
 
         Args:
             trained_model: Trained LogisticRegression model
             training_metrics: Training metrics dictionary
+            scaler: Optional fitted StandardScaler; if None, uses self.scaler
 
         Returns:
             WinPredictor instance with trained coefficients
@@ -223,12 +263,15 @@ class WinProbabilityTrainer:
 
         predictor = WinPredictor(custom_coefs=coefs, venue_adjustments=venue_adjustments)
 
+        # Use explicit scaler if provided, else fall back to self.scaler
+        active_scaler = scaler if scaler is not None else self.scaler
+
         # Add training metadata
         predictor.training_metadata = {
             'trained_at': datetime.now().isoformat(),
             'metrics': training_metrics,
-            'scaler_mean': self.scaler.mean_.tolist(),
-            'scaler_scale': self.scaler.scale_.tolist()
+            'scaler_mean': active_scaler.mean_.tolist(),
+            'scaler_scale': active_scaler.scale_.tolist(),
         }
 
         return predictor

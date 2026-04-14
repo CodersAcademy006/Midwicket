@@ -3,8 +3,9 @@ Advanced WinPredictor model for PyPitch.
 Implements a sophisticated logistic regression model for T20 cricket win probability.
 """
 import numpy as np
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 import math
+import pandas as pd
 
 class WinPredictor:
     """
@@ -37,7 +38,7 @@ class WinPredictor:
             "target_size_factor": 0.001, # Small bonus for larger targets
         }
 
-        # Venue-specific home advantage adjustments (log-odds)
+        # Venue-specific home advantage adjustments (log-odds) — all keys lowercase
         self.venue_adjustments = venue_adjustments or {
             "default": 0.0,
             "wankhede": 0.15,      # Mumbai Indians home advantage
@@ -45,8 +46,11 @@ class WinPredictor:
             "chinnaswamy": 0.10,   # Royal Challengers Bangalore
             "dyanmond park": 0.08, # Chennai Super Kings
             "punjab cricket": 0.05, # Punjab Kings
-            " Brabourne": 0.06,    # Home advantage
+            "brabourne": 0.06,     # Home advantage
         }
+
+        # Populated by create_trained_model / WinProbabilityTrainer.create_win_predictor
+        self.training_metadata: Optional[Dict] = None
 
     def predict(self, target: int, current_runs: int, wickets_down: int, overs_done: float, venue: str = None) -> Tuple[float, float]:
         """
@@ -86,7 +90,7 @@ class WinPredictor:
         target_size_factor = min(target / 200.0, 1.0)  # Normalize target size
 
         # Venue adjustment
-        venue_adjust = self.venue_adjustments.get(venue.lower() if venue else "default", 0.0)
+        venue_adjust = self._get_venue_adjustment(venue)
 
         # Linear predictor with all features
         x = (
@@ -110,6 +114,18 @@ class WinPredictor:
         confidence = self._calculate_confidence(win_prob, runs_remaining, wickets_remaining, balls_remaining)
 
         return float(np.clip(win_prob, 0.001, 0.999)), float(confidence)
+
+    def _get_venue_adjustment(self, venue: Optional[str]) -> float:
+        """Venue lookup: exact match first, then substring, else default 0.0."""
+        if not venue:
+            return self.venue_adjustments.get("default", 0.0)
+        venue_key = venue.lower()
+        if venue_key in self.venue_adjustments:
+            return self.venue_adjustments[venue_key]
+        for key, val in self.venue_adjustments.items():
+            if key != "default" and key in venue_key:
+                return val
+        return self.venue_adjustments.get("default", 0.0)
 
     def _calculate_confidence(self, prob: float, runs_remaining: int, wickets_remaining: int, balls_remaining: int) -> float:
         """
@@ -163,7 +179,7 @@ class WinPredictor:
             "runs_remaining": runs_remaining,
             "balls_remaining": balls_remaining,
             "run_rate_required": run_rate_required,
-            "venue_adjustment": self.venue_adjustments.get(venue.lower() if venue else "default", 0.0)
+            "venue_adjustment": self._get_venue_adjustment(venue)
         }
 
     @classmethod
@@ -172,11 +188,33 @@ class WinPredictor:
         return cls()
 
     @classmethod
-    def create_trained_model(cls, training_data: Dict) -> 'WinPredictor':
+    def create_trained_model(cls, training_data: Union[pd.DataFrame, List[Dict]]) -> 'WinPredictor':
         """
         Create a model trained on custom data.
-        Placeholder for future ML training integration.
+
+        Args:
+            training_data: DataFrame or list of row dicts with columns:
+                match_id, inning, over, ball, runs_total, wickets_fallen, target, venue
+
+        Returns:
+            WinPredictor with training_metadata set
         """
-        # For now, return default model
-        # Future: Implement actual training logic
-        return cls()
+        from pypitch.models.train import WinProbabilityTrainer
+
+        if isinstance(training_data, list):
+            df = pd.DataFrame(training_data)
+        else:
+            df = training_data
+
+        trainer = WinProbabilityTrainer()
+        features, target = trainer.prepare_training_data(df)
+
+        # Build match_ids list aligned with the feature rows (second innings only).
+        # prepare_training_data may skip malformed rows; truncate to match features length.
+        second_innings = df[df['inning'] == 2]
+        raw_ids: List[str] = [str(mid) for mid in second_innings['match_id']]
+        match_ids: List[str] = raw_ids[:len(features)]
+
+        model, metrics = trainer.train_model(features, target, match_ids=match_ids)
+        predictor = trainer.create_win_predictor(model, metrics)
+        return predictor
