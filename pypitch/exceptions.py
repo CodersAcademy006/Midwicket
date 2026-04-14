@@ -38,8 +38,12 @@ class DatabaseConnectionError(PyPitchError):
     """Raised when database connection fails."""
     pass
 
-# Backward-compat alias (deprecated — use DatabaseConnectionError)
-ConnectionError = DatabaseConnectionError  # noqa: A001
+# NOTE: The old `ConnectionError = DatabaseConnectionError` alias has been
+# removed because it shadowed Python's built-in ConnectionError (a subclass
+# of OSError).  Code that imported `from pypitch.exceptions import
+# ConnectionError` would silently receive DatabaseConnectionError instead of
+# the built-in, making `except ConnectionError` miss real OS-level errors.
+# Use DatabaseConnectionError explicitly.
 
 class QueryExecutionError(QueryError):
     """Raised when query execution fails."""
@@ -107,7 +111,7 @@ MatchDataMissing = DataError  # Alias for existing usage
 __all__ = [
     'PyPitchError',
     'DataError', 'DataIngestionError', 'DataValidationError', 'SchemaViolationError',
-    'QueryError', 'QueryTimeoutError', 'ConnectionError', 'QueryExecutionError',
+    'QueryError', 'QueryTimeoutError', 'DatabaseConnectionError', 'QueryExecutionError',
     'ModelError', 'ModelTrainingError', 'ModelNotFoundError', 'ModelPredictionError',
     'SessionError', 'SessionInitializationError', 'DependencyError',
     'PluginError', 'PluginLoadError', 'PluginNotFoundError',

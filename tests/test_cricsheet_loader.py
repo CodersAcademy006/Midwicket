@@ -27,3 +27,21 @@ def test_cricsheet_loader_match_data(tmp_path):
     assert data["info"]["venue"] == "Test Stadium"
     assert data["events"][0]["team"] == "B"
     assert "raw" in data
+
+
+def test_cricsheet_loader_filters_competition_and_season(tmp_path):
+    data_dir = tmp_path / "ipl"
+    data_dir.mkdir(parents=True)
+
+    (data_dir / "1001.json").write_text(
+        '{"info": {"event": {"name": "Indian Premier League"}, "dates": ["2023-05-10"]}, "innings": []}'
+    )
+    (data_dir / "1002.json").write_text(
+        '{"info": {"event": {"name": "Indian Premier League"}, "dates": ["2022-05-10"]}, "innings": []}'
+    )
+    (data_dir / "1003.json").write_text(
+        '{"info": {"event": {"name": "Big Bash League"}, "dates": ["2023-01-20"]}, "innings": []}'
+    )
+
+    loader = CricsheetLoader(str(data_dir), competition="ipl", season=2023)
+    assert loader.get_match_ids() == ["1001"]
