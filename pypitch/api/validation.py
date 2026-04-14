@@ -34,7 +34,7 @@ class WinPredictionRequest(BaseModel):
 class PlayerLookupRequest(BaseModel):
     """Request model for player lookup."""
     name: str = Field(..., min_length=1, max_length=100, description="Player name")
-    date_context: Optional[date] = Field(None, description="Date context for identity resolution")
+    match_date: Optional[date] = Field(None, description="ISO date for identity resolution (YYYY-MM-DD)")
 
     @field_validator('name')
     @classmethod
@@ -53,7 +53,7 @@ class MatchupRequest(BaseModel):
     batter: str = Field(..., min_length=1, max_length=100, description="Batter name")
     bowler: str = Field(..., min_length=1, max_length=100, description="Bowler name")
     venue: Optional[str] = Field(None, max_length=100, description="Venue name (optional)")
-    date_context: Optional[date] = Field(None, description="Date context")
+    match_date: Optional[date] = Field(None, description="ISO date for identity resolution (YYYY-MM-DD)")
 
 class FantasyPointsRequest(BaseModel):
     """Request model for fantasy points calculation."""

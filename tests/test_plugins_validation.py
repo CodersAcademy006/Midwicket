@@ -192,7 +192,7 @@ class TestValidationModels:
         """Test valid PlayerLookupRequest."""
         request = PlayerLookupRequest(name="Virat Kohli")
         assert request.name == "Virat Kohli"
-        assert request.date_context is None
+        assert request.match_date is None
 
     def test_player_lookup_request_invalid_name(self):
         """Test PlayerLookupRequest with invalid name."""
