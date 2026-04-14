@@ -131,10 +131,10 @@ def set_debug(value: bool = True) -> None:
     else:
         print("[PyPitch] Debug mode OFF.")
 
-def is_debug():
+def is_debug() -> bool:
     return debug
 
-def get_config():
+def get_config() -> dict:
     """Get all configuration as a dict."""
     return {
         "debug": debug,
