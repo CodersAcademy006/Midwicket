@@ -1,8 +1,9 @@
 """
 Fantasy analytics for PyPitch.
 
-cheat_sheet — top players at a venue by fantasy value.
-venue_bias  — win% batting first vs chasing at a venue.
+cheat_sheet   — top players at a venue by fantasy value.
+venue_bias    — win% batting first vs chasing at a venue.
+fantasy_score — per-player career fantasy point estimate from ball_events.
 """
 from __future__ import annotations
 
@@ -15,6 +16,150 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 _SORT_CANDIDATES = ("avg_points", "fantasy_points_avg", "runs", "strike_rate")
+
+# Standard T20 fantasy scoring weights (customisable by league)
+_DEFAULT_SCORING = {
+    "run": 1,
+    "four": 1,        # bonus on top of run
+    "six": 2,         # bonus on top of run
+    "fifty": 30,
+    "hundred": 50,
+    "wicket": 10,
+    "economy_bonus_lt7": 10,   # bowling economy < 7 per over
+    "economy_bonus_lt8": 5,    # bowling economy < 8 per over
+}
+
+
+def fantasy_score(
+    player_name: str,
+    season: Optional[str] = None,
+    scoring: Optional[Dict[str, int]] = None,
+) -> Dict[str, Any]:
+    """
+    Estimate fantasy points for a player from ball_events data.
+
+    Computes per-match-average using standard T20 fantasy scoring:
+      Batting: 1pt/run + 1pt/four + 2pt/six + 30pt/50 + 50pt/100
+      Bowling: 10pt/wicket + economy bonus (lt7 = +10, lt8 = +5)
+
+    Falls back to empty stats dict when no data is available.
+
+    Args:
+        player_name: Exact batter/bowler name as stored in ball_events.
+        season:      Optional season filter (e.g. "2023").
+        scoring:     Override default scoring weights (dict of weight keys).
+
+    Returns:
+        Dict with player, season, matches, batting_pts, bowling_pts,
+        total_pts, per_match_avg, and breakdown sub-dicts.
+    """
+    from pypitch.api.session import get_session
+
+    weights = {**_DEFAULT_SCORING, **(scoring or {})}
+
+    season_clause = "AND season = ?" if season else ""
+    params_bat = [player_name] + ([season] if season else [])
+    params_bowl = [player_name] + ([season] if season else [])
+
+    result: Dict[str, Any] = {
+        "player": player_name,
+        "season": season or "all",
+        "matches": 0,
+        "batting_pts": 0.0,
+        "bowling_pts": 0.0,
+        "total_pts": 0.0,
+        "per_match_avg": 0.0,
+        "batting_breakdown": {},
+        "bowling_breakdown": {},
+        "source": "ball_events",
+        "scoring_weights": weights,
+    }
+
+    try:
+        session = get_session()
+
+        # --- Batting stats ---
+        bat_sql = f"""  -- nosec B608
+            SELECT
+                COUNT(DISTINCT match_id)                                 AS matches,
+                SUM(runs_batter)                                         AS runs,
+                SUM(CASE WHEN runs_batter = 4 THEN 1 ELSE 0 END)        AS fours,
+                SUM(CASE WHEN runs_batter = 6 THEN 1 ELSE 0 END)        AS sixes,
+                COUNT(DISTINCT CASE WHEN runs_batter >= 50 THEN match_id END) AS fifties,
+                COUNT(DISTINCT CASE WHEN runs_batter >= 100 THEN match_id END) AS hundreds
+            FROM ball_events
+            WHERE batter = ? {season_clause}
+        """
+        bat_res = session.engine.execute_sql(bat_sql, params=params_bat).to_pydict()
+        matches = int((bat_res.get("matches") or [0])[0] or 0)
+        runs = int((bat_res.get("runs") or [0])[0] or 0)
+        fours = int((bat_res.get("fours") or [0])[0] or 0)
+        sixes = int((bat_res.get("sixes") or [0])[0] or 0)
+        fifties = int((bat_res.get("fifties") or [0])[0] or 0)
+        hundreds = int((bat_res.get("hundreds") or [0])[0] or 0)
+
+        bat_pts = (
+            runs * weights["run"]
+            + fours * weights["four"]
+            + sixes * weights["six"]
+            + fifties * weights["fifty"]
+            + hundreds * weights["hundred"]
+        )
+
+        # --- Bowling stats ---
+        bowl_sql = f"""  -- nosec B608
+            SELECT
+                COUNT(DISTINCT match_id)                                  AS matches,
+                COUNT(*)                                                  AS balls,
+                SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END)               AS wickets,
+                SUM(runs_batter + runs_extras)                            AS runs_conceded
+            FROM ball_events
+            WHERE bowler = ? {season_clause}
+        """
+        bowl_res = session.engine.execute_sql(bowl_sql, params=params_bowl).to_pydict()
+        bowl_balls = int((bowl_res.get("balls") or [0])[0] or 0)
+        wickets = int((bowl_res.get("wickets") or [0])[0] or 0)
+        runs_conceded = int((bowl_res.get("runs_conceded") or [0])[0] or 0)
+
+        economy = (runs_conceded / (bowl_balls / 6)) if bowl_balls >= 6 else None
+        econ_bonus = 0
+        if economy is not None:
+            if economy < 7:
+                econ_bonus = weights["economy_bonus_lt7"]
+            elif economy < 8:
+                econ_bonus = weights["economy_bonus_lt8"]
+
+        bowl_pts = float(wickets * weights["wicket"] + econ_bonus)
+
+        total = bat_pts + bowl_pts
+        matches_all = max(matches, int((bowl_res.get("matches") or [0])[0] or 0))
+        per_match = round(total / matches_all, 2) if matches_all > 0 else 0.0
+
+        result.update({
+            "matches": matches_all,
+            "batting_pts": float(bat_pts),
+            "bowling_pts": bowl_pts,
+            "total_pts": float(total),
+            "per_match_avg": per_match,
+            "batting_breakdown": {
+                "runs": runs, "fours": fours, "sixes": sixes,
+                "fifties": fifties, "hundreds": hundreds,
+            },
+            "bowling_breakdown": {
+                "wickets": wickets, "balls": bowl_balls,
+                "runs_conceded": runs_conceded,
+                "economy": round(economy, 2) if economy is not None else None,
+                "economy_bonus": econ_bonus,
+            },
+        })
+        logger.debug(
+            "fantasy_score: %r season=%r matches=%d total_pts=%.1f",
+            player_name, season, matches_all, total,
+        )
+    except (RuntimeError, AttributeError, TypeError, ValueError) as e:
+        logger.warning("fantasy_score: failed for player=%r: %s", player_name, e)
+
+    return result
 
 
 def cheat_sheet(venue: str, last_n_years: int = 3) -> pd.DataFrame:

@@ -259,29 +259,33 @@ class PyPitchAPI:
             return {"batter": request.batter, "bowler": request.bowler, "found": False, "stats": {}}
 
     def get_fantasy_points(self, request):
-        """Return career batting + bowling aggregates as fantasy-relevant stats."""
+        """Return per-match fantasy point estimate computed from ball_events."""
+        from pypitch.api.fantasy import fantasy_score
+        season = getattr(request, "season", None)
+        try:
+            result = fantasy_score(request.player_name, season=season)
+            return {
+                "player": request.player_name,
+                "season": result.get("season", season or "all"),
+                "points": result.get("per_match_avg", 0.0),
+                "total_pts": result.get("total_pts", 0.0),
+                "matches": result.get("matches", 0),
+                "batting_breakdown": result.get("batting_breakdown", {}),
+                "bowling_breakdown": result.get("bowling_breakdown", {}),
+            }
+        except Exception as exc:
+            logger.warning("get_fantasy_points(%r) failed: %s", request.player_name, exc)
+            return {"player": request.player_name, "points": 0.0, "season": season or "all"}
+
+    def get_player_stats(self, request):
+        """Get player career stats via player_analytics."""
         from pypitch.api.player_analytics import career_batting, career_bowling
         try:
             batting = career_batting(request.player_name)
             bowling = career_bowling(request.player_name)
             return {
                 "player": request.player_name,
-                "batting": batting,
-                "bowling": bowling,
-                "note": "Full fantasy scoring requires loaded fantasy_points_avg table.",
-            }
-        except Exception as exc:
-            logger.warning("get_fantasy_points(%r) failed: %s", request.player_name, exc)
-            return {"player": request.player_name, "points": 0, "found": False}
-
-    def get_player_stats(self, request):
-        """Get player career stats via player_analytics."""
-        from pypitch.api.player_analytics import career_batting, career_bowling
-        try:
-            return {
-                "player": request.player_name,
-                "batting": career_batting(request.player_name),
-                "bowling": career_bowling(request.player_name),
+                "stats": {"batting": batting, "bowling": bowling},
             }
         except Exception as exc:
             logger.warning("get_player_stats(%r) failed: %s", request.player_name, exc)
@@ -680,6 +684,39 @@ class PyPitchAPI:
                 }
             except Exception as e:
                 logger.warning("player_milestones failed for %s: %s", player_name, e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        @self.app.get("/v1/players/{player_name}/fantasy")
+        async def player_fantasy(
+            player_name: str,
+            season: Optional[str] = None,
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """Per-match fantasy point estimate using standard T20 scoring rules."""
+            from pypitch.api.fantasy import fantasy_score
+            try:
+                return fantasy_score(player_name, season=season)
+            except Exception as e:
+                logger.warning("player_fantasy failed for %s: %s", player_name, e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        @self.app.get("/v1/venues/{venue_name}/fantasy")
+        async def venue_fantasy(
+            venue_name: str,
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """Fantasy cheat sheet + venue bias (bat-first vs chase win%) for a venue."""
+            from pypitch.api.fantasy import cheat_sheet, venue_bias
+            try:
+                bias = venue_bias(venue_name)
+                top_players = cheat_sheet(venue_name)
+                return {
+                    "venue": venue_name,
+                    "venue_bias": bias,
+                    "top_players": top_players.to_dict(orient="records") if not top_players.empty else [],
+                }
+            except Exception as e:
+                logger.warning("venue_fantasy failed for %s: %s", venue_name, e)
                 raise HTTPException(status_code=500, detail="Internal server error")
 
         @self.app.get("/v1/players/{player_name}/vs-team/{team_name}")
