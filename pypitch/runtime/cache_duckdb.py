@@ -1,5 +1,5 @@
 import duckdb
-import pickle
+import json
 import pyarrow as pa
 import time
 from typing import Any, Optional, Tuple
@@ -42,9 +42,12 @@ class DuckDBCache(CacheInterface):
 
     def _serialize(self, value: Any) -> Tuple[bytes, bool]:
         """
-        Smart serialization:
-        - Arrow Tables -> IPC Stream (Zero-Copy compatible)
-        - Python Objects -> Pickle (Fallback)
+        Safe serialization — no pickle:
+        - Arrow Tables  → IPC Stream (zero-copy compatible)
+        - Python objects → JSON (dict, list, str, int, float, bool, None)
+
+        Raises ``TypeError`` for values that cannot be safely serialized
+        instead of silently falling back to pickle.
         """
         if isinstance(value, pa.Table):
             sink = pa.BufferOutputStream()
@@ -52,7 +55,15 @@ class DuckDBCache(CacheInterface):
                 writer.write_table(value)
             return sink.getvalue().to_pybytes(), True
         else:
-            return pickle.dumps(value), False
+            try:
+                return json.dumps(value).encode("utf-8"), False
+            except (TypeError, ValueError) as exc:
+                raise TypeError(
+                    f"Cache value of type {type(value).__name__!r} is not "
+                    f"JSON-serializable and pickle is disabled for security. "
+                    f"Convert the value to a dict/list/Arrow Table before caching. "
+                    f"Original error: {exc}"
+                ) from exc
 
     def _deserialize(self, blob: bytes, is_arrow: bool) -> Any:
         if is_arrow:
@@ -60,7 +71,7 @@ class DuckDBCache(CacheInterface):
             reader = pa.ipc.open_stream(blob)
             return reader.read_all()
         else:
-            return pickle.loads(blob)
+            return json.loads(blob.decode("utf-8") if isinstance(blob, (bytes, bytearray)) else blob)
 
     def _get_con(self, read_only: bool = False) -> duckdb.DuckDBPyConnection:
         if self.path == ":memory:":
@@ -119,6 +130,6 @@ class DuckDBCache(CacheInterface):
         if self.path == ":memory:" and hasattr(self, "con"):
             try:
                 self.con.close()
-            except Exception:
+            except Exception:  # nosec B110 — best-effort cleanup; connection may already be closed
                 pass
 

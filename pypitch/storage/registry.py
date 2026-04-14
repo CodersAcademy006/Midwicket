@@ -110,7 +110,7 @@ class IdentityRegistry:
             # Parameterised DELETE – one placeholder per id
             placeholders = ", ".join("?" for _ in ids)
             self.con.execute(
-                f"DELETE FROM player_stats WHERE entity_id IN ({placeholders})",
+                f"DELETE FROM player_stats WHERE entity_id IN ({placeholders})",  # nosec B608
                 ids,
             )
             self.con.executemany(
@@ -132,7 +132,7 @@ class IdentityRegistry:
         with self._lock:
             placeholders = ", ".join("?" for _ in ids)
             self.con.execute(
-                f"DELETE FROM venue_stats WHERE entity_id IN ({placeholders})",
+                f"DELETE FROM venue_stats WHERE entity_id IN ({placeholders})",  # nosec B608
                 ids,
             )
             self.con.executemany(
@@ -173,7 +173,7 @@ class IdentityRegistry:
             placeholders = ", ".join("(?, ?)" for _ in pairs)
             flat_pairs = [v for pair in pairs for v in pair]
             self.con.execute(
-                f"DELETE FROM matchup_stats WHERE (batter_id, bowler_id) IN ({placeholders})",
+                f"DELETE FROM matchup_stats WHERE (batter_id, bowler_id) IN ({placeholders})",  # nosec B608
                 flat_pairs,
             )
             self.con.executemany(

@@ -1,5 +1,10 @@
 """
 CricAPIAdapter: Pre-built adapter for CricAPI cricket data (example for extensibility).
+
+.. note::
+    This adapter is a **planned stub** — the scaffolding exists but CricAPI support is
+    not yet implemented.  All methods raise ``NotImplementedError`` until the feature is
+    completed.  Do not rely on this module in production code.
 """
 
 

@@ -141,13 +141,17 @@ def get_matchup(batter: str, bowler: str, data_dir: Optional[str] = None) -> Opt
     # Resolve names to entity IDs
     dates_to_try = [date.today(), date(2024, 1, 1), date(2023, 1, 1), date(2022, 1, 1)]
 
+    import logging as _log
+    _express_logger = _log.getLogger(__name__)
+
     def _resolve(name: str) -> Optional[int]:
         for d in dates_to_try:
             try:
                 eid = registry.resolve_player(name, d)
                 if eid:
                     return eid
-            except Exception:
+            except Exception as _exc:  # nosec B112
+                _express_logger.debug("resolve_player(%r, %s) failed: %s", name, d, _exc)
                 continue
         return None
 

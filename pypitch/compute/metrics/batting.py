@@ -89,16 +89,20 @@ def calculate_impact_score(
     - Middle: 110 SR (1.1 RPB)
     - Death: 160 SR (1.6 RPB)
     """
-    # 1. Define Expected Run Per Ball (RPB) Map
-    # We use pc.case_when or simple if_else chains for vectorization
+    # 1. Define Expected Run Per Ball (RPB) map using vectorised if_else chains.
+    # pc.case_when API changed across PyArrow versions; if_else chains are stable.
     is_pp = pc.equal(phase, "Powerplay")
     is_death = pc.equal(phase, "Death")
-    
-    expected_rpb = pc.case_when(
-        pc.make_struct([is_pp, is_death], field_names=["pp", "death"]),
-        1.2,  # If PP
-        1.6,  # If Death
-        1.1   # Else (Middle)
+
+    # Build expected RPB: Powerplay=1.2, Death=1.6, Middle (else)=1.1
+    expected_rpb = pc.if_else(
+        is_pp,
+        pa.scalar(1.2, type=pa.float64()),
+        pc.if_else(
+            is_death,
+            pa.scalar(1.6, type=pa.float64()),
+            pa.scalar(1.1, type=pa.float64()),
+        ),
     )
 
     # 2. Calculate Expected Runs
