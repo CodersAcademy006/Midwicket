@@ -16,7 +16,17 @@ CRICSHEET_URL = os.getenv("CRICSHEET_URL", "https://cricsheet.org/downloads/ipl_
 # Database settings
 data_dir_env = os.getenv("PYPITCH_DATA_DIR")
 DEFAULT_DATA_DIR = Path(data_dir_env) if data_dir_env else Path.home() / ".pypitch_data"
-DATABASE_THREADS = int(os.getenv("PYPITCH_DB_THREADS", "4"))
+_raw_threads = os.getenv("PYPITCH_DB_THREADS", "4")
+try:
+    DATABASE_THREADS = int(_raw_threads)
+except ValueError:
+    raise ValueError(
+        f"PYPITCH_DB_THREADS must be an integer, got {_raw_threads!r}"
+    )
+if not (1 <= DATABASE_THREADS <= 16):
+    raise ValueError(
+        f"PYPITCH_DB_THREADS must be between 1 and 16, got {DATABASE_THREADS}"
+    )
 DATABASE_MEMORY_LIMIT = os.getenv("PYPITCH_DB_MEMORY", "2GB")
 
 # API settings
