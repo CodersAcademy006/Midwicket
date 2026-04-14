@@ -551,10 +551,153 @@ class PyPitchAPI:
                 if self.ingestor is None:
                     logger.info("get_live_matches: ingestor not available")
                     return []
-                    
+
                 return self.ingestor.get_live_matches()
             except Exception as e:
                 logger.warning("get_live_matches failed: %s", e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        # ------------------------------------------------------------------
+        # Player Analytics endpoints (PA-01 to PA-28)
+        # ------------------------------------------------------------------
+
+        @self.app.get("/v1/players/{player_name}/batting")
+        async def player_batting(
+            player_name: str,
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """Career batting + phase/venue/season/form/situation breakdown."""
+            from pypitch.api.player_analytics import (
+                career_batting, batting_by_phase, batting_by_venue,
+                batting_by_season, batting_form, batting_in_chases,
+                batting_under_pressure, death_over_specialist,
+                batting_by_innings_number, weakness_detector,
+            )
+            try:
+                return {
+                    "career": career_batting(player_name),
+                    "by_phase": batting_by_phase(player_name),
+                    "by_venue": batting_by_venue(player_name),
+                    "by_season": batting_by_season(player_name),
+                    "form_last5": batting_form(player_name),
+                    "chases": batting_in_chases(player_name),
+                    "under_pressure": batting_under_pressure(player_name),
+                    "death_specialist": death_over_specialist(player_name),
+                    "innings_split": batting_by_innings_number(player_name),
+                    "weaknesses": weakness_detector(player_name),
+                }
+            except Exception as e:
+                logger.warning("player_batting failed for %s: %s", player_name, e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        @self.app.get("/v1/players/{player_name}/bowling")
+        async def player_bowling(
+            player_name: str,
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """Career bowling + phase/venue/season/form breakdown."""
+            from pypitch.api.player_analytics import (
+                career_bowling, bowling_by_phase, bowling_by_venue,
+                bowling_by_season, bowling_form,
+            )
+            try:
+                return {
+                    "career": career_bowling(player_name),
+                    "by_phase": bowling_by_phase(player_name),
+                    "by_venue": bowling_by_venue(player_name),
+                    "by_season": bowling_by_season(player_name),
+                    "form_last5": bowling_form(player_name),
+                }
+            except Exception as e:
+                logger.warning("player_bowling failed for %s: %s", player_name, e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        @self.app.get("/v1/players/{player_name}/milestones")
+        async def player_milestones(
+            player_name: str,
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """Highest scores, best bowling figures, streaks, ducks."""
+            from pypitch.api.player_analytics import (
+                highest_score, best_bowling_figures,
+                match_streaks, milestones_and_failures,
+            )
+            try:
+                return {
+                    "highest_scores": highest_score(player_name),
+                    "best_bowling_figures": best_bowling_figures(player_name),
+                    "streaks": match_streaks(player_name),
+                    "failures": milestones_and_failures(player_name),
+                }
+            except Exception as e:
+                logger.warning("player_milestones failed for %s: %s", player_name, e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        @self.app.get("/v1/players/{player_name}/vs-team/{team_name}")
+        async def player_vs_team(
+            player_name: str,
+            team_name: str,
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """Batting and bowling vs specific opposition."""
+            from pypitch.api.player_analytics import batting_vs_teams, bowling_vs_teams
+            try:
+                bat_all = batting_vs_teams(player_name)
+                bowl_all = bowling_vs_teams(player_name)
+                bat = next((r for r in bat_all if team_name.lower() in r["opposition"].lower()), None)
+                bowl = next((r for r in bowl_all if team_name.lower() in r["opposition"].lower()), None)
+                return {
+                    "player": player_name,
+                    "team": team_name,
+                    "batting": bat or {"message": "no data"},
+                    "bowling": bowl or {"message": "no data"},
+                }
+            except Exception as e:
+                logger.warning("player_vs_team failed: %s", e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        @self.app.get("/v1/players/compare")
+        async def compare_players_endpoint(
+            p1: str,
+            p2: str,
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """Side-by-side career comparison. ?p1=name&p2=name"""
+            from pypitch.api.player_analytics import compare_players
+            try:
+                return compare_players(p1, p2)
+            except Exception as e:
+                logger.warning("compare_players failed: %s", e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        @self.app.get("/v1/players/leaderboard/batting")
+        async def batting_leaderboard_endpoint(
+            sort_by: str = "runs",
+            top_n: int = 10,
+            min_balls: int = 30,
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """Batting leaderboard. sort_by: runs | average | strike_rate"""
+            from pypitch.api.player_analytics import batting_leaderboard
+            try:
+                return batting_leaderboard(sort_by=sort_by, top_n=top_n, min_balls=min_balls)
+            except Exception as e:
+                logger.warning("batting_leaderboard failed: %s", e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        @self.app.get("/v1/players/leaderboard/bowling")
+        async def bowling_leaderboard_endpoint(
+            sort_by: str = "wickets",
+            top_n: int = 10,
+            min_balls: int = 30,
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """Bowling leaderboard. sort_by: wickets | economy | bowling_average"""
+            from pypitch.api.player_analytics import bowling_leaderboard
+            try:
+                return bowling_leaderboard(sort_by=sort_by, top_n=top_n, min_balls=min_balls)
+            except Exception as e:
+                logger.warning("bowling_leaderboard failed: %s", e)
                 raise HTTPException(status_code=500, detail="Internal server error")
 
     def run(self, host: str = "0.0.0.0", port: int = 8000, reload: bool = False):  # nosec B104
