@@ -27,13 +27,12 @@ class RetrosheetAdapter(BaseAdapter):
         """
         Returns sorted, deduplicated match IDs for all supported files.
         """
-        # ...existing code...
         return sorted({
             f.stem for f in self.data_dir.iterdir()
             if f.suffix.lower() in SUPPORTED_EXTENSIONS
         })
 
-
+    def load_match(self, match_id: str) -> Dict[str, Any]:
         """
         Loads match data for the given match_id, dispatching by file type.
         Returns a normalized dict with match_id, format, info, events.
@@ -66,10 +65,11 @@ class RetrosheetAdapter(BaseAdapter):
         """
         Parses a Retrosheet event file (.EVN/.EVT) into a normalized dict with typed event buckets.
         """
+        events: DefaultDict[str, list] = defaultdict(list)
         game: Dict[str, Any] = {
             "match_id": None,
             "info": {},
-            "events": defaultdict(list)  # type: DefaultDict[str, list]
+            "events": events
         }
         with open(file_path, "r", encoding="utf-8") as f:
             for line in f:

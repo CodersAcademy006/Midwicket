@@ -20,7 +20,7 @@ DATABASE_THREADS = int(os.getenv("PYPITCH_DB_THREADS", "4"))
 DATABASE_MEMORY_LIMIT = os.getenv("PYPITCH_DB_MEMORY", "2GB")
 
 # API settings
-API_HOST = os.getenv("PYPITCH_API_HOST", "0.0.0.0")
+API_HOST = os.getenv("PYPITCH_API_HOST", "0.0.0.0")  # nosec B104 – container default, operator configures via env
 API_PORT = int(os.getenv("PYPITCH_API_PORT", "8000"))
 # Default to empty list (no cross-origin access) — operators must explicitly
 # allow origins via PYPITCH_CORS_ORIGINS="https://app.example.com".
@@ -104,6 +104,11 @@ SECRET_KEY = os.getenv("PYPITCH_SECRET_KEY", "")
 # Secure default: require API key authentication unless explicitly disabled.
 # Set PYPITCH_API_KEY_REQUIRED=false only for local development.
 API_KEY_REQUIRED = os.getenv("PYPITCH_API_KEY_REQUIRED", "true").lower() == "true"
+
+def is_production() -> bool:
+    """Return True when PYPITCH_ENV is set to 'production'."""
+    return os.getenv("PYPITCH_ENV", "development") == "production"
+
 
 def set_debug(value: bool = True) -> None:
     """

@@ -53,7 +53,7 @@ class RollingFeature:
             ) as rolling_{self.metric}
         FROM deliveries
         WHERE player_id = ?
-        """
+        """  # nosec B608 – interpolated values are internal column/window constants; player_id is parameterised
 
         return session.engine.con.sql(query, [player_id])
 
@@ -98,7 +98,7 @@ class MomentumIndicator:
             WHERE player_id = ?
             ORDER BY match_date DESC
             LIMIT ?
-            """
+            """  # nosec B608
             df = session.engine.con.sql(query, [player_id, period]).df()
             if not df.empty:
                 avg_runs = df['avg_runs'].iloc[0] or 0

@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class PluginSpec:
     """Specification for a plugin."""
     def __init__(self, name: str, version: str = "1.0.0", description: str = "",
-                 entry_point: str = "", dependencies: List[str] = None):
+                 entry_point: str = "", dependencies: Optional[List[str]] = None):
         self.name = name
         self.version = version
         self.description = description
@@ -40,41 +40,96 @@ class PluginManager:
         self._data_sources: Dict[str, Any] = {}
         self._models: Dict[str, Any] = {}
 
+    @staticmethod
+    def _get_allowlist() -> List[str]:
+        """Return the list of permitted plugin top-level package prefixes.
+
+        Reads PYPITCH_PLUGIN_ALLOWLIST (comma-separated).  An empty list means
+        no plugins are permitted — production deployments should leave this unset
+        unless they explicitly trust a set of plugin packages.
+        """
+        import os
+        raw = os.getenv("PYPITCH_PLUGIN_ALLOWLIST", "")
+        return [p.strip() for p in raw.split(",") if p.strip()]
+
+    @staticmethod
+    def _validate_module_path(module_path: str, allowlist: List[str]) -> None:
+        """Raise ValueError if module_path is unsafe or not in the allowlist.
+
+        Checks performed:
+        - Rejects absolute paths, path separators, and shell metacharacters.
+        - Rejects paths that are not covered by at least one allowlist prefix.
+        """
+        import re
+        # Reject anything that looks like a filesystem path or shell injection
+        if re.search(r'[/\\;|&`$(){}\[\]<>!]', module_path):
+            raise ValueError(
+                f"Plugin module path {module_path!r} contains unsafe characters."
+            )
+        if ".." in module_path:
+            raise ValueError(
+                f"Plugin module path {module_path!r} contains '..' traversal."
+            )
+        if not allowlist:
+            raise ValueError(
+                "Plugin loading is disabled: PYPITCH_PLUGIN_ALLOWLIST is empty. "
+                "Set it to a comma-separated list of allowed package prefixes to "
+                "enable plugins (e.g. PYPITCH_PLUGIN_ALLOWLIST=myplugin)."
+            )
+        if not any(module_path == pfx or module_path.startswith(pfx + ".") for pfx in allowlist):
+            raise ValueError(
+                f"Plugin module {module_path!r} is not in the allowlist "
+                f"({', '.join(allowlist)}). Add the package prefix to "
+                f"PYPITCH_PLUGIN_ALLOWLIST to permit it."
+            )
+
     def discover_plugins(self) -> List[PluginSpec]:
-        """Discover available plugins via environment variable or config file."""
+        """Discover available plugins via environment variable.
+
+        Only returns plugins whose module paths are covered by the allowlist.
+        If PYPITCH_PLUGINS is set but PYPITCH_PLUGIN_ALLOWLIST is empty, logs
+        a warning and returns an empty list instead of loading anything.
+        """
+        import os
+        plugin_list = os.getenv("PYPITCH_PLUGINS", "")
+        if not plugin_list:
+            return []
+
+        allowlist = self._get_allowlist()
         plugins = []
 
-        # For now, use a simple approach - plugins can be registered manually
-        # or discovered via environment variables
-        import os
-        plugin_list = os.getenv('PYPITCH_PLUGINS', '')
+        for plugin_entry in plugin_list.split(","):
+            plugin_entry = plugin_entry.strip()
+            if not plugin_entry:
+                continue
+            if ":" in plugin_entry:
+                name, module = plugin_entry.split(":", 1)
+                name, module = name.strip(), module.strip()
+            else:
+                name = module = plugin_entry
 
-        if plugin_list:
-            for plugin_entry in plugin_list.split(','):
-                plugin_entry = plugin_entry.strip()
-                if ':' in plugin_entry:
-                    name, module = plugin_entry.split(':', 1)
-                    plugins.append(PluginSpec(
-                        name=name.strip(),
-                        entry_point=module.strip()
-                    ))
-                else:
-                    plugins.append(PluginSpec(
-                        name=plugin_entry,
-                        entry_point=plugin_entry
-                    ))
+            try:
+                self._validate_module_path(module, allowlist)
+            except ValueError as exc:
+                logger.warning("Skipping plugin %r: %s", name, exc)
+                continue
+
+            plugins.append(PluginSpec(name=name, entry_point=module))
 
         return plugins
 
     def load_plugin(self, plugin_spec: PluginSpec) -> bool:
-        """Load a specific plugin."""
+        """Load a specific plugin after allowlist validation."""
         try:
+            allowlist = self._get_allowlist()
+            self._validate_module_path(plugin_spec.entry_point, allowlist)
+
             # Check dependencies
             for dep in plugin_spec.dependencies:
                 try:
                     importlib.import_module(dep)
                 except ImportError:
-                    logger.error(f"Plugin {plugin_spec.name} missing dependency: {dep}")
+                    logger.error("Plugin %s missing dependency: %s", plugin_spec.name, dep)
                     return False
 
             # Load the plugin module
@@ -176,11 +231,16 @@ def load_all_plugins() -> int:
     logger.info(f"Loaded {loaded_count}/{len(plugins)} plugins")
     return loaded_count
 
-# Auto-load plugins on import
-try:
-    load_all_plugins()
-except Exception as e:
-    logger.warning(f"Plugin auto-loading failed: {e}")
+# Auto-load plugins on import only when PYPITCH_PLUGINS is set AND we are
+# not in production mode.  In production, operators must call load_all_plugins()
+# explicitly after validating their configuration.
+import os as _os
+_env = _os.getenv("PYPITCH_ENV", "development")
+if _os.getenv("PYPITCH_PLUGINS") and _env != "production":
+    try:
+        load_all_plugins()
+    except Exception as _e:
+        logger.warning("Plugin auto-loading failed: %s", _e)
 
 __all__ = [
     'PluginManager',

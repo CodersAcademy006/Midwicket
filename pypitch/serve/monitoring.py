@@ -8,7 +8,6 @@ from typing import Any, Optional
 from collections import defaultdict
 import psutil
 import logging
-from datetime import datetime, timedelta
 import os
 
 logger = logging.getLogger(__name__)
@@ -17,7 +16,7 @@ class MetricsCollector:
     """Collects and stores API metrics."""
 
     def __init__(self, disk_path: Optional[str] = None) -> None:
-        self.metrics = defaultdict(list)
+        self.metrics: dict = defaultdict(list)
         self.lock = threading.Lock()
         self.max_metrics_age = 3600  # Keep metrics for 1 hour
         
@@ -80,10 +79,17 @@ class MetricsCollector:
             })
 
     def get_system_metrics(self) -> dict[str, Any]:
-        """Get current system metrics."""
+        """Get current system metrics.
+
+        CPU is sampled non-blocking (interval=None) to avoid blocking the event
+        loop for ~1 second on every call.  The first call after process start
+        always returns 0.0 — subsequent calls return the delta since the last
+        sample, which is accurate enough for monitoring dashboards.
+        """
         try:
             return {
-                'cpu_percent': psutil.cpu_percent(interval=1),
+                # interval=None: returns cached value from the last call — no blocking
+                'cpu_percent': psutil.cpu_percent(interval=None),
                 'memory_percent': psutil.virtual_memory().percent,
                 'memory_used_mb': psutil.virtual_memory().used / 1024 / 1024,
                 'memory_available_mb': psutil.virtual_memory().available / 1024 / 1024,
@@ -122,12 +128,12 @@ class MetricsCollector:
         requests_per_minute = total_requests / (time_span / 60)
 
         # Status code distribution
-        status_codes = defaultdict(int)
+        status_codes: dict = defaultdict(int)
         for r in requests:
             status_codes[r['status_code']] += 1
 
         # Endpoint usage
-        endpoints = defaultdict(int)
+        endpoints: dict = defaultdict(int)
         for r in requests:
             endpoints[r['endpoint']] += 1
 
@@ -145,6 +151,14 @@ class MetricsCollector:
         cutoff = time.time() - self.max_metrics_age
         for metric_list in self.metrics.values():
             metric_list[:] = [m for m in metric_list if m['timestamp'] > cutoff]
+
+# Prime the psutil CPU counter so subsequent non-blocking calls return a useful
+# value rather than 0.0.  This single blocking call happens once at import time,
+# not on every metrics request.
+try:
+    psutil.cpu_percent(interval=0.1)
+except Exception:  # nosec B110 — psutil may be unavailable in minimal environments; non-fatal
+    pass
 
 # Global metrics collector
 metrics_collector = MetricsCollector()
