@@ -82,7 +82,7 @@ def _auto_setup_session(data_dir: Optional[str] = None) -> PyPitchSession:
     _cached_session_dir = resolved
     return _cached_session
 
-def load_competition(competition: str, season: int, data_dir: str = "./data"):
+def load_competition(competition: str, season: int, data_dir: str = "./data") -> PyPitchSession:
     """
     Loads all matches for a competition and season with one line.
 

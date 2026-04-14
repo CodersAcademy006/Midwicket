@@ -393,7 +393,7 @@ class PyPitchAPI:
                     # Simple query to test DB connection
                     self.session.engine.execute_sql("SELECT 1")
                     active_connections = getattr(self.session.engine, '_active_connections', 0)
-                except Exception:
+                except (RuntimeError, OSError, AttributeError):
                     db_status = "unhealthy"
 
                 return {
