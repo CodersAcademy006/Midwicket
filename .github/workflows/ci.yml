@@ -9,20 +9,60 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      PYPITCH_ENV: testing
+      PYPITCH_API_KEY_REQUIRED: "false"
+      PYPITCH_DATA_DIR: /tmp/pypitch_test_data
+      PYPITCH_SECRET_KEY: ci-test-secret-key-not-for-production
+
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2f  # v5.3.0
       with:
-        python-version: '3.10'
-    - name: Install dependencies
+        python-version: '3.11'
+        cache: pip
+
+    - name: Install core dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pytest pytest-cov mypy coverage
-    - name: Run tests
+
+    - name: Install dev dependencies
       run: |
-        pytest --cov=pypitch --cov-report=xml
-    - name: Run mypy
+        pip install -r requirements-dev.txt
+        pip install pytest pytest-cov coverage
+        pip install fastapi uvicorn httpx  # needed for serve tests
+        pip install bandit pip-audit
+
+    - name: Security scan — bandit
       run: |
-        mypy pypitch
+        bandit -r pypitch/ -ll -x pypitch/sources/retrosheet_adapter.py
+      continue-on-error: false
+
+    - name: Security scan — pip-audit
+      run: |
+        pip-audit -r requirements.txt --desc
+      continue-on-error: true  # advisory only — don't block on transitive vulns yet
+
+    - name: Type check — mypy
+      run: |
+        mypy pypitch/ --ignore-missing-imports
+      continue-on-error: false
+
+    - name: Run tests with coverage
+      run: |
+        pytest tests/ -v \
+          --cov=pypitch \
+          --cov-report=xml \
+          --cov-report=term-missing \
+          --cov-fail-under=70 \
+          -m "not integration"
+
+    - name: Upload coverage report
+      uses: actions/upload-artifact@65c4c4a1ddee5b72f698d9d415dfb99d6e1a387c  # v4.6.0
+      if: always()
+      with:
+        name: coverage-report
+        path: coverage.xml

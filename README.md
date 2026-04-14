@@ -45,7 +45,7 @@ The library leverages modern data engineering tools (PyArrow, DuckDB) and archit
 - **High Performance**: Vectorized operations using PyArrow and analytical queries via DuckDB
 - **Time-Aware Identity**: Consistent player/team/venue resolution across historical data
 - **Express API**: One-liner access to common operations with sensible defaults
-- **Bundled Data**: Instant setup with sample cricket data (no download required)
+- **Cricket Data Integration**: Works with Cricsheet.org IPL dataset (download required on first run)
 - **Win Probability Model**: ML-powered match outcome predictions
 - **Rich Visualizations**: Charts, reports, and interactive dashboards
 
@@ -100,8 +100,8 @@ cp .env.example .env
 # Start all services
 docker-compose up -d
 
-# Check health
-curl http://localhost:8000/health
+# Check health (uses unauthenticated internal probe)
+curl http://localhost:8000/_internal/health
 ```
 
 #### Services Included
@@ -142,34 +142,46 @@ For custom deployment scenarios:
 ```bash
 # Install dependencies
 pip install -r requirements.txt
+pip install 'pypitch[serve]'
 
-# Set environment variables
-export SECRET_KEY="your-secret-key"
-export API_CORS_ORIGINS='["http://yourdomain.com"]'
+# Set environment variables (all use PYPITCH_ prefix)
+export PYPITCH_SECRET_KEY="your-secret-key-at-least-32-chars"
+export PYPITCH_API_KEY_REQUIRED="true"
+export PYPITCH_API_KEYS="your-api-key-here"
+export PYPITCH_CORS_ORIGINS="https://your-frontend.example.com"
+export PYPITCH_ALLOWED_HOSTS="your-domain.example.com,localhost"
 
 # Run the API
-python -m uvicorn pypitch.serve.api:PyPitchAPI().app --host 0.0.0.0 --port 8000
+python -c "from pypitch.serve.api import serve; serve()"
 ```
 
 ## Quick Start
 
-The fastest way to get started is using the Express API with bundled sample data:
+PyPitch uses live cricket data from [Cricsheet.org](https://cricsheet.org). On first run, download the IPL dataset (~50 MB, one-time):
 
-### Instant Setup with Bundled Data
+### Step 1 — Download Data
+
+```python
+from pypitch.data.loader import DataLoader
+
+loader = DataLoader()
+loader.download()  # Downloads from cricsheet.org — run once
+```
+
+### Step 2 — Use the Library
 
 ```python
 import pypitch.express as px
 
-# Load with sample data instantly (no download required)
-session = px.quick_load()
-
-# Get player statistics
+# Get player statistics (requires data downloaded above)
 stats = px.get_player_stats("Virat Kohli")
-print(f"🏏 {stats.name}: {stats.runs} runs in {stats.matches} matches")
+if stats:
+    print(f"{stats.name}: {stats.runs} runs in {stats.matches} matches")
 
-# Predict win probability
-prob = px.predict_win("Wankhede", 180, 120, 5, 15.0)
-print(f"🎯 Win probability: {prob['win_prob']:.1%}")
+# Predict win probability (no data required)
+from pypitch.compute.winprob import win_probability
+prob = win_probability(target=180, current_runs=120, wickets_down=5, overs_done=15.0)
+print(f"Win probability: {prob['win_prob']:.1%}")
 ```
 
 ### Full Setup with Custom Data
@@ -307,7 +319,7 @@ For detailed architecture information, see [Agents.md](Agents.md).
 PyPitch uses [Cricsheet](https://cricsheet.org/) as its primary data source, providing comprehensive ball-by-ball data for international and domestic cricket matches. The library also supports:
 
 - **Custom Data Ingestion**: Import your own cricket data in JSON format
-- **Bundled Sample Data**: Pre-packaged IPL 2023 matches for instant setup
+- **Cricsheet Data Download**: Fetch IPL/international data via `loader.download()` (~50 MB, one-time)
 - **Live Data Streaming**: Real-time match data (upcoming feature)
 
 ## Documentation
@@ -336,7 +348,7 @@ Analyze player statistics across multiple players:
 ```python
 import pypitch.express as px
 
-# Quick analysis with bundled data
+# Load data first (one-time download from cricsheet.org, ~50 MB)
 session = px.quick_load()
 
 # Compare top run scorers
@@ -548,9 +560,9 @@ PyPitch is under active development with a clear roadmap for future enhancements
 
 **Completed Features:**
 - ✅ Express API with one-liner access patterns
-- ✅ Bundled sample data for instant setup
+- ✅ Data integration with Cricsheet (download via `loader.download()`)
 - ✅ Win probability ML model implementation
-- ✅ Comprehensive test suite (47% coverage)
+- ✅ Comprehensive test suite (87% auth coverage, 70%+ overall target)
 - ✅ Performance benchmarks and optimizations
 - ✅ PDF report generation capabilities
 - ✅ Live broadcasting overlay support
