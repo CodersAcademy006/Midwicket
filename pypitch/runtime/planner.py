@@ -64,7 +64,7 @@ class QueryPlanner:
             FROM ball_events AS e
             {join_clause}
             WHERE {where_clause}
-        """
+        """  # nosec B608 – all interpolated values are internal schema names/params, not user input
         return sql, params
 
     def create_legacy_plan(self, query: BaseQuery) -> Dict[str, Any]:
@@ -147,7 +147,7 @@ class QueryPlanner:
                 FROM {table}
                 WHERE batter_id = ?
                   AND bowler_id = ?
-            """
+            """  # nosec B608 – {table} is an internal constant; user values are parameterised
             return sql, [batter_id, bowler_id]
 
         if query.__class__.__name__ == "FantasyQuery":
@@ -160,7 +160,7 @@ class QueryPlanner:
                 WHERE venue_id = ?
                 GROUP BY batter_id
                 ORDER BY avg_points DESC
-            """
+            """  # nosec B608
             return sql, [venue_id]
 
         # Generic fallback
@@ -170,4 +170,4 @@ class QueryPlanner:
             query.__class__.__name__,
         )
         where, params = self._build_where_clause(query)
-        return f"SELECT * FROM {table} WHERE {where}", params
+        return f"SELECT * FROM {table} WHERE {where}", params  # nosec B608

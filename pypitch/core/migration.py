@@ -135,18 +135,19 @@ class SchemaMigration:
         Returns dict with validation results.
         """
         con = duckdb.connect(str(self.db_path))
-        results = {"valid": True, "issues": []}
+        results: Dict[str, Any] = {"valid": True, "issues": []}
 
         try:
             expected_tables = self.SCHEMA_VERSIONS[self.CURRENT_SCHEMA_VERSION]
 
             for table_name, expected_columns in expected_tables.items():
                 # Check if table exists
-                table_exists = con.execute(
+                row = con.execute(
                     "SELECT COUNT(*) FROM information_schema.tables "
                     "WHERE table_name = ?",
                     [table_name],
-                ).fetchone()[0] > 0
+                ).fetchone()
+                table_exists = (row[0] > 0) if row is not None else False
 
                 if not table_exists:
                     results["issues"].append(f"Missing table: {table_name}")
