@@ -1,7 +1,40 @@
 # PyPitch Fix Ledger (Conversation-Wide)
 
-Date compiled: 2026-04-12 (updated 2026-04-14)
+Date compiled: 2026-04-12 (updated 2026-04-15)
 Scope: consolidated from all review/fix/re-check passes in this conversation.
+
+---
+
+## Current Audit Delta (2026-04-15)
+
+### Still Missing / Needs Fixing
+
+1. **Prometheus text exposition for `/v1/metrics`**
+  - Current endpoint returns JSON only.
+  - Missing Prometheus scrape-compatible `text/plain; version=0.0.4` output and dependency wiring for scrape tooling.
+
+2. **Readiness probes and drain-mode gating**
+  - No implemented `/ready` or `/v1/ready` endpoints in the API.
+  - No request gating for drain/shutdown mode, so graceful rollouts are still incomplete.
+
+3. **Ingest-time data quality validation**
+  - Canonicalization is still shallow.
+  - Missing explicit checks for impossible states, duplicate deliveries, malformed innings data, and quality metrics.
+
+4. **Benchmark workflow integration coverage**
+  - `scripts/live_train_benchmark.py` runs successfully, but there is still no end-to-end test covering download -> ingest -> train -> register.
+  - Current tests only cover trainer/unit paths.
+
+5. **Win model feature/calibration improvements**
+  - Current model is functional and benchmarked, but still needs richer feature coverage, calibration, and ablation-style validation before it is production-strong.
+  - Hardcoded venue priors remain; learned venue/team priors are still a future improvement.
+
+### Explicitly Not Counted as Missing Anymore
+
+- Rate limiter cleanup is already implemented in `pypitch/serve/rate_limit.py`.
+- API auth/Bearer compatibility is already implemented.
+- `/analyze` SQL guard and live benchmark progress/warning suppression are already implemented.
+- The old README/docs statements claiming readiness and metrics were already done are stale and should not be treated as current truth.
 
 ---
 
