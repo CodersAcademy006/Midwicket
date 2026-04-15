@@ -58,6 +58,22 @@ class RuntimeExecutor:
         start_time = time.perf_counter()
         query_hash = query.cache_key
 
+        # Import here to avoid circular dependencies at module import time.
+        from pypitch.query.defs import WinProbQuery
+
+        precomputed_plan: Optional[Dict[str, Any]] = None
+        if mode == ExecutionMode.BUDGET and not isinstance(query, WinProbQuery):
+            # Enforce guardrails before cache lookup so cached EXACT/raw results
+            # cannot bypass BUDGET restrictions.
+            precomputed_plan = self.planner.plan(query)
+            if precomputed_plan.get("strategy", "raw_scan") != "materialized_view":
+                raise RuntimeError(
+                    f"ExecutionMode.BUDGET forbids raw scans, but no materialized "
+                    f"view covers query {query.__class__.__name__}. "
+                    f"Either materialise the required table first or use "
+                    f"ExecutionMode.EXACT."
+                )
+
         cached_data = self.cache.get(query_hash)
         if cached_data is not None:
             if modes.debug_mode and hasattr(cached_data, 'collect'):
@@ -73,7 +89,6 @@ class RuntimeExecutor:
             )
 
         # Special handling for WinProbQuery: call robust model, not SQL
-        from pypitch.query.defs import WinProbQuery
         if isinstance(query, WinProbQuery):
             from pypitch.compute.winprob import win_probability
             result = win_probability(
@@ -99,7 +114,7 @@ class RuntimeExecutor:
         # _QUERY_PREFERRED_TABLES map and query.requires["preferred_tables"]
         # against engine.derived_versions, selecting "materialized_view" when
         # a registered table is found, otherwise "raw_scan".
-        plan = self.planner.plan(query)
+        plan = precomputed_plan or self.planner.plan(query)
         strategy = plan.get("strategy", "raw_scan")
 
         if strategy == "materialized_view":

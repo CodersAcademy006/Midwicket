@@ -289,6 +289,21 @@ class TestExecutionModeEnforcement:
         result = executor.execute(query, mode=ExecutionMode.BUDGET)
         assert result.meta.source == "compute"
 
+    def test_budget_mode_does_not_bypass_guardrail_with_cache(self):
+        cache = _FakeCache()
+        engine = _make_engine(derived_versions={})
+        executor = RuntimeExecutor(cache, engine)
+        query = _matchup_query(snapshot_id="budget-cache-guard")
+
+        # EXACT allows raw_scan and seeds the cache.
+        exact = executor.execute(query, mode=ExecutionMode.EXACT)
+        assert exact.meta.source == "compute"
+
+        # BUDGET must still reject when no materialized view exists,
+        # even if an EXACT result is already cached.
+        with pytest.raises(RuntimeError, match="BUDGET"):
+            executor.execute(query, mode=ExecutionMode.BUDGET)
+
 
 # ---------------------------------------------------------------------------
 # QueryPlanner — create_legacy_plan
