@@ -143,7 +143,12 @@ class QueryEngine:
         Executes the plan.
         """
         if "sql" in plan:
-            return self.execute_sql(plan["sql"])
+            return self.execute_sql(
+                plan["sql"],
+                params=plan.get("params"),
+                read_only=plan.get("read_only", True),
+                timeout=plan.get("timeout"),
+            )
         raise NotImplementedError("Plan execution without SQL not implemented")
 
     def insert_live_delivery(self, delivery_data: dict[str, Any]) -> None:

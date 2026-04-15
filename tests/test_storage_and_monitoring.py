@@ -157,6 +157,20 @@ class TestTableExists:
         assert isinstance(result, pa.Table)
         engine.close()
 
+    def test_run_with_sql_plan_uses_params(self):
+        engine = QueryEngine(":memory:")
+        result = engine.run({"sql": "SELECT ? + ? AS total", "params": [2, 5]})
+        assert result.to_pydict()["total"][0] == 7
+        engine.close()
+
+    def test_run_with_sql_plan_honours_read_only_flag(self):
+        engine = QueryEngine(":memory:")
+        engine.run({"sql": "CREATE TABLE t (x INTEGER)", "read_only": False})
+        engine.run({"sql": "INSERT INTO t VALUES (?)", "params": [11], "read_only": False})
+        result = engine.run({"sql": "SELECT x FROM t"})
+        assert result.to_pydict()["x"] == [11]
+        engine.close()
+
     def test_run_without_sql_raises_not_implemented(self):
         engine = QueryEngine(":memory:")
         with pytest.raises(NotImplementedError):
