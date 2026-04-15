@@ -1,6 +1,7 @@
 """Tests for trainable win model and deployment loading paths."""
 
 from importlib import reload
+import hashlib
 import pickle
 
 import pandas as pd
@@ -32,6 +33,34 @@ def _synthetic_match_df(matches: int = 8, balls_per_match: int = 24) -> pd.DataF
                     "runs_total": runs_total,
                     "wickets_fallen": wickets_fallen,
                     "target": target,
+                    "venue": "Wankhede",
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def _synthetic_ball_events_df(matches: int = 8, balls_per_match: int = 24) -> pd.DataFrame:
+    rows = []
+    for mid in range(matches):
+        target = 151 + (mid % 10)
+        final_runs = target + 6 if mid % 2 == 0 else target - 8
+        for i in range(balls_per_match * 2):
+            inning = 1 if i < balls_per_match else 2
+            ball_index = i % balls_per_match
+            over = ball_index // 6
+            ball = (ball_index % 6) + 1
+            runs_batter = 1 if (i + mid) % 4 == 0 else 0
+            runs_extras = 1 if (i + mid) % 11 == 0 else 0
+            is_wicket = bool((i + mid) % 17 == 0)
+            rows.append(
+                {
+                    "match_id": f"m{mid}",
+                    "inning": inning,
+                    "over": over,
+                    "ball": ball,
+                    "runs_batter": runs_batter,
+                    "runs_extras": runs_extras,
+                    "is_wicket": is_wicket,
                     "venue": "Wankhede",
                 }
             )
@@ -81,8 +110,11 @@ def test_compute_winprob_loads_model_from_path(monkeypatch, tmp_path):
     with artifact.open("wb") as f:
         pickle.dump(custom, f)
 
+    digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
+
     monkeypatch.setenv("PYPITCH_WIN_MODEL_MODE", "path")
     monkeypatch.setenv("PYPITCH_WIN_MODEL_PATH", str(artifact))
+    monkeypatch.setenv("PYPITCH_WIN_MODEL_SHA256", digest)
 
     import pypitch.config as config_mod
     import pypitch.compute.winprob as winprob_mod
@@ -101,6 +133,34 @@ def test_compute_winprob_loads_model_from_path(monkeypatch, tmp_path):
     assert abs(result["win_prob"] - 0.8808) < 0.02
 
 
+def test_load_default_uses_bundled_model_metadata():
+    model = WinPredictor.load_default()
+    assert isinstance(model, WinPredictor)
+    assert model.training_metadata is not None
+    assert model.training_metadata.get("source") == "bundled"
+    assert len(model.training_metadata.get("scaler_mean", [])) > 0
+    assert abs(model.coefs.get("intercept", 0.0) - (-0.9245411089399495)) < 1e-9
+
+
+def test_winprob_module_initializes_bundled_default_model(monkeypatch):
+    monkeypatch.delenv("PYPITCH_WIN_MODEL_MODE", raising=False)
+    monkeypatch.delenv("PYPITCH_WIN_MODEL_PATH", raising=False)
+    monkeypatch.delenv("PYPITCH_WIN_MODEL_SHA256", raising=False)
+
+    import pypitch.config as config_mod
+    import pypitch.compute.winprob as winprob_mod
+
+    reload(config_mod)
+    reload(winprob_mod)
+
+    with winprob_mod._model_lock:
+        model = winprob_mod._default_model
+
+    assert isinstance(model, WinPredictor)
+    assert model.training_metadata is not None
+    assert model.training_metadata.get("source") == "bundled"
+
+
 def test_venue_normalization_aliases():
     model = WinPredictor()
 
@@ -108,6 +168,19 @@ def test_venue_normalization_aliases():
     p2, _ = model.predict(target=180, current_runs=80, wickets_down=2, overs_done=10.0, venue="brabourne")
 
     assert abs(p1 - p2) < 1e-9
+
+
+def test_prepare_training_dataset_from_ball_events():
+    trainer = WinProbabilityTrainer()
+    ball_events = _synthetic_ball_events_df(matches=8, balls_per_match=24)
+
+    features, target, groups = trainer.prepare_training_dataset(ball_events)
+
+    assert len(features) == len(target) == len(groups)
+    assert len(features) > 0
+    assert set(groups.unique()) == {f"m{i}" for i in range(8)}
+    assert "pressure_index" in features.columns
+    assert "overs_remaining" in features.columns
 
 
 def test_create_win_predictor_uses_external_scaler_metadata():
