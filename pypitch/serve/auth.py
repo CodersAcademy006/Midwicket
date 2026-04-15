@@ -32,6 +32,7 @@ except ImportError:
 
 # API Key authentication
 security = HTTPBearer(auto_error=False)
+_AUTH_DISABLED_WARNED = False
 
 def verify_api_key(
     request: Request,
@@ -47,6 +48,13 @@ def verify_api_key(
     When ``API_KEY_REQUIRED`` is ``False`` the check is skipped entirely.
     """
     if not API_KEY_REQUIRED:
+        global _AUTH_DISABLED_WARNED
+        if not _AUTH_DISABLED_WARNED:
+            logger.warning(
+                "API key authentication is disabled. "
+                "Do not use this mode in production."
+            )
+            _AUTH_DISABLED_WARNED = True
         return True
 
     token: Optional[str] = None
