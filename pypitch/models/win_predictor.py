@@ -7,6 +7,8 @@ from typing import Dict, List, Optional, Tuple, Union
 import math
 import pandas as pd
 
+from .win_features import compute_chase_features
+
 class WinPredictor:
     """
     Advanced win probability model for T20 cricket.
@@ -36,6 +38,13 @@ class WinPredictor:
             "wickets_pressure": -0.15,  # Extra penalty when wickets fall early
             "momentum_factor": 0.12,     # Bonus for good run rate
             "target_size_factor": 0.001, # Small bonus for larger targets
+            "venue_adjustment": 1.0,
+            "rr_gap": 0.0,
+            "required_boundary_rate": 0.0,
+            "runs_per_wicket_remaining": 0.0,
+            "wickets_per_over_remaining": 0.0,
+            "chase_progress": 0.0,
+            "death_overs": 0.0,
         }
 
         # Venue-specific home advantage adjustments (log-odds) — all keys lowercase
@@ -74,37 +83,34 @@ class WinPredictor:
         if current_runs < 0 or target < 0:
             raise ValueError("runs must be non-negative")
 
-        # Feature engineering
-        runs_remaining = max(0, target - current_runs)
-        balls_remaining = max(1, 120 - int(overs_done * 6))  # T20 has 120 balls
-        wickets_remaining = max(0, 10 - wickets_down)
-        overs_remaining = max(0.1, 20.0 - overs_done)
 
-        # Run rates
-        run_rate_required = runs_remaining / (balls_remaining / 6.0)
-        run_rate_current = current_runs / overs_done if overs_done > 0 else 0
+        venue_adjust = self.venue_adjustments.get(self._normalize_venue(venue), 0.0)
+        feature_values = compute_chase_features(
+            target=target,
+            current_runs=current_runs,
+            wickets_down=wickets_down,
+            overs_done=overs_done,
+            venue_adjustment=venue_adjust,
+        )
+        runs_remaining = feature_values["runs_remaining"]
+        wickets_remaining = feature_values["wickets_remaining"]
+        balls_remaining = feature_values["balls_remaining"]
 
-        # Cricket-specific features
-        wickets_pressure = 1 if wickets_down >= 3 and overs_done < 10 else 0  # Early wickets pressure
-        momentum_factor = max(0, run_rate_current - 6.0)  # Bonus for above average scoring
-        target_size_factor = min(target / 200.0, 1.0)  # Normalize target size
-
-        # Venue adjustment
-        venue_adjust = self._get_venue_adjustment(venue)
+        linear_terms = [
+            feature for feature in feature_values.keys() if feature != "venue_adjustment"
+        ]
 
         # Linear predictor with all features
-        x = (
-            self.coefs["intercept"]
-            + self.coefs["runs_remaining"] * runs_remaining
-            + self.coefs["balls_remaining"] * balls_remaining
-            + self.coefs["wickets_remaining"] * wickets_remaining
-            + self.coefs["run_rate_required"] * run_rate_required
-            + self.coefs["run_rate_current"] * run_rate_current
-            + self.coefs["wickets_pressure"] * wickets_pressure
-            + self.coefs["momentum_factor"] * momentum_factor
-            + self.coefs["target_size_factor"] * target_size_factor
-            + venue_adjust
-        )
+        x = self.coefs.get("intercept", 0.0)
+        for feature in linear_terms:
+            x += self.coefs.get(feature, 0.0) * feature_values[feature]
+
+        # Keep legacy venue adjustment as an additive prior when no trained
+        # venue coefficient exists.
+        if "venue_adjustment" in self.coefs:
+            x += self.coefs.get("venue_adjustment", 0.0) * feature_values["venue_adjustment"]
+        else:
+            x += venue_adjust
 
         # Logistic function for probability
         win_prob = 1 / (1 + np.exp(-x))
@@ -169,17 +175,21 @@ class WinPredictor:
         prob, conf = self.predict(target, current_runs, wickets_down, overs_done, venue)
 
         # Calculate key metrics for context
-        runs_remaining = max(0, target - current_runs)
-        balls_remaining = max(1, 120 - int(overs_done * 6))
-        run_rate_required = runs_remaining / (balls_remaining / 6.0) if balls_remaining > 0 else 99
+        feature_values = compute_chase_features(
+            target=target,
+            current_runs=current_runs,
+            wickets_down=wickets_down,
+            overs_done=overs_done,
+            venue_adjustment=self.venue_adjustments.get(self._normalize_venue(venue), 0.0),
+        )
 
         return {
             "win_prob": prob,
             "confidence": conf,
-            "runs_remaining": runs_remaining,
-            "balls_remaining": balls_remaining,
-            "run_rate_required": run_rate_required,
-            "venue_adjustment": self._get_venue_adjustment(venue)
+            "runs_remaining": feature_values["runs_remaining"],
+            "balls_remaining": feature_values["balls_remaining"],
+            "run_rate_required": feature_values["run_rate_required"],
+            "venue_adjustment": self.venue_adjustments.get(self._normalize_venue(venue), 0.0)
         }
 
     @classmethod

@@ -17,6 +17,7 @@ from datetime import datetime
 
 from .win_predictor import WinPredictor
 from .registry import get_model_registry
+from .win_features import FEATURE_COLUMNS, compute_chase_features
 from ..exceptions import ModelTrainingError, DataValidationError
 
 logger = logging.getLogger(__name__)
@@ -31,11 +32,7 @@ class WinProbabilityTrainer:
 
     def __init__(self):
         self.scaler = StandardScaler()
-        self.feature_columns = [
-            'runs_remaining', 'balls_remaining', 'wickets_remaining',
-            'run_rate_required', 'run_rate_current', 'wickets_pressure',
-            'momentum_factor', 'target_size_factor', 'venue_adjustment'
-        ]
+        self.feature_columns = list(FEATURE_COLUMNS)
 
     def prepare_training_data(self, match_data: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series]:
         """
@@ -66,35 +63,17 @@ class WinProbabilityTrainer:
 
         for _, delivery in second_innings.iterrows():
             try:
-                # Basic features
-                runs_remaining = max(0, delivery['target'] - delivery['runs_total'])
-                balls_remaining = max(1, 120 - (delivery['over'] * 6 + delivery['ball']))
-                wickets_remaining = max(0, 10 - delivery['wickets_fallen'])
                 overs_done = delivery['over'] + delivery['ball'] / 6.0
-
-                # Run rates
-                run_rate_required = runs_remaining / (balls_remaining / 6.0) if balls_remaining > 0 else 99
-                run_rate_current = delivery['runs_total'] / overs_done if overs_done > 0 else 0
-
-                # Cricket-specific features
-                wickets_pressure = 1 if delivery['wickets_fallen'] >= 3 and overs_done < 10 else 0
-                momentum_factor = max(0, run_rate_current - 6.0)
-                target_size_factor = min(delivery['target'] / 200.0, 1.0)
-
-                # Venue adjustment (simplified - could be expanded)
                 venue_adjustment = self._get_venue_adjustment(delivery.get('venue', ''))
-
-                features.append({
-                    'runs_remaining': runs_remaining,
-                    'balls_remaining': balls_remaining,
-                    'wickets_remaining': wickets_remaining,
-                    'run_rate_required': run_rate_required,
-                    'run_rate_current': run_rate_current,
-                    'wickets_pressure': wickets_pressure,
-                    'momentum_factor': momentum_factor,
-                    'target_size_factor': target_size_factor,
-                    'venue_adjustment': venue_adjustment
-                })
+                features.append(
+                    compute_chase_features(
+                        target=delivery['target'],
+                        current_runs=delivery['runs_total'],
+                        wickets_down=delivery['wickets_fallen'],
+                        overs_done=overs_done,
+                        venue_adjustment=venue_adjustment,
+                    )
+                )
 
             except Exception as e:
                 logger.warning(f"Skipping delivery due to error: {e}")
@@ -247,7 +226,13 @@ class WinProbabilityTrainer:
             WinPredictor instance with trained coefficients
         """
         # Extract coefficients
-        coefs = dict(zip(self.feature_columns, trained_model.coef_[0]))
+        if "feature_importance" in training_metrics and isinstance(training_metrics["feature_importance"], dict):
+            coefs = {
+                str(feature): float(value)
+                for feature, value in training_metrics["feature_importance"].items()
+            }
+        else:
+            coefs = dict(zip(self.feature_columns, trained_model.coef_[0]))
         coefs['intercept'] = trained_model.intercept_[0]
 
         # Create venue adjustments (could be learned from data in future)
