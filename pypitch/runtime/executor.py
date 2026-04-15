@@ -153,8 +153,9 @@ class RuntimeExecutor:
         # We include the metric name in the hash to differentiate results
         metric_name = getattr(metric_func, "__name__", "unknown_metric")
         query_hash = f"{query.cache_key}:{metric_name}"
-        
-        if cached := self.cache.get(query_hash):
+
+        cached = self.cache.get(query_hash)
+        if cached is not None:
             return ExecutionResult(
                 data=cached,
                 meta=ResultMetadata(

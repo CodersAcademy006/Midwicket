@@ -134,6 +134,31 @@ class TestRuntimeExecutorCacheHit:
         assert result.meta.execution_time_ms >= 0
 
 
+class TestRuntimeExecutorMetricCaching:
+    def test_execute_metric_caches_falsy_value(self):
+        cache = _FakeCache()
+        engine = _make_engine()
+        executor = RuntimeExecutor(cache, engine)
+        query = _matchup_query(snapshot_id="metric-cache-snap")
+
+        calls = {"n": 0}
+
+        def metric_returns_zero(_events):
+            calls["n"] += 1
+            return 0.0
+
+        first = executor.execute_metric(query, metric_returns_zero)
+        call_count_after_first = engine.execute_sql.call_count
+
+        second = executor.execute_metric(query, metric_returns_zero)
+
+        assert first.data == 0.0
+        assert second.data == 0.0
+        assert second.meta.source == "cache"
+        assert calls["n"] == 1
+        assert engine.execute_sql.call_count == call_count_after_first
+
+
 # ---------------------------------------------------------------------------
 # RuntimeExecutor — WinProbQuery path
 # ---------------------------------------------------------------------------
