@@ -6,6 +6,7 @@ import zipfile
 import json
 from pathlib import Path
 from typing import Iterator, Dict, Any, Optional
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, before_sleep_log
 from tqdm import tqdm
 # Constants
 from pypitch.config import CRICSHEET_URL, DEFAULT_DATA_DIR
@@ -13,8 +14,29 @@ from pypitch.config import CRICSHEET_URL, DEFAULT_DATA_DIR
 # M4: make timeouts configurable via env vars
 _DOWNLOAD_TIMEOUT = int(os.getenv("PYPITCH_DOWNLOAD_TIMEOUT", "60"))
 _EXTRACT_TIMEOUT = int(os.getenv("PYPITCH_EXTRACT_TIMEOUT", "120"))
+_DOWNLOAD_RETRY_ATTEMPTS = max(1, int(os.getenv("PYPITCH_DOWNLOAD_RETRIES", "3")))
+_DOWNLOAD_RETRY_BACKOFF_BASE = float(os.getenv("PYPITCH_DOWNLOAD_RETRY_BACKOFF_BASE", "0.5"))
+_DOWNLOAD_RETRY_BACKOFF_MAX = float(os.getenv("PYPITCH_DOWNLOAD_RETRY_BACKOFF_MAX", "8"))
 
 logger = logging.getLogger(__name__)
+
+
+@retry(
+    reraise=True,
+    stop=stop_after_attempt(_DOWNLOAD_RETRY_ATTEMPTS),
+    wait=wait_exponential(
+        multiplier=_DOWNLOAD_RETRY_BACKOFF_BASE,
+        min=_DOWNLOAD_RETRY_BACKOFF_BASE,
+        max=_DOWNLOAD_RETRY_BACKOFF_MAX,
+    ),
+    retry=retry_if_exception_type(requests.RequestException),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+)
+def _download_stream(url: str) -> requests.Response:
+    """Fetch URL with retries for transient network/HTTP failures."""
+    response = requests.get(url, stream=True, timeout=_DOWNLOAD_TIMEOUT)
+    response.raise_for_status()
+    return response
 
 class DataLoader:
     def __init__(self, data_dir: Optional[str] = None):
@@ -41,8 +63,7 @@ class DataLoader:
         logger.info("Downloading IPL Data from %s", CRICSHEET_URL)
         
         try:
-            response = requests.get(CRICSHEET_URL, stream=True, timeout=_DOWNLOAD_TIMEOUT)
-            response.raise_for_status()
+            response = _download_stream(CRICSHEET_URL)
 
             total_size = int(response.headers.get('content-length', 0))
 
