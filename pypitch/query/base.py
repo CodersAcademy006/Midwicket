@@ -35,8 +35,13 @@ class BaseQuery(BaseModel):
         Generates a deterministic SHA256 hash of the INTENT only.
         Crucially, it excludes execution_opts because of the exclude=True above.
         """
-        # 1. Dump model to dict, excluding runtime opts
+        # 1. Dump model to dict, excluding runtime opts.
+        # Include query type so distinct query classes with identical fields
+        # cannot collide in cache.
         canonical_dict = self.model_dump(exclude={"execution_opts"})
+        canonical_dict["__query_type__"] = (
+            f"{self.__class__.__module__}.{self.__class__.__qualname__}"
+        )
         
         # 2. Dump to JSON with sort_keys=True for determinism
         canonical_json = json.dumps(canonical_dict, sort_keys=True)

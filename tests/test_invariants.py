@@ -1,5 +1,6 @@
 import pytest
 from pydantic import ValidationError
+from pypitch.query.base import BaseQuery
 from pypitch.query.defs import MatchupQuery
 
 class TestArchitecturalInvariants:
@@ -59,6 +60,40 @@ class TestArchitecturalInvariants:
         q_v2 = MatchupQuery(batter_id="X", bowler_id="Y", snapshot_id="2025-01-01")
         
         assert q_v1.cache_key != q_v2.cache_key, "CRITICAL: Cache collision across data versions."
+
+    def test_invariant_query_type_isolation(self):
+        """
+        INVARIANT 3b: Query Type Isolation
+        Different query classes with identical field payloads must not share
+        a cache key, or cross-query cache poisoning can occur.
+        """
+
+        class QueryA(BaseQuery):
+            @property
+            def requires(self):
+                return {
+                    "preferred_tables": ["matchup_stats"],
+                    "fallback_table": "ball_events",
+                    "entities": ["batter", "bowler"],
+                    "granularity": "ball",
+                }
+
+        class QueryB(BaseQuery):
+            @property
+            def requires(self):
+                return {
+                    "preferred_tables": ["phase_stats"],
+                    "fallback_table": "ball_events",
+                    "entities": ["batter"],
+                    "granularity": "ball",
+                }
+
+        qa = QueryA(snapshot_id="2025-01-01")
+        qb = QueryB(snapshot_id="2025-01-01")
+
+        assert qa.cache_key != qb.cache_key, (
+            "CRITICAL: Different query classes produced the same cache key."
+        )
 
     def test_invariant_schema_strictness(self):
         """
