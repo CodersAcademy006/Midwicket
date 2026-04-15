@@ -2,6 +2,7 @@ import contextlib
 import duckdb
 import pyarrow as pa
 import logging
+import threading
 from typing import Any, Iterator, Optional
 from pypitch.schema.v1 import BALL_EVENT_SCHEMA
 from pypitch.storage.connection_pool import ConnectionPool
@@ -77,23 +78,65 @@ class QueryEngine:
                 except Exception:  # nosec B110 — view may not be registered if ingest failed early
                     pass
 
-    def execute_sql(self, sql: str, params: Optional[list] = None, read_only: bool = True) -> pa.Table:
+    def execute_sql(
+        self,
+        sql: str,
+        params: Optional[list] = None,
+        read_only: bool = True,
+        timeout: Optional[float] = None,
+    ) -> pa.Table:
         """
         Execute a SQL query and return results as a PyArrow Table.
+
+        Args:
+            sql: SQL statement
+            params: Optional positional parameters
+            read_only: False for write statements
+            timeout: Optional timeout in seconds. When exceeded, the query is
+                interrupted and TimeoutError is raised.
         """
         if params is None:
             params = []
 
         with self.pool.connection() as con:
-            if not read_only:
-                con.execute(sql, params)
-                return pa.Table.from_pylist([]) # Return empty table for non-select queries
-            
-            result = con.execute(sql, params).arrow()
-            # Ensure we return a Table, not a RecordBatchReader
-            if isinstance(result, pa.RecordBatchReader):
-                return result.read_all()
-            return result
+            timed_out = False
+            timer: Optional[threading.Timer] = None
+
+            def _interrupt_query() -> None:
+                nonlocal timed_out
+                timed_out = True
+                interrupt = getattr(con, "interrupt", None)
+                if callable(interrupt):
+                    with contextlib.suppress(Exception):
+                        interrupt()
+
+            if timeout is not None and timeout > 0:
+                timer = threading.Timer(timeout, _interrupt_query)
+                timer.daemon = True
+                timer.start()
+
+            try:
+                if not read_only:
+                    con.execute(sql, params)
+                    if timed_out:
+                        raise TimeoutError(f"Query timed out after {timeout}s")
+                    return pa.Table.from_pylist([])  # empty table for non-select queries
+
+                result = con.execute(sql, params).arrow()
+                if timed_out:
+                    raise TimeoutError(f"Query timed out after {timeout}s")
+
+                # Ensure we return a Table, not a RecordBatchReader
+                if isinstance(result, pa.RecordBatchReader):
+                    return result.read_all()
+                return result
+            except Exception as exc:
+                if timed_out:
+                    raise TimeoutError(f"Query timed out after {timeout}s") from exc
+                raise
+            finally:
+                if timer is not None:
+                    timer.cancel()
 
     def run(self, plan: dict[str, Any]) -> pa.Table:
         """
