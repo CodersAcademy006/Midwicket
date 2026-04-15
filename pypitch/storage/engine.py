@@ -72,11 +72,24 @@ class QueryEngine:
                     logger.debug("ingest_events: row_count_after_write=%s", res[0] if res else "unknown")
                 except Exception as e:
                     logger.debug("ingest_events: failed to fetch row count: %s", e)
+
+                # New source data invalidates all previously materialized derived tables.
+                # Keep metadata and physical derived schema in sync.
+                self._invalidate_derived_state(con)
+
+                # Track the active snapshot tag for observability/debugging.
+                self._snapshot_id = snapshot_tag
             finally:
                 try:
                     con.unregister('arrow_view')
                 except Exception:  # nosec B110 — view may not be registered if ingest failed early
                     pass
+
+    def _invalidate_derived_state(self, con) -> None:
+        """Drop stale derived tables and clear in-memory version metadata."""
+        con.execute("DROP SCHEMA IF EXISTS derived CASCADE")
+        con.execute("CREATE SCHEMA IF NOT EXISTS derived")
+        self._derived_versions.clear()
 
     def execute_sql(
         self,

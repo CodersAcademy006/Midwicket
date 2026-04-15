@@ -105,6 +105,35 @@ class TestQueryEngineIngest:
         assert result.to_pydict()["n"][0] == 4
         engine.close()
 
+    def test_ingest_updates_snapshot_id(self):
+        engine = QueryEngine(":memory:")
+        table = _make_valid_ball_event_table(1)
+
+        engine.ingest_events(table, "snap-010")
+
+        assert engine.snapshot_id == "snap-010"
+        engine.close()
+
+    def test_ingest_invalidates_derived_state(self):
+        engine = QueryEngine(":memory:")
+        table = _make_valid_ball_event_table(1)
+
+        engine.ingest_events(table, "snap-a")
+        engine.execute_sql(
+            "CREATE TABLE derived.temp_metric AS SELECT 1 AS x",
+            read_only=False,
+        )
+        engine.derived_versions["temp_metric"] = "snap-a"
+
+        engine.ingest_events(table, "snap-b")
+
+        assert engine.derived_versions == {}
+        count = engine.execute_sql(
+            "SELECT COUNT(*) AS c FROM information_schema.tables WHERE table_schema = 'derived'"
+        ).to_pydict()["c"][0]
+        assert count == 0
+        engine.close()
+
 
 # ---------------------------------------------------------------------------
 # QueryEngine — execute_sql
