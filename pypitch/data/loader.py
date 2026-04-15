@@ -1,12 +1,12 @@
 import logging
+import os
+import tempfile
 import requests
 import zipfile
 import json
 from pathlib import Path
 from typing import Iterator, Dict, Any, Optional
 from tqdm import tqdm
-
-import os
 # Constants
 from pypitch.config import CRICSHEET_URL, DEFAULT_DATA_DIR
 
@@ -43,24 +43,32 @@ class DataLoader:
         try:
             response = requests.get(CRICSHEET_URL, stream=True, timeout=_DOWNLOAD_TIMEOUT)
             response.raise_for_status()
-            
+
             total_size = int(response.headers.get('content-length', 0))
-            
-            with open(self.zip_path, 'wb') as f, tqdm(
-                desc="Downloading",
-                total=total_size,
-                unit='iB',
-                unit_scale=True,
-                unit_divisor=1024,
-            ) as bar:
-                for chunk in response.iter_content(chunk_size=8192):
-                    size = f.write(chunk)
-                    bar.update(size)
-            
+
+            # Write to a temp file then rename atomically to avoid TOCTOU corruption.
+            tmp_fd, tmp_name = tempfile.mkstemp(dir=self.zip_path.parent, suffix=".tmp")
+            tmp_path = Path(tmp_name)
+            try:
+                with os.fdopen(tmp_fd, 'wb') as f, tqdm(
+                    desc="Downloading",
+                    total=total_size,
+                    unit='iB',
+                    unit_scale=True,
+                    unit_divisor=1024,
+                ) as bar:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        size = f.write(chunk)
+                        bar.update(size)
+                tmp_path.replace(self.zip_path)
+            except Exception:
+                tmp_path.unlink(missing_ok=True)
+                raise
+
             logger.info("Extracting files...")
             self._extract()
             logger.info("Download complete.")
-            
+
         except Exception as e:
             # Clean up partial downloads
             if self.zip_path.exists():

@@ -9,6 +9,7 @@ import asyncio
 import hashlib
 import threading
 import time
+import os
 from typing import Dict, Any, Optional, Callable, List, Set
 from dataclasses import dataclass, field
 import json
@@ -16,6 +17,7 @@ import requests
 import logging
 from concurrent.futures import ThreadPoolExecutor
 import queue
+from pathlib import Path
 
 from ..storage.engine import QueryEngine
 from ..exceptions import DataIngestionError, ConnectionError
@@ -50,6 +52,7 @@ class StreamIngestor:
         self.query_engine = query_engine
         self.max_workers = max_workers
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
+        self.webhook_executor = ThreadPoolExecutor(max_workers=1)
 
         # Live match tracking — protected by _matches_lock (C4)
         self.live_matches: Dict[str, LiveMatch] = {}
@@ -74,11 +77,13 @@ class StreamIngestor:
 
         # Webhook server
         self.webhook_server = None
+        self.webhook_host = os.getenv("PYPITCH_WEBHOOK_HOST", "localhost").strip() or "localhost"
         self.webhook_port = 8080
 
         # Polling configuration
         self.poll_interval = 30  # seconds
         self.api_endpoints: Dict[str, str] = {}
+        self._api_backoff_state: Dict[str, Dict[str, float]] = {}
 
         # Callbacks
         self.on_match_update: Optional[Callable] = None
@@ -104,8 +109,20 @@ class StreamIngestor:
 
         if self.webhook_server:
             self.webhook_server.shutdown()
+            self.webhook_server.server_close()
 
         self.executor.shutdown(wait=True)
+        self.webhook_executor.shutdown(wait=True)
+
+        # Drain remaining queued deliveries into dead-letter on shutdown.
+        while True:
+            try:
+                match_id, delivery_data = self.update_queue.get_nowait()
+            except queue.Empty:
+                break
+            self._send_to_dead_letter(match_id, delivery_data, "shutdown_in_flight")
+            self.update_queue.task_done()
+
         logger.info("Live data ingestion pipeline stopped")
 
     def register_match(self, match_id: str, source: str, metadata: Dict[str, Any] = None) -> bool:
@@ -187,7 +204,16 @@ class StreamIngestor:
 
     def set_webhook_port(self, port: int):
         """Set the webhook server port."""
+        if not (1 <= int(port) <= 65535):
+            raise ValueError("webhook port must be between 1 and 65535")
         self.webhook_port = port
+
+    def set_webhook_host(self, host: str):
+        """Set the webhook server bind host."""
+        host = str(host).strip()
+        if not host:
+            raise ValueError("webhook host must be a non-empty string")
+        self.webhook_host = host
 
     def _start_webhook_server(self):
         """Start the webhook HTTP server."""
@@ -208,10 +234,20 @@ class StreamIngestor:
 
                     # Extract match_id from URL path or data
                     path_parts = urllib.parse.urlparse(self.path).path.strip('/').split('/')
-                    match_id = path_parts[-1] if path_parts else data.get('match_id')
+                    path_match_id = path_parts[-1] if path_parts and path_parts[-1] else None
+                    match_id = path_match_id or data.get('match_id')
 
                     if match_id:
-                        self.ingestor.update_match_data(match_id, data)
+                        match_id_str = str(match_id)
+                        safe_id = Path(match_id_str).name
+                        if safe_id != match_id_str or "/" in match_id_str or "\\" in match_id_str:
+                            self.send_response(400)
+                            self.send_header('Content-type', 'application/json')
+                            self.end_headers()
+                            self.wfile.write(json.dumps({'error': 'invalid match_id'}).encode())
+                            return
+
+                        self.ingestor.update_match_data(safe_id, data)
                         self.send_response(200)
                         self.send_header('Content-type', 'application/json')
                         self.end_headers()
@@ -223,11 +259,11 @@ class StreamIngestor:
                         self.wfile.write(json.dumps({'error': 'match_id required'}).encode())
 
                 except Exception as e:
-                    logger.error(f"Webhook error: {e}")
+                    logger.error("Webhook error", exc_info=True)
                     self.send_response(500)
                     self.send_header('Content-type', 'application/json')
                     self.end_headers()
-                    self.wfile.write(json.dumps({'error': str(e)}).encode())
+                    self.wfile.write(json.dumps({'error': 'Internal server error'}).encode())
 
             def log_message(self, format, *args):
                 # Suppress default HTTP server logs
@@ -238,9 +274,9 @@ class StreamIngestor:
             return WebhookHandler(self, *args, **kwargs)
 
         try:
-            self.webhook_server = HTTPServer(('localhost', self.webhook_port), create_handler)
-            self.executor.submit(self.webhook_server.serve_forever)
-            logger.info(f"Webhook server started on port {self.webhook_port}")
+            self.webhook_server = HTTPServer((self.webhook_host, self.webhook_port), create_handler)
+            self.webhook_executor.submit(self.webhook_server.serve_forever)
+            logger.info("Webhook server started on %s:%s", self.webhook_host, self.webhook_port)
         except Exception as e:
             logger.error(f"Failed to start webhook server: {e}")
 
@@ -363,6 +399,11 @@ class StreamIngestor:
         while not self.stop_event.is_set():
             try:
                 for name, config in self.api_endpoints.items():
+                    backoff = self._api_backoff_state.get(name)
+                    now = time.time()
+                    if backoff and now < backoff.get('next_retry', 0.0):
+                        continue
+
                     try:
                         response = requests.get(config['url'], headers=config['headers'], timeout=10)
                         response.raise_for_status()
@@ -380,8 +421,25 @@ class StreamIngestor:
                             if match_id:
                                 self.update_match_data(match_id, data)
 
+                        # Successful call resets backoff state for this endpoint.
+                        if name in self._api_backoff_state:
+                            self._api_backoff_state.pop(name, None)
+
                     except requests.RequestException as e:
-                        logger.warning(f"API poll failed for {name}: {e}")
+                        prev_attempts = int(self._api_backoff_state.get(name, {}).get('attempts', 0))
+                        attempts = prev_attempts + 1
+                        delay = min(300.0, _RETRY_BACKOFF_BASE * (2 ** attempts))
+                        self._api_backoff_state[name] = {
+                            'attempts': float(attempts),
+                            'next_retry': now + delay,
+                        }
+                        logger.warning(
+                            "API poll failed for %s: %s (attempt=%d, next_retry_in=%.1fs)",
+                            name,
+                            e,
+                            attempts,
+                            delay,
+                        )
                     except Exception as e:
                         logger.error(f"API processing error for {name}: {e}")
 
