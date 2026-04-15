@@ -3,7 +3,7 @@
 This script will:
 1. Download/update raw IPL data from Cricsheet.
 2. Canonicalize + ingest deliveries into DuckDB.
-3. Train multiple logistic configurations (C, class_weight, random_state).
+3. Train multiple logistic configurations (regularization family + strength).
 4. Select best model by highest test AUC then lowest Brier score.
 5. Register best model in ModelRegistry and print deploy env vars.
 
@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
 from pathlib import Path
 
@@ -26,6 +27,11 @@ from sklearn.model_selection import StratifiedGroupKFold, train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import cross_val_score
+from tqdm.auto import tqdm
+
+# Prevent noisy wildcard CORS warning during local benchmark runs unless user
+# explicitly sets their own CORS value.
+os.environ.setdefault("PYPITCH_CORS_ORIGINS", "http://localhost")
 
 from pypitch.api.session import PyPitchSession
 from pypitch.core.canonicalize import canonicalize_match
@@ -52,18 +58,19 @@ def ingest_all_matches(session: PyPitchSession, max_matches: int = 0) -> dict[st
     ok = 0
     fail = 0
     start = time.time()
-    for idx, file_path in enumerate(files, start=1):
-        match_id = file_path.stem
-        try:
-            raw = session.loader.get_match(match_id)
-            table = canonicalize_match(raw, session.registry, match_id=match_id)
-            session.engine.ingest_events(table, snapshot_tag=f"match_{match_id}", append=True)
-            ok += 1
-        except Exception:
-            fail += 1
+    with tqdm(total=len(files), desc="Ingesting matches", unit="match", dynamic_ncols=True) as progress:
+        for file_path in files:
+            match_id = file_path.stem
+            try:
+                raw = session.loader.get_match(match_id)
+                table = canonicalize_match(raw, session.registry, match_id=match_id)
+                session.engine.ingest_events(table, snapshot_tag=f"match_{match_id}", append=True)
+                ok += 1
+            except Exception:
+                fail += 1
 
-        if idx % 100 == 0:
-            print(f"Ingested {idx}/{len(files)} matches (ok={ok}, fail={fail})")
+            progress.update(1)
+            progress.set_postfix(ok=ok, fail=fail)
 
     elapsed = time.time() - start
     print(f"Ingestion complete: ok={ok}, fail={fail}, elapsed={elapsed:.1f}s")
@@ -94,6 +101,8 @@ def evaluate_config(
     *,
     c_value: float,
     class_weight: str | None,
+    penalty: str,
+    l1_ratio: float | None,
     random_state: int,
 ) -> tuple[dict, LogisticRegression, StandardScaler]:
     grouped = pd.DataFrame({"group": groups.values, "target": target.values})
@@ -122,12 +131,22 @@ def evaluate_config(
     x_train_scaled = scaler.fit_transform(x_train)
     x_test_scaled = scaler.transform(x_test)
 
-    model = LogisticRegression(
-        random_state=random_state,
-        max_iter=3000,
-        class_weight=class_weight,
-        C=c_value,
-    )
+    if penalty == "elasticnet":
+        solver = "saga"
+    else:
+        solver = "lbfgs"
+
+    model_kwargs: dict[str, object] = {
+        "random_state": random_state,
+        "max_iter": 6000,
+        "class_weight": class_weight,
+        "C": c_value,
+        "solver": solver,
+    }
+    if penalty == "elasticnet":
+        model_kwargs["l1_ratio"] = l1_ratio
+
+    model = LogisticRegression(**model_kwargs)
     model.fit(x_train_scaled, y_train)
 
     train_prob = model.predict_proba(x_train_scaled)[:, 1]
@@ -142,12 +161,7 @@ def evaluate_config(
             ("scaler", StandardScaler()),
             (
                 "lr",
-                LogisticRegression(
-                    random_state=random_state,
-                    max_iter=3000,
-                    class_weight=class_weight,
-                    C=c_value,
-                ),
+                LogisticRegression(**model_kwargs),
             ),
         ]
     )
@@ -156,6 +170,9 @@ def evaluate_config(
     metrics = {
         "C": c_value,
         "class_weight": class_weight,
+        "penalty": penalty,
+        "l1_ratio": l1_ratio,
+        "solver": solver,
         "random_state": random_state,
         "train_accuracy": float(accuracy_score(y_train, train_prob > 0.5)),
         "test_accuracy": float(accuracy_score(y_test, test_prob > 0.5)),
@@ -172,6 +189,9 @@ def evaluate_config(
         "training_matches": int(pd.Series(g_train).nunique()),
         "test_matches": int(pd.Series(groups.loc[test_mask]).nunique()),
         "split_strategy": "grouped_by_match",
+        "feature_importance": {
+            col: float(weight) for col, weight in zip(features.columns, model.coef_[0])
+        },
     }
 
     return metrics, model, scaler
@@ -199,29 +219,66 @@ def main() -> int:
         features, target, groups = trainer.prepare_training_dataset(events)
 
         print("Running benchmark grid (retraining multiple configs)...")
-        c_values = [0.1, 0.5, 1.0, 2.0, 5.0]
+        c_values = [0.03, 0.05, 0.1, 0.2, 0.5, 1.0]
         class_weights = ["balanced", None]
-        seeds = [42, 73, 101]
+        elasticnet_l1_ratios = [0.05, 0.15]
+        seeds = [42]
 
-        runs: list[tuple[dict, LogisticRegression, StandardScaler]] = []
+        configs: list[tuple[str, float, str | None, float | None, int]] = []
         for c in c_values:
             for cw in class_weights:
                 for seed in seeds:
-                    metrics, model, scaler = evaluate_config(
-                        features,
-                        target,
-                        groups,
-                        c_value=c,
-                        class_weight=cw,
-                        random_state=seed,
-                    )
-                    runs.append((metrics, model, scaler))
-                    print(
-                        f"C={c:>4} cw={str(cw):>8} seed={seed} "
-                        f"AUC={metrics['test_auc']:.4f} Brier={metrics['test_brier']:.4f}"
-                    )
+                    configs.append(("l2", c, cw, None, seed))
 
-        runs.sort(key=lambda x: (-x[0]["test_auc"], x[0]["test_brier"], x[0]["test_log_loss"]))
+        for c in [0.05, 0.1, 0.2, 0.5]:
+            for l1_ratio in elasticnet_l1_ratios:
+                for cw in class_weights:
+                    for seed in seeds:
+                        configs.append(("elasticnet", c, cw, l1_ratio, seed))
+
+        runs: list[tuple[dict, LogisticRegression, StandardScaler]] = []
+        best_auc = float("-inf")
+        best_brier = float("inf")
+        bench_start = time.time()
+        with tqdm(total=len(configs), desc="Benchmark configs", unit="cfg", dynamic_ncols=True) as progress:
+            for penalty, c, cw, l1_ratio, seed in configs:
+                metrics, model, scaler = evaluate_config(
+                    features,
+                    target,
+                    groups,
+                    c_value=c,
+                    class_weight=cw,
+                    penalty=penalty,
+                    l1_ratio=l1_ratio,
+                    random_state=seed,
+                )
+                runs.append((metrics, model, scaler))
+
+                if metrics["test_auc"] > best_auc:
+                    best_auc = metrics["test_auc"]
+                if metrics["test_brier"] < best_brier:
+                    best_brier = metrics["test_brier"]
+
+                progress.update(1)
+                progress.set_postfix(
+                    mode=penalty,
+                    C=f"{c:.2f}",
+                    auc=f"{metrics['test_auc']:.4f}",
+                    best_auc=f"{best_auc:.4f}",
+                    best_brier=f"{best_brier:.4f}",
+                )
+
+        bench_elapsed = time.time() - bench_start
+        print(f"Benchmark complete: {len(configs)} configs in {bench_elapsed:.1f}s")
+
+        runs.sort(
+            key=lambda x: (
+                -x[0]["test_auc"],
+                -x[0]["cv_auc_mean"],
+                x[0]["test_brier"],
+                x[0]["test_log_loss"],
+            )
+        )
         best_metrics, best_model, best_scaler = runs[0]
 
         predictor = trainer.create_win_predictor(best_model, best_metrics, scaler=best_scaler)
