@@ -27,11 +27,14 @@ class DerivedStore:
         exists = table["count"][0].as_py() > 0
 
         if exists:
+            # Keep planner-visible materialization versions in sync with actual tables.
+            self.engine.derived_versions[table_name] = snapshot_id
             return
 
         # Dispatch to specific builder
         if table_name == "venue_baselines":
             self._build_venue_baselines(snapshot_id)
+            self.engine.derived_versions[table_name] = snapshot_id
         else:
             raise ValueError(f"Unknown derived table: {table_name}")
 
