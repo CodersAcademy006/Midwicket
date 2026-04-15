@@ -205,6 +205,21 @@ class TestVideoSyncUtils:
         from pypitch.utils.video_sync import get_video_timestamp
         assert get_video_timestamp(1, {}) is None
 
+    def test_get_video_timestamp_accepts_string_key_mapping(self):
+        from pypitch.utils.video_sync import get_video_timestamp
+        mapping = {"2": 126}
+        assert get_video_timestamp(2, mapping) == 126
+
+    def test_get_video_timestamp_accepts_string_ball_index(self):
+        from pypitch.utils.video_sync import get_video_timestamp
+        mapping = {2: 126}
+        assert get_video_timestamp("2", mapping) == 126
+
+    def test_get_video_timestamp_invalid_mapping_type_raises(self):
+        from pypitch.utils.video_sync import get_video_timestamp
+        with pytest.raises(TypeError, match="mapping"):
+            get_video_timestamp(2, [120, 126])
+
 
 # ---------------------------------------------------------------------------
 # utils/deprecation.py — warn_deprecated direct call
