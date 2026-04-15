@@ -151,6 +151,7 @@ registry.sqlite
 data/.schema_version
 .pypitch_dev_secret
 .schema_version
+fix.md
 
 # Audit / CI artifacts (generated at runtime, not source code)
 audit_reports/
