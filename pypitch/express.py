@@ -82,27 +82,16 @@ def _auto_setup_session(data_dir: Optional[str] = None) -> PyPitchSession:
     _cached_session_dir = resolved
     return _cached_session
 
-def load_competition(competition: str, season: int, data_dir: str = "./data") -> PyPitchSession:
+def load_competition(competition: str, season: int, data_dir: str = "./data") -> CricsheetLoader:
     """
-    Loads all matches for a competition and season with one line.
-
-    .. note::
-       Competition/season filtering is not yet implemented (0.1.x).
-       Currently returns all available matches regardless of arguments.
-       This will be resolved in v0.2.x.
+    Returns a CricsheetLoader filtered to a specific competition and season.
 
     Example::
 
         ipl = px.load_competition("ipl", 2023)
+        match_ids = ipl.get_match_ids()
     """
-    import logging as _log
-    _log.getLogger(__name__).warning(
-        "load_competition(competition=%r, season=%r): filtering by "
-        "competition/season is not yet implemented. Returning all matches.",
-        competition, season,
-    )
-    loader = CricsheetLoader(data_dir)
-    return loader
+    return CricsheetLoader(data_dir, competition=competition, season=season)
 
 def get_player_stats(player_name: str, data_dir: Optional[str] = None) -> Optional[Any]:
     """

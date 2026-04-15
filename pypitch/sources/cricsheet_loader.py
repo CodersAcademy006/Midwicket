@@ -67,6 +67,9 @@ class CricsheetLoader(BaseAdapter):
         Loads and normalizes match data for the given match_id from Cricsheet JSON.
         Returns a dict with keys: match_id, format, info, events, raw.
         """
+        safe_id = Path(match_id).name
+        if safe_id != match_id or "/" in match_id or "\\" in match_id:
+            raise ValueError(f"Invalid match_id: {match_id!r}")
         file_path = self.data_dir / f"{match_id}.json"
         if not file_path.exists():
             raise FileNotFoundError(f"Match file not found: {file_path}")

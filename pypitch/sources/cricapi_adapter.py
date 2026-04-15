@@ -27,17 +27,25 @@ field support.
 
 
 import requests
+from urllib.parse import urlparse
 
 from typing import List, Dict, Any, Optional
 from requests.adapters import HTTPAdapter, Retry
 from .adapters.base import BaseAdapter
 from .adapters.registry import AdapterRegistry
 
+_ALLOWED_CRICAPI_HOSTS = {"cricapi.com", "www.cricapi.com"}
+
 class CricAPIAdapter(BaseAdapter):
     """
     Adapter for CricAPI cricket data. Normalizes output, validates responses, and matches the PyPitch adapter contract.
     """
     def __init__(self, api_key: str, base_url: str = "https://cricapi.com/api/"):
+        parsed = urlparse(base_url)
+        if parsed.scheme != "https" or parsed.hostname not in _ALLOWED_CRICAPI_HOSTS:
+            raise ValueError(
+                f"base_url must use https and point to cricapi.com; got {base_url!r}"
+            )
         self.api_key = api_key
         self.base_url = base_url.rstrip("/") + "/"
         self.session = requests.Session()
