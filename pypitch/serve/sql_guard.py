@@ -209,7 +209,9 @@ def validate_read_only_query(
     if "--" in sql or "/*" in sql or "*/" in sql:
         raise SQLValidationError("SQL comments are not allowed in /analyze queries")
 
-    statements = [stmt.strip() for stmt in sql.split(";") if stmt.strip()]
+    # Use sqlparse splitting so semicolons inside string literals do not
+    # incorrectly look like statement boundaries.
+    statements = [stmt.strip() for stmt in sqlparse.split(sql) if stmt.strip()]
     if len(statements) != 1:
         raise SQLValidationError("Exactly one SQL statement is allowed")
 

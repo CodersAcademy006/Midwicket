@@ -109,3 +109,9 @@ def test_sql_guard_normalizes_unicode_space_variants():
     # Non-breaking space before SELECT — should still parse correctly
     sql = validate_read_only_query("\u00a0SELECT 1 AS x")
     assert "SELECT" in sql.upper()
+
+
+def test_sql_guard_allows_semicolon_inside_string_literal():
+    # Valid single statement: semicolon appears inside a quoted literal.
+    sql = validate_read_only_query("SELECT 'a;b' AS x")
+    assert "a;b" in sql
