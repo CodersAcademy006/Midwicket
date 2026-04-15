@@ -1,8 +1,8 @@
-# PyPitch
+# Midwicket
 
 **The Open Source Cricket Intelligence SDK**
 
-PyPitch is a comprehensive Python library for cricket analytics, providing a robust, agent-based architecture for querying, processing, and analyzing cricket data. Built on top of PyArrow, DuckDB, and Pydantic, it offers deterministic, cacheable queries with strict schema enforcement.
+Midwicket is a comprehensive Python library for cricket analytics, providing a robust, agent-based architecture for querying, processing, and analyzing cricket data. Built on top of PyArrow, DuckDB, and Pydantic, it offers deterministic, cacheable queries with strict schema enforcement.
 
 ## Table of Contents
 
@@ -26,9 +26,9 @@ PyPitch is a comprehensive Python library for cricket analytics, providing a rob
 
 ## Introduction
 
-PyPitch is a powerful cricket analytics SDK designed for developers, data scientists, and cricket enthusiasts. It provides a complete solution for ingesting, querying, and analyzing cricket data with a focus on performance, reliability, and ease of use.
+Midwicket is a powerful cricket analytics SDK designed for developers, data scientists, and cricket enthusiasts. It provides a complete solution for ingesting, querying, and analyzing cricket data with a focus on performance, reliability, and ease of use.
 
-The library leverages modern data engineering tools (PyArrow, DuckDB) and architectural patterns (agent-based design, deterministic queries) to deliver a professional-grade analytics platform. Whether you're building a fantasy cricket application, conducting statistical research, or creating interactive dashboards, PyPitch provides the tools you need.
+The library leverages modern data engineering tools (PyArrow, DuckDB) and architectural patterns (agent-based design, deterministic queries) to deliver a professional-grade analytics platform. Whether you're building a fantasy cricket application, conducting statistical research, or creating interactive dashboards, Midwicket provides the tools you need.
 
 ### Target Audience
 
@@ -59,7 +59,7 @@ The library leverages modern data engineering tools (PyArrow, DuckDB) and archit
 ### Install from PyPI
 
 ```bash
-pip install pypitch
+pip install midwicket
 ```
 
 ### Install from Source
@@ -67,8 +67,8 @@ pip install pypitch
 For development or to get the latest features:
 
 ```bash
-git clone https://github.com/CodersAcademy006/PyPitch.git
-cd pypitch
+git clone https://github.com/CodersAcademy006/Midwicket.git
+cd Midwicket
 pip install -r requirements.txt
 pip install -e .
 ```
@@ -76,22 +76,28 @@ pip install -e .
 ### Verify Installation
 
 ```python
-import pypitch as pp
-print(pp.__version__)  # Should print: 0.1.0
+import midwicket as mw
+print(mw.__version__)  # Should print: 0.1.0
+```
+
+Legacy compatibility is preserved:
+
+```python
+import pypitch as pp  # still supported
 ```
 
 ## Deployment
 
 ### Docker Deployment
 
-PyPitch includes production-ready Docker configuration for easy deployment:
+Midwicket includes production-ready Docker configuration for easy deployment:
 
 #### Quick Start with Docker
 
 ```bash
 # Clone the repository
-git clone https://github.com/CodersAcademy006/PyPitch.git
-cd pypitch
+git clone https://github.com/CodersAcademy006/Midwicket.git
+cd Midwicket
 
 # Copy environment configuration
 cp .env.example .env
@@ -106,7 +112,7 @@ curl http://localhost:8000/_internal/health
 
 #### Services Included
 
-- **PyPitch API**: FastAPI-based REST API (`http://localhost:8000`)
+- **Midwicket API**: FastAPI-based REST API (`http://localhost:8000`)
 - **DuckDB (embedded)**: Analytics and metadata storage inside the API service
 - **Prometheus**: Metrics collection (`http://localhost:9090`)
 - **Grafana**: Monitoring dashboards (`http://localhost:3000`)
@@ -142,7 +148,7 @@ For custom deployment scenarios:
 ```bash
 # Install dependencies
 pip install -r requirements.txt
-pip install 'pypitch[serve]'
+pip install 'midwicket[serve]'
 
 # Set environment variables (all use PYPITCH_ prefix)
 export PYPITCH_SECRET_KEY="your-secret-key-at-least-32-chars"
@@ -152,17 +158,17 @@ export PYPITCH_CORS_ORIGINS="https://your-frontend.example.com"
 export PYPITCH_ALLOWED_HOSTS="your-domain.example.com,localhost"
 
 # Run the API
-python -c "from pypitch.serve.api import serve; serve()"
+python -c "from midwicket import serve; serve()"
 ```
 
 ## Quick Start
 
-PyPitch uses live cricket data from [Cricsheet.org](https://cricsheet.org). On first run, download the IPL dataset (~50 MB, one-time):
+Midwicket uses live cricket data from [Cricsheet.org](https://cricsheet.org). On first run, download the IPL dataset (~50 MB, one-time):
 
 ### Step 1 — Download Data
 
 ```python
-from pypitch.data.loader import DataLoader
+from midwicket.data.loader import DataLoader
 
 loader = DataLoader()
 loader.download()  # Downloads from cricsheet.org — run once
@@ -171,7 +177,7 @@ loader.download()  # Downloads from cricsheet.org — run once
 ### Step 2 — Use the Library
 
 ```python
-import pypitch.express as px
+import midwicket.express as px
 
 # Get player statistics (requires data downloaded above)
 stats = px.get_player_stats("Virat Kohli")
@@ -179,7 +185,7 @@ if stats:
     print(f"{stats.name}: {stats.runs} runs in {stats.matches} matches")
 
 # Predict win probability (no data required)
-from pypitch.compute.winprob import win_probability
+from midwicket.compute.winprob import win_probability
 prob = win_probability(target=180, current_runs=120, wickets_down=5, overs_done=15.0)
 print(f"Win probability: {prob['win_prob']:.1%}")
 ```
@@ -189,17 +195,17 @@ print(f"Win probability: {prob['win_prob']:.1%}")
 For production use or custom datasets:
 
 ```bash
-pip install pypitch
+pip install midwicket
 ```
 
 ```python
-import pypitch as pp
+import midwicket as pp
 
 # Initialize session with data directory
 session = pp.api.session.PyPitchSession("./data")
 
 # Download sample data (IPL 2023)
-from pypitch.data.loader import DataLoader
+from midwicket.data.loader import DataLoader
 loader = DataLoader("./data")
 loader.download()
 
@@ -213,9 +219,9 @@ print(f"Matches: {stats.matches}, Runs: {stats.runs}")
 
 ### API Overview
 
-PyPitch provides multiple API levels for different use cases:
+Midwicket provides multiple API levels for different use cases:
 
-### Express API (`pypitch.express`)
+### Express API (`midwicket.express`)
 - **Best for**: Quick analysis, prototyping, beginners
 - **Features**: One-liner functions, automatic setup, sensible defaults
 - **Example**: `px.get_player_stats("V Kohli")`
@@ -493,8 +499,8 @@ We welcome contributions from the community! PyPitch is an open-source project a
 
 ```bash
 # Clone the repository
-git clone https://github.com/CodersAcademy006/PyPitch.git
-cd pypitch
+git clone https://github.com/CodersAcademy006/Midwicket.git
+cd Midwicket
 
 # Install dependencies
 pip install -r requirements.txt
@@ -539,8 +545,8 @@ For full license details, see the [LICENSE](LICENSE) file in the repository.
 If you need assistance or have questions about PyPitch:
 
 - **Documentation**: Comprehensive guides available in the [docs](pypitch/docs/) directory
-- **GitHub Issues**: [Report bugs or request features](https://github.com/CodersAcademy006/PyPitch/issues)
-- **GitHub Discussions**: [Ask questions and share ideas](https://github.com/CodersAcademy006/PyPitch/discussions)
+- **GitHub Issues**: [Report bugs or request features](https://github.com/CodersAcademy006/Midwicket/issues)
+- **GitHub Discussions**: [Ask questions and share ideas](https://github.com/CodersAcademy006/Midwicket/discussions)
 - **Examples**: Browse [25+ example scripts](examples/) for common use cases
 
 ### Community
@@ -588,7 +594,7 @@ PyPitch is under active development with a clear roadmap for future enhancements
 - Enhanced caching strategies
 - Support for additional data sources
 
-We welcome community input on the roadmap. Feel free to suggest features or vote on priorities in our [GitHub Discussions](https://github.com/CodersAcademy006/PyPitch/discussions).
+We welcome community input on the roadmap. Feel free to suggest features or vote on priorities in our [GitHub Discussions](https://github.com/CodersAcademy006/Midwicket/discussions).
 
 ---
 
