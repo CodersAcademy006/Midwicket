@@ -364,21 +364,61 @@ class TestFastAPIApp:
             )
             assert response.status_code == 200
 
+    def test_cors_preflight_allows_x_api_key(self, mock_session, monkeypatch):
+        """CORS preflight must include X-API-Key for browser legacy clients."""
+        import pypitch.serve.api as api_mod
+        from fastapi.testclient import TestClient
+
+        monkeypatch.setattr(api_mod, "API_CORS_ORIGINS", ["https://app.example.com"])
+
+        app = api_mod.create_app(session=mock_session, start_ingestor=False)
+        with TestClient(app) as c:
+            response = c.options(
+                "/win_probability",
+                headers={
+                    "Origin": "https://app.example.com",
+                    "Access-Control-Request-Method": "GET",
+                    "Access-Control-Request-Headers": "x-api-key,content-type",
+                },
+            )
+
+        assert response.status_code in (200, 204)
+        allow_headers = response.headers.get("access-control-allow-headers", "").lower()
+        assert "x-api-key" in allow_headers
+
+    def test_cors_preflight_rejects_unauthorized_origin(self, mock_session, monkeypatch):
+        """CORS preflight should not grant allow-origin for disallowed origins."""
+        import pypitch.serve.api as api_mod
+        from fastapi.testclient import TestClient
+
+        monkeypatch.setattr(api_mod, "API_CORS_ORIGINS", ["https://app.example.com"])
+
+        app = api_mod.create_app(session=mock_session, start_ingestor=False)
+        with TestClient(app) as c:
+            response = c.options(
+                "/win_probability",
+                headers={
+                    "Origin": "https://evil.example.com",
+                    "Access-Control-Request-Method": "GET",
+                    "Access-Control-Request-Headers": "x-api-key,content-type",
+                },
+            )
+
+        assert response.status_code in (400, 200, 204)
+        assert "access-control-allow-origin" not in response.headers
+
     def test_register_live_match_endpoint(self, client):
-        """Live match registration returns success."""
+        """Live match registration returns 503 when ingestor is disabled."""
         payload = {
             "match_id": "test_match_456",
             "source": "webhook",
             "metadata": {"venue": "Test Stadium"},
         }
         response = client.post("/live/register", json=payload)
-        assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is True
-        assert data["match_id"] == "test_match_456"
+        assert response.status_code == 503
 
     def test_ingest_delivery_endpoint(self, client):
-        """Delivery ingestion endpoint returns success."""
+        """Delivery ingestion returns 503 when ingestor is disabled."""
         client.post("/live/register", json={"match_id": "test_match_789", "source": "webhook"})
         delivery_payload = {
             "match_id": "test_match_789",
@@ -387,8 +427,7 @@ class TestFastAPIApp:
             "target": 150, "venue": "Test Stadium",
         }
         response = client.post("/live/ingest", json=delivery_payload)
-        assert response.status_code == 200
-        assert response.json()["success"] is True
+        assert response.status_code == 503
 
     def test_get_live_matches_endpoint(self, client):
         """Live matches endpoint returns a list."""
