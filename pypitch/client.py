@@ -4,7 +4,7 @@ PyPitch API Client SDK
 
 import requests
 from typing import Any, Dict, List, Optional
-from urllib.parse import urljoin
+from urllib.parse import quote, urljoin
 from requests.exceptions import ConnectionError
 
 
@@ -50,25 +50,66 @@ class PyPitchClient:
         response.raise_for_status()
         return response.json()  # type: ignore[no-any-return]
 
+    @staticmethod
+    def _clean_params(params: Dict[str, Any]) -> Dict[str, Any]:
+        """Drop query params that were not explicitly provided."""
+        return {key: value for key, value in params.items() if value is not None}
+
+    @staticmethod
+    def _path(*segments: Any) -> str:
+        """Build a URL-safe path from potentially unsafe user-provided segments."""
+        encoded = [quote(str(segment), safe="") for segment in segments]
+        return "/" + "/".join(encoded)
+
     def health_check(self) -> Dict[str, Any]:
         """Check API health status."""
         return self._get("/health")
+
+    def health_check_v1(self) -> Dict[str, Any]:
+        """Check API health via the versioned endpoint."""
+        return self._get("/v1/health")
 
     def get_metrics(self) -> Dict[str, Any]:
         """Get API and system metrics."""
         return self._get("/v1/metrics")
 
-    def list_matches(self) -> List[Dict[str, Any]]:
-        """List all available matches."""
-        return self._get("/matches")  # type: ignore[return-value]
+    def list_matches(
+        self,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+        venue: Optional[str] = None,
+        team: Optional[str] = None,
+        sort_by: str = "match_id",
+        order: str = "asc",
+        page: int = 1,
+        page_size: int = 50,
+    ) -> Dict[str, Any]:
+        """List matches with optional filters and pagination."""
+        query_params = self._clean_params(
+            {
+                "date_from": date_from,
+                "date_to": date_to,
+                "venue": venue,
+                "team": team,
+                "sort_by": sort_by,
+                "order": order,
+                "page": page,
+                "page_size": page_size,
+            }
+        )
+        return self._get("/matches", params=query_params)
 
     def get_match(self, match_id: str) -> Dict[str, Any]:
         """Get details for a specific match."""
-        return self._get(f"/matches/{match_id}")
+        return self._get(self._path("matches", match_id))
 
     def get_player_stats(self, player_id: str) -> Dict[str, Any]:
         """Get statistics for a specific player."""
-        return self._get(f"/players/{player_id}")
+        return self._get(self._path("players", player_id))
+
+    def get_team_stats(self, team_id: str) -> Dict[str, Any]:
+        """Get statistics for a specific team."""
+        return self._get(self._path("teams", team_id))
 
     def predict_win_probability(
         self,
@@ -98,16 +139,16 @@ class PyPitchClient:
         return self._get("/win_probability", params=query_params)
 
     def analyze_custom(
-        self, sql: str, params: Optional[Dict[str, Any]] = None
+        self, sql: str, params: Optional[List[Any]] = None
     ) -> Dict[str, Any]:
         """Run a read-only SELECT query against the ball_events table.
 
         Args:
             sql: A SELECT statement to execute.
-            params: Reserved for future parameterised query support.
+            params: Positional SQL parameters.
         """
         data: Dict[str, Any] = {"sql": sql}
-        if params:
+        if params is not None:
             data["params"] = params
         return self._post("/analyze", data)
 
@@ -155,6 +196,98 @@ class PyPitchClient:
     def get_live_matches(self) -> List[Dict[str, Any]]:
         """Get list of active live matches."""
         return self._get("/live/matches")  # type: ignore[return-value]
+
+    def get_audit_log(self, limit: int = 100) -> Dict[str, Any]:
+        """Fetch recent audited analyze queries."""
+        return self._get("/v1/audit", params={"limit": limit})
+
+    def resolve_player(self, name: str, match_date: str) -> Dict[str, Any]:
+        """Resolve a player name to canonical ID for a specific date."""
+        return self._get(
+            "/v1/players/resolve",
+            params={"name": name, "match_date": match_date},
+        )
+
+    def resolve_venue(self, name: str, match_date: str) -> Dict[str, Any]:
+        """Resolve a venue name to canonical ID for a specific date."""
+        return self._get(
+            "/v1/venues/resolve",
+            params={"name": name, "match_date": match_date},
+        )
+
+    def search_players(self, query: str, limit: int = 10) -> Dict[str, Any]:
+        """Search players by alias/name substring."""
+        return self._get("/v1/players/search", params={"q": query, "limit": limit})
+
+    def list_venues(self, page: int = 1, page_size: int = 50) -> Dict[str, Any]:
+        """List venues with pagination."""
+        return self._get("/v1/venues", params={"page": page, "page_size": page_size})
+
+    def get_venue(self, venue_id: int) -> Dict[str, Any]:
+        """Get detail payload for one venue."""
+        return self._get(self._path("v1", "venues", venue_id))
+
+    def get_matchup(self, batter: str, bowler: str, match_date: str) -> Dict[str, Any]:
+        """Get batter vs bowler matchup for a specific date context."""
+        return self._get(
+            "/v1/matchup",
+            params={"batter": batter, "bowler": bowler, "match_date": match_date},
+        )
+
+    def get_player_batting(self, player_name: str) -> Dict[str, Any]:
+        """Get batting analytics bundle for a player."""
+        return self._get(self._path("v1", "players", player_name, "batting"))
+
+    def get_player_bowling(self, player_name: str) -> Dict[str, Any]:
+        """Get bowling analytics bundle for a player."""
+        return self._get(self._path("v1", "players", player_name, "bowling"))
+
+    def get_player_milestones(self, player_name: str) -> Dict[str, Any]:
+        """Get milestone and streak analytics for a player."""
+        return self._get(self._path("v1", "players", player_name, "milestones"))
+
+    def get_player_fantasy(self, player_name: str, season: Optional[str] = None) -> Dict[str, Any]:
+        """Get fantasy points estimate for a player."""
+        return self._get(
+            self._path("v1", "players", player_name, "fantasy"),
+            params=self._clean_params({"season": season}),
+        )
+
+    def get_venue_fantasy(self, venue_name: str) -> Dict[str, Any]:
+        """Get venue fantasy cheat sheet and bias."""
+        return self._get(self._path("v1", "venues", venue_name, "fantasy"))
+
+    def get_player_vs_team(self, player_name: str, team_name: str) -> Dict[str, Any]:
+        """Get a player's batting and bowling output against one team."""
+        return self._get(self._path("v1", "players", player_name, "vs-team", team_name))
+
+    def compare_players(self, player_one: str, player_two: str) -> Dict[str, Any]:
+        """Compare two players side-by-side."""
+        return self._get("/v1/players/compare", params={"p1": player_one, "p2": player_two})
+
+    def batting_leaderboard(
+        self,
+        sort_by: str = "runs",
+        top_n: int = 10,
+        min_balls: int = 30,
+    ) -> Any:
+        """Get batting leaderboard."""
+        return self._get(
+            "/v1/players/leaderboard/batting",
+            params={"sort_by": sort_by, "top_n": top_n, "min_balls": min_balls},
+        )
+
+    def bowling_leaderboard(
+        self,
+        sort_by: str = "wickets",
+        top_n: int = 10,
+        min_balls: int = 30,
+    ) -> Any:
+        """Get bowling leaderboard."""
+        return self._get(
+            "/v1/players/leaderboard/bowling",
+            params={"sort_by": sort_by, "top_n": top_n, "min_balls": min_balls},
+        )
 
 
 # Convenience functions for quick access

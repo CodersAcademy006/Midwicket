@@ -70,7 +70,7 @@ def main() -> None:
             print(f"  Health: {health}")
 
             matches = client.list_matches()
-            print(f"  Matches available: {len(matches)}")
+            print(f"  Matches available: {len(matches.get('items', []))}")
 
             prob = client.predict_win_probability(
                 target=180,
