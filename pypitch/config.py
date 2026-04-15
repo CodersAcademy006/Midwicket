@@ -87,7 +87,7 @@ def get_secret_key() -> str:
 
     if not _SECRET_KEY:
         log = logging.getLogger(__name__)
-        log.warning("Using insecure random secret key for development")
+        log.warning("Transient development secret key generated. Restart will produce a new key unless persistence succeeds.")
         _SECRET_KEY = secrets.token_hex(32)
 
         try:
@@ -126,10 +126,11 @@ def set_debug(value: bool = True) -> None:
     """
     global debug
     debug = value
+    _log = logging.getLogger(__name__)
     if debug:
-        print("[PyPitch] Debug mode ON: Forcing eager execution and verbose errors.")
+        _log.info("[PyPitch] Debug mode ON: Forcing eager execution and verbose errors.")
     else:
-        print("[PyPitch] Debug mode OFF.")
+        _log.info("[PyPitch] Debug mode OFF.")
 
 def is_debug() -> bool:
     return debug

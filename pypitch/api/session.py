@@ -1,4 +1,5 @@
 import logging
+import threading
 from pathlib import Path
 from typing import Optional, Any
 from datetime import date
@@ -20,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 class PyPitchSession:
     _instance: Optional["PyPitchSession"] = None
+    _instance_lock = threading.Lock()
 
     def __init__(self, data_dir: Optional[str] = None, skip_registry_build: bool = False,
                  engine: Optional[QueryEngine] = None) -> None:
@@ -201,17 +203,20 @@ class PyPitchSession:
     def get(cls) -> "PyPitchSession":
         """Singleton Accessor"""
         if cls._instance is None:
-            # AUTO-BOOT: If user forgot pp.init(), just do it for them.
-            logger.info("Auto-initializing PyPitch (defaulting to ./data)...")
-            cls._instance = PyPitchSession(data_dir="./data")
+            with cls._instance_lock:
+                if cls._instance is None:
+                    # AUTO-BOOT: If user forgot pp.init(), just do it for them.
+                    logger.info("Auto-initializing PyPitch (defaulting to ./data)...")
+                    cls._instance = PyPitchSession(data_dir="./data")
         return cls._instance
 
     @classmethod
     def cleanup(cls) -> None:
         """Clean up the singleton instance."""
-        if cls._instance is not None:
-            cls._instance.close()
-            cls._instance = None
+        with cls._instance_lock:
+            if cls._instance is not None:
+                cls._instance.close()
+                cls._instance = None
 
     def close(self) -> None:
         """Close all database connections."""
@@ -228,13 +233,6 @@ class PyPitchSession:
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         self.close()
 
-    def __del__(self):
-        """Fallback cleanup in case close() wasn't called explicitly."""
-        try:
-            self.close()
-        except Exception:  # nosec B110 — best-effort; __del__ must never raise
-            logger.debug("PyPitchSession.__del__: close() raised during GC (ignored)")
-
 # Helper to expose the executor directly to API modules
 def get_executor() -> RuntimeExecutor:
     return PyPitchSession.get().executor
@@ -247,6 +245,7 @@ def init(source: Optional[str] = None) -> PyPitchSession:
     Initialize the PyPitch session.
     """
     session = PyPitchSession(data_dir=source)
-    PyPitchSession._instance = session
+    with PyPitchSession._instance_lock:
+        PyPitchSession._instance = session
     return session
 

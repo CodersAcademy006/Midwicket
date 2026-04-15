@@ -4,6 +4,8 @@ Rate limiting utilities for PyPitch API.
 
 from __future__ import annotations
 
+import hashlib
+import ipaddress
 import logging
 import os
 import time
@@ -215,6 +217,37 @@ def _build_rate_limiter() -> RateLimiter | DuckDBRateLimiter:
 # Global rate limiter instance
 rate_limiter = _build_rate_limiter()
 
+
+def _is_trusted_proxy(host: str | None) -> bool:
+    """Return True when *host* matches PYPITCH_TRUSTED_PROXIES."""
+    if not host:
+        return False
+
+    raw = os.getenv("PYPITCH_TRUSTED_PROXIES", "").strip()
+    if not raw:
+        return False
+
+    try:
+        peer_ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+
+    for item in raw.split(","):
+        token = item.strip()
+        if not token:
+            continue
+        try:
+            if "/" in token:
+                if peer_ip in ipaddress.ip_network(token, strict=False):
+                    return True
+            elif peer_ip == ipaddress.ip_address(token):
+                return True
+        except ValueError:
+            logger.warning("Ignoring invalid PYPITCH_TRUSTED_PROXIES entry: %r", token)
+            continue
+
+    return False
+
 def get_client_key(request: Request) -> str:
     """Get client identifier for rate limiting."""
     # Prefer Bearer token if available
@@ -222,21 +255,27 @@ def get_client_key(request: Request) -> str:
     if auth_header.lower().startswith("bearer "):
         token = auth_header.split(" ", 1)[1].strip()
         if token:
-            return f"api_key:{token}"
+            digest = hashlib.sha256(token.encode()).hexdigest()[:32]
+            return f"api_key:{digest}"
 
     # Backward compatibility for legacy clients
     api_key = request.headers.get("X-API-Key")
     if api_key:
-        return f"api_key:{api_key}"
+        digest = hashlib.sha256(api_key.encode()).hexdigest()[:32]
+        return f"api_key:{digest}"
 
-    # Prefer X-Forwarded-For for reverse-proxy setups
+    peer_host = request.client.host if request.client and request.client.host else None
+
+    # Trust X-Forwarded-For only when the direct peer is a trusted proxy.
     forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return f"ip:{forwarded.split(',')[0].strip()}"
+    if forwarded and _is_trusted_proxy(peer_host):
+        forwarded_ip = forwarded.split(",", 1)[0].strip()
+        if forwarded_ip:
+            return f"ip:{forwarded_ip}"
 
     # Fallback to direct client IP
-    if request.client and request.client.host:
-        return f"ip:{request.client.host}"
+    if peer_host:
+        return f"ip:{peer_host}"
 
     return "ip:unknown"
 

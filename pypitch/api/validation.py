@@ -75,6 +75,14 @@ class LiveMatchRegistrationRequest(BaseModel):
     source: str = Field(..., pattern="^(webhook|api_poll|stream)$", description="Data source type")
     metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional match metadata")
 
+    @field_validator("metadata")
+    @classmethod
+    def validate_metadata_size(cls, v):
+        import json as _json
+        if v and len(_json.dumps(v).encode()) > 8192:
+            raise ValueError("metadata must not exceed 8 KB")
+        return v
+
 class DeliveryDataRequest(BaseModel):
     """Request model for live delivery data."""
     match_id: str = Field(..., min_length=1, max_length=50, description="Match identifier")
