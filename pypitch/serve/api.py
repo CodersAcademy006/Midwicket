@@ -217,7 +217,7 @@ class PyPitchAPI:
                     row_count INTEGER,
                     duration_ms DOUBLE
                 )
-            """)
+            """, read_only=False)
         except Exception:
             pass  # Non-fatal: audit table creation may fail in read-only engines
 
@@ -844,6 +844,7 @@ class PyPitchAPI:
                         "INSERT INTO audit_log (ts, user_id, query_text, row_count, duration_ms) "
                         "VALUES (current_timestamp, ?, ?, ?, ?)",
                         [user_id, f"sha256:{query_fingerprint}", n, round(duration_ms, 2)],
+                        read_only=False,
                     )
                 except Exception:
                     pass
