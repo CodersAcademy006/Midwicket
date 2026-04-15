@@ -6,8 +6,10 @@ import numpy as np
 from typing import Dict, List, Optional, Tuple, Union
 import math
 import pandas as pd
+import json
+from importlib import resources
 
-from .win_features import compute_chase_features
+from .win_features import compute_chase_features, FEATURE_COLUMNS
 
 class WinPredictor:
     """
@@ -84,7 +86,8 @@ class WinPredictor:
             raise ValueError("runs must be non-negative")
 
 
-        venue_adjust = self.venue_adjustments.get(self._normalize_venue(venue), 0.0)
+        venue_key = self._normalize_venue(venue)
+        venue_adjust = self.venue_adjustments.get(venue_key, 0.0)
         feature_values = compute_chase_features(
             target=target,
             current_runs=current_runs,
@@ -99,11 +102,16 @@ class WinPredictor:
         linear_terms = [
             feature for feature in feature_values.keys() if feature != "venue_adjustment"
         ]
+        scaler_lookup = self._get_scaler_lookup()
 
         # Linear predictor with all features
         x = self.coefs.get("intercept", 0.0)
         for feature in linear_terms:
-            x += self.coefs.get(feature, 0.0) * feature_values[feature]
+            feature_value = feature_values[feature]
+            if scaler_lookup and feature in scaler_lookup:
+                mean, scale = scaler_lookup[feature]
+                feature_value = (feature_value - mean) / scale
+            x += self.coefs.get(feature, 0.0) * feature_value
 
         # Keep legacy venue adjustment as an additive prior when no trained
         # venue coefficient exists.
@@ -121,16 +129,48 @@ class WinPredictor:
 
         return float(np.clip(win_prob, 0.001, 0.999)), float(confidence)
 
+    def _normalize_venue(self, venue: Optional[str]) -> str:
+        """Normalize venue names so aliases collapse to a stable lookup key."""
+        if not venue:
+            return "default"
+
+        venue_key = venue.strip().lower()
+        replacements = {
+            " stadium": "",
+            " cricket ground": "",
+            " ground": "",
+            " park": "",
+            " arena": "",
+            " international": "",
+            " cr stadium": "",
+        }
+        for old, new in replacements.items():
+            venue_key = venue_key.replace(old, new)
+
+        venue_key = venue_key.replace("&", "and")
+        venue_key = venue_key.replace(".", "")
+        venue_key = venue_key.replace("-", " ")
+        venue_key = "_".join(part for part in venue_key.split() if part)
+
+        aliases = {
+            "brabourne_stadium": "brabourne",
+            "wankhede_stadium": "wankhede",
+            "eden_gardens_stadium": "eden_gardens",
+            "m_chinnaswamy_stadium": "chinnaswamy",
+            "dy_patil_stadium": "default",
+        }
+        return aliases.get(venue_key, venue_key)
+
     def _get_venue_adjustment(self, venue: Optional[str]) -> float:
         """Venue lookup: exact match first, then substring, else default 0.0."""
-        if not venue:
-            return self.venue_adjustments.get("default", 0.0)
-        venue_key = venue.lower()
+        venue_key = self._normalize_venue(venue)
         if venue_key in self.venue_adjustments:
             return self.venue_adjustments[venue_key]
-        for key, val in self.venue_adjustments.items():
-            if key != "default" and key in venue_key:
-                return val
+        if venue:
+            raw_key = venue.lower()
+            for key, val in self.venue_adjustments.items():
+                if key != "default" and key in raw_key:
+                    return val
         return self.venue_adjustments.get("default", 0.0)
 
     def _calculate_confidence(self, prob: float, runs_remaining: int, wickets_remaining: int, balls_remaining: int) -> float:
@@ -165,6 +205,31 @@ class WinPredictor:
         confidence = extremity * situation_confidence
         return float(np.clip(confidence, 0.1, 0.95))
 
+    def _get_scaler_lookup(self) -> Optional[Dict[str, Tuple[float, float]]]:
+        """Return feature -> (mean, scale) from training metadata when available."""
+        if not self.training_metadata:
+            return None
+
+        means = self.training_metadata.get("scaler_mean")
+        scales = self.training_metadata.get("scaler_scale")
+        if not isinstance(means, list) or not isinstance(scales, list):
+            return None
+        if len(means) != len(scales) or len(means) != len(FEATURE_COLUMNS):
+            return None
+
+        lookup: Dict[str, Tuple[float, float]] = {}
+        try:
+            for feature, mean, scale in zip(FEATURE_COLUMNS, means, scales):
+                m = float(mean)
+                s = float(scale)
+                if s == 0.0:
+                    s = 1.0
+                lookup[feature] = (m, s)
+        except (TypeError, ValueError):
+            return None
+
+        return lookup
+
     def predict_with_details(self, target: int, current_runs: int, wickets_down: int, overs_done: float, venue: str = None) -> Dict[str, float]:
         """
         Predict win probability with detailed breakdown.
@@ -195,7 +260,30 @@ class WinPredictor:
     @classmethod
     def load_default(cls) -> 'WinPredictor':
         """Load the default shipped model."""
-        return cls()
+        try:
+            bundled = resources.files("pypitch.models.data").joinpath("win_model_default.json")
+            with bundled.open("r", encoding="utf-8") as f:
+                payload = json.load(f)
+
+            coefs_raw = payload.get("coefs")
+            venue_raw = payload.get("venue_adjustments")
+            metadata_raw = payload.get("training_metadata")
+            if not isinstance(coefs_raw, dict) or not isinstance(venue_raw, dict):
+                raise ValueError("Bundled model payload is missing coefs/venue_adjustments")
+
+            coefs = {str(k): float(v) for k, v in coefs_raw.items()}
+            venue_adjustments = {str(k): float(v) for k, v in venue_raw.items()}
+
+            predictor = cls(custom_coefs=coefs, venue_adjustments=venue_adjustments)
+            if isinstance(metadata_raw, dict):
+                predictor.training_metadata = metadata_raw
+            else:
+                predictor.training_metadata = {}
+            predictor.training_metadata.setdefault("source", "bundled")
+            return predictor
+        except Exception:
+            # Fallback keeps runtime safe even if package data is unavailable.
+            return cls()
 
     @classmethod
     def create_trained_model(cls, training_data: Union[pd.DataFrame, List[Dict]]) -> 'WinPredictor':
