@@ -106,6 +106,71 @@ class WinProbabilityTrainer:
 
         return features_df, target_series
 
+    def prepare_training_dataset(self, ball_events: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series, pd.Series]:
+        """Prepare a raw ball_events table for benchmark training.
+
+        This is the benchmark-friendly entrypoint used by the live training script.
+        It derives cumulative chase state from raw deliveries, then reuses the
+        same feature construction logic as ``prepare_training_data`` so train/serve
+        behavior stays aligned.
+        """
+        if ball_events.empty:
+            raise DataValidationError("Training data cannot be empty")
+
+        required_columns = ["match_id", "inning", "over", "ball", "runs_batter", "runs_extras", "is_wicket"]
+        missing_cols = [col for col in required_columns if col not in ball_events.columns]
+        if missing_cols:
+            raise DataValidationError(f"Missing required columns: {missing_cols}")
+
+        prepared = ball_events.copy().sort_values(["match_id", "inning", "over", "ball"]).reset_index(drop=True)
+        prepared["delivery_runs"] = prepared["runs_batter"].fillna(0) + prepared["runs_extras"].fillna(0)
+        prepared["runs_total"] = prepared.groupby(["match_id", "inning"])["delivery_runs"].cumsum()
+        prepared["is_wicket"] = prepared["is_wicket"].fillna(False).astype(int)
+        prepared["wickets_fallen"] = prepared.groupby(["match_id", "inning"])["is_wicket"].cumsum()
+
+        if "target" not in prepared.columns:
+            first_innings = (
+                prepared[prepared["inning"] == 1]
+                .groupby("match_id")["runs_total"]
+                .max()
+                .rename("target")
+                .reset_index()
+            )
+            first_innings["target"] = first_innings["target"] + 1
+            prepared = prepared.merge(first_innings, on="match_id", how="left")
+        else:
+            first_innings = (
+                prepared[prepared["inning"] == 1]
+                .groupby("match_id")["runs_total"]
+                .max()
+                .rename("target_derived")
+                .reset_index()
+            )
+            first_innings["target_derived"] = first_innings["target_derived"] + 1
+            prepared = prepared.merge(first_innings, on="match_id", how="left")
+            if "target_derived" in prepared.columns:
+                prepared["target"] = prepared["target"].fillna(prepared["target_derived"])
+                prepared = prepared.drop(columns=["target_derived"])
+
+        if "venue" not in prepared.columns:
+            prepared["venue"] = ""
+
+        second_innings = prepared[prepared["inning"] == 2].copy()
+        if second_innings.empty:
+            raise DataValidationError("No second innings data found for training")
+
+        if second_innings["target"].isna().all():
+            raise DataValidationError("Unable to derive targets for second innings samples")
+
+        second_innings = second_innings.dropna(subset=["target"])
+        features, target = self.prepare_training_data(
+            second_innings[
+                ["match_id", "inning", "over", "ball", "runs_total", "wickets_fallen", "target", "venue"]
+            ]
+        )
+        groups = pd.Series(second_innings["match_id"].iloc[: len(features)].values, name="match_id")
+        return features, target, groups
+
     def _get_venue_adjustment(self, venue: str) -> float:
         """Get venue-specific adjustment factor."""
         venue_adjustments = {
@@ -183,6 +248,9 @@ class WinProbabilityTrainer:
                 return float("nan")
 
         def _safe_auc(y_true: Any, y_pred: Any) -> float:
+            unique_values = pd.Series(y_true).dropna().unique()
+            if len(unique_values) < 2:
+                return float("nan")
             try:
                 return roc_auc_score(y_true, y_pred)
             except ValueError:
@@ -195,16 +263,26 @@ class WinProbabilityTrainer:
             'test_log_loss': _safe_log_loss(y_test, test_pred),
             'train_auc': _safe_auc(y_train, train_pred),
             'test_auc': _safe_auc(y_test, test_pred),
-            'cross_val_scores': cross_val_score(
-                model, X_train_scaled, y_train,
-                cv=min(5, len(X_train)),
-            ).tolist(),
             'training_samples': len(X_train),
             'test_samples': len(X_test),
             'feature_importance': dict(zip(features.columns, model.coef_[0])),
             'split_strategy': split_strategy,
             'training_matches': training_matches,
         }
+
+        class_counts = y_train.value_counts()
+        if len(class_counts) > 1 and int(class_counts.min()) >= 2 and len(X_train) >= 4:
+            try:
+                metrics['cross_val_scores'] = cross_val_score(
+                    model,
+                    X_train_scaled,
+                    y_train,
+                    cv=min(5, len(X_train)),
+                ).tolist()
+            except ValueError:
+                metrics['cross_val_scores'] = []
+        else:
+            metrics['cross_val_scores'] = []
 
         logger.info(f"Model trained with {metrics['training_samples']} samples")
         logger.info(f"Test AUC: {metrics['test_auc']:.3f}, Accuracy: {metrics['test_accuracy']:.3f}")

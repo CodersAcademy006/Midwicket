@@ -32,8 +32,24 @@ def _load_initial_model() -> WinPredictor:
         else:
             model_path = os.environ.get("PYPITCH_WIN_MODEL_PATH", "")
             if model_path:
+                expected_sha256 = os.environ.get("PYPITCH_WIN_MODEL_SHA256", "")
+                if not expected_sha256:
+                    raise RuntimeError(
+                        "PYPITCH_WIN_MODEL_SHA256 must be set when using "
+                        "PYPITCH_WIN_MODEL_PATH (required to verify model integrity)."
+                    )
+                import hashlib
                 with open(model_path, "rb") as f:
-                    return pickle.load(f)  # nosec B301 — path is admin-controlled env var; dev/staging only
+                    raw = f.read()
+                actual = hashlib.sha256(raw).hexdigest()
+                if actual != expected_sha256.lower():
+                    raise RuntimeError(
+                        f"Model file SHA-256 mismatch. "
+                        f"Expected {expected_sha256.lower()}, got {actual}. "
+                        "Do not load untrusted model files."
+                    )
+                import io
+                return pickle.load(io.BytesIO(raw))  # nosec B301 — SHA-256 verified above
     return WinPredictor.load_default()
 
 # Global default model instance — protected by lock (M3)
