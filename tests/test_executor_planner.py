@@ -158,6 +158,28 @@ class TestRuntimeExecutorMetricCaching:
         assert calls["n"] == 1
         assert engine.execute_sql.call_count == call_count_after_first
 
+    def test_execute_metric_cache_key_uses_function_identity(self):
+        cache = _FakeCache()
+        engine = _make_engine()
+        executor = RuntimeExecutor(cache, engine)
+        query = _matchup_query(snapshot_id="metric-key-snap")
+
+        def metric_alpha(_events):
+            return 1.0
+
+        def metric_beta(_events):
+            return 2.0
+
+        # Force same __name__ to simulate collisions when keyed only by name.
+        metric_beta.__name__ = metric_alpha.__name__
+
+        first = executor.execute_metric(query, metric_alpha)
+        second = executor.execute_metric(query, metric_beta)
+
+        assert first.data == 1.0
+        assert second.data == 2.0
+        assert second.meta.source == "compute"
+
 
 # ---------------------------------------------------------------------------
 # RuntimeExecutor — WinProbQuery path
