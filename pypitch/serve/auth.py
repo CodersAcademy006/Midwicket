@@ -24,15 +24,25 @@ from pypitch.config import get_secret_key, API_KEY_REQUIRED
 # Password hashing (conditional import)
 try:
     from passlib.context import CryptContext
-    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+    pwd_context = CryptContext(
+        schemes=["bcrypt_sha256", "bcrypt", "pbkdf2_sha256"],
+        deprecated="auto",
+    )
+    _fallback_pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
     HAS_PASSLIB = True
 except ImportError:
     pwd_context = None
+    _fallback_pwd_context = None
     HAS_PASSLIB = False
 
 # API Key authentication
 security = HTTPBearer(auto_error=False)
 _AUTH_DISABLED_WARNED = False
+
+
+def _is_bcrypt_backend_error(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return "72 bytes" in msg or "bcrypt" in msg
 
 def verify_api_key(
     request: Request,
@@ -101,13 +111,28 @@ def hash_password(password: str) -> str:
     """Hash a password."""
     if not HAS_PASSLIB:
         raise RuntimeError("Password hashing requires 'passlib' package. Install with: pip install passlib[bcrypt]")
-    return pwd_context.hash(password)
+    try:
+        return pwd_context.hash(password)
+    except ValueError as exc:
+        if _is_bcrypt_backend_error(exc):
+            logger.warning("bcrypt backend unavailable; using pbkdf2_sha256 fallback for password hashing")
+            return _fallback_pwd_context.hash(password)
+        raise
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash."""
     if not HAS_PASSLIB:
         raise RuntimeError("Password verification requires 'passlib' package. Install with: pip install passlib[bcrypt]")
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        return pwd_context.verify(plain_password, hashed_password)
+    except ValueError as exc:
+        if _is_bcrypt_backend_error(exc):
+            logger.warning("bcrypt backend unavailable; using pbkdf2_sha256 fallback for password verification")
+            try:
+                return _fallback_pwd_context.verify(plain_password, hashed_password)
+            except Exception:
+                return False
+        raise
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     """Create JWT access token."""

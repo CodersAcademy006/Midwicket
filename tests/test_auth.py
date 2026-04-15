@@ -155,6 +155,47 @@ class TestPasswordHashing:
         with pytest.raises(RuntimeError, match="passlib"):
             auth_mod.verify_password("pw", "hash")
 
+    def test_hash_password_falls_back_when_bcrypt_backend_fails(self, monkeypatch):
+        """Fallback context is used when bcrypt backend raises compatibility errors."""
+        import pypitch.serve.auth as auth_mod
+        monkeypatch.setattr(auth_mod, "HAS_PASSLIB", True)
+
+        class _Primary:
+            @staticmethod
+            def hash(_pw):
+                raise ValueError("password cannot be longer than 72 bytes")
+
+        class _Fallback:
+            @staticmethod
+            def hash(_pw):
+                return "$pbkdf2-sha256$fake"
+
+        monkeypatch.setattr(auth_mod, "pwd_context", _Primary())
+        monkeypatch.setattr(auth_mod, "_fallback_pwd_context", _Fallback())
+
+        hashed = auth_mod.hash_password("my-secret-pw")
+        assert hashed.startswith("$pbkdf2-sha256$")
+
+    def test_verify_password_falls_back_when_bcrypt_backend_fails(self, monkeypatch):
+        """Fallback verification is used when primary backend raises compatibility errors."""
+        import pypitch.serve.auth as auth_mod
+        monkeypatch.setattr(auth_mod, "HAS_PASSLIB", True)
+
+        class _Primary:
+            @staticmethod
+            def verify(_plain, _hashed):
+                raise ValueError("bcrypt backend unavailable")
+
+        class _Fallback:
+            @staticmethod
+            def verify(plain, hashed):
+                return plain == "pw" and hashed == "$pbkdf2-sha256$ok"
+
+        monkeypatch.setattr(auth_mod, "pwd_context", _Primary())
+        monkeypatch.setattr(auth_mod, "_fallback_pwd_context", _Fallback())
+
+        assert auth_mod.verify_password("pw", "$pbkdf2-sha256$ok") is True
+
 
 # ── JWT ───────────────────────────────────────────────────────────────────────
 
