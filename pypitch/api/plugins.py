@@ -124,8 +124,13 @@ class PluginManager:
             allowlist = self._get_allowlist()
             self._validate_module_path(plugin_spec.entry_point, allowlist)
 
-            # Check dependencies
+            # Check dependencies — validate against allowlist before importing
             for dep in plugin_spec.dependencies:
+                try:
+                    self._validate_module_path(dep, allowlist)
+                except ValueError:
+                    logger.error("Plugin %s dependency not in allowlist: %s", plugin_spec.name, dep)
+                    return False
                 try:
                     importlib.import_module(dep)
                 except ImportError:
