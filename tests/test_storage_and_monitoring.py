@@ -4,6 +4,7 @@ MetricsCollector (serve/monitoring.py), RateLimiter (serve/rate_limit.py).
 """
 
 import time
+import threading
 import pytest
 import pyarrow as pa
 
@@ -229,6 +230,30 @@ class TestConnectionPool:
             pool.get_connection(timeout=0.1)  # Should time out immediately
         pool.return_connection(conn)
         pool.close()
+
+    def test_waiting_get_connection_unblocks_when_closed(self):
+        pool = ConnectionPool(":memory:", max_connections=1)
+        held = pool.get_connection()
+        outcome: dict[str, str] = {}
+
+        def waiter() -> None:
+            try:
+                pool.get_connection(timeout=5.0)
+                outcome["status"] = "acquired"
+            except RuntimeError:
+                outcome["status"] = "closed"
+
+        t = threading.Thread(target=waiter, daemon=True)
+        t.start()
+
+        time.sleep(0.05)
+        pool.close()
+        t.join(timeout=1.0)
+
+        assert not t.is_alive()
+        assert outcome.get("status") == "closed"
+        # Returning after close should be a no-op, not an error.
+        pool.return_connection(held)
 
 
 # ---------------------------------------------------------------------------

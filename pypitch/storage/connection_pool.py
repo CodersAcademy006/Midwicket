@@ -75,11 +75,11 @@ class ConnectionPool:
     def get_connection(self, timeout: Optional[float] = 30.0) -> duckdb.DuckDBPyConnection:
         """Get a connection from the pool."""
         with self._condition:
-            if self._closed:
-                raise RuntimeError("Connection pool is closed")
-
             start_time = time.time()
             while True:
+                if self._closed:
+                    raise RuntimeError("Connection pool is closed")
+
                 # Try to find an available connection
                 for conn_info in self._connections:
                     if not conn_info['in_use']:
@@ -119,13 +119,23 @@ class ConnectionPool:
                     self._condition.wait(timeout - elapsed)
                 else:
                     self._condition.wait()
-                
+
+                if self._closed:
+                    raise RuntimeError("Connection pool is closed")
+
                 # Clean up invalid connections after waiting
                 self._cleanup_invalid_connections()
 
     def return_connection(self, connection: duckdb.DuckDBPyConnection) -> None:
         """Return a connection to the pool."""
         with self._condition:
+            if self._closed:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+                return
+
             for conn_info in self._connections:
                 if conn_info['connection'] is connection:
                     conn_info['in_use'] = False
@@ -144,6 +154,7 @@ class ConnectionPool:
                     logger.warning("Error closing connection: %s", e)
             self._connections.clear()
             self._closed = True
+            self._condition.notify_all()
 
     @contextmanager
     def connection(self):
