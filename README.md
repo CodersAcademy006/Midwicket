@@ -107,7 +107,7 @@ curl http://localhost:8000/_internal/health
 #### Services Included
 
 - **PyPitch API**: FastAPI-based REST API (`http://localhost:8000`)
-- **PostgreSQL**: Production database for metadata
+- **DuckDB (embedded)**: Analytics and metadata storage inside the API service
 - **Prometheus**: Metrics collection (`http://localhost:9090`)
 - **Grafana**: Monitoring dashboards (`http://localhost:3000`)
 

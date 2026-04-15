@@ -14,29 +14,11 @@ services:
       - PYPITCH_ALLOWED_HOSTS=${PYPITCH_ALLOWED_HOSTS:-localhost,127.0.0.1}
     volumes:
       - ./data:/app/data
-    depends_on:
-      - pypitch-db
     healthcheck:
       # Uses the unauthenticated internal liveness probe — no API key required.
       # This avoids 401 failures when PYPITCH_API_KEY_REQUIRED=true (the default).
       test: ["CMD", "python", "-c",
              "import http.client, sys; c=http.client.HTTPConnection('localhost',8000,timeout=5); c.request('GET','/_internal/health'); r=c.getresponse(); sys.exit(0 if r.status==200 else 1)"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: unless-stopped
-
-  pypitch-db:
-    image: postgres:15-alpine
-    environment:
-      - POSTGRES_DB=pypitch
-      - POSTGRES_USER=pypitch
-      - POSTGRES_PASSWORD=${DB_PASSWORD:?DB_PASSWORD is required}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      # init-db.sql removed — PyPitch uses DuckDB, not Postgres DDL init scripts
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U pypitch"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -74,6 +56,5 @@ services:
     restart: unless-stopped
 
 volumes:
-  postgres_data:
   prometheus_data:
   grafana_data:
