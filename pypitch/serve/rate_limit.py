@@ -271,7 +271,11 @@ def get_client_key(request: Request) -> str:
     if forwarded and _is_trusted_proxy(peer_host):
         forwarded_ip = forwarded.split(",", 1)[0].strip()
         if forwarded_ip:
-            return f"ip:{forwarded_ip}"
+            try:
+                canonical_ip = str(ipaddress.ip_address(forwarded_ip))
+                return f"ip:{canonical_ip}"
+            except ValueError:
+                logger.warning("Ignoring malformed X-Forwarded-For value: %r", forwarded_ip)
 
     # Fallback to direct client IP
     if peer_host:

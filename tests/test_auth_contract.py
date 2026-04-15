@@ -87,6 +87,15 @@ def test_rate_limit_client_key_ignores_xff_for_untrusted_peer(monkeypatch):
     assert get_client_key(req) == "ip:203.0.113.20"
 
 
+def test_rate_limit_client_key_rejects_malformed_xff(monkeypatch):
+    monkeypatch.setenv("PYPITCH_TRUSTED_PROXIES", "10.0.0.0/8")
+    req = _request_with_headers(
+        {"X-Forwarded-For": "not-an-ip"},
+        client_host="10.10.0.2",
+    )
+    assert get_client_key(req) == "ip:10.10.0.2"
+
+
 def test_rate_limit_client_key_ignores_xff_when_proxy_list_invalid(monkeypatch):
     monkeypatch.setenv("PYPITCH_TRUSTED_PROXIES", "not-a-cidr")
     req = _request_with_headers(
