@@ -170,3 +170,53 @@ def record_request_metrics(method: str, endpoint: str, status_code: int, duratio
 def record_error_metrics(error_type: str, message: str):
     """Helper function to record error metrics."""
     metrics_collector.record_error(error_type, message)
+
+
+def generate_prometheus_metrics() -> str:
+    """Generate Prometheus text exposition format from the current metrics snapshot."""
+    lines: list = []
+    api = metrics_collector.get_api_metrics()
+    system = metrics_collector.get_system_metrics()
+
+    # ── Request counters by (method, endpoint, status_code) ──────────────────
+    lines.append("# HELP pypitch_requests_total Total HTTP requests received")
+    lines.append("# TYPE pypitch_requests_total counter")
+    with metrics_collector.lock:
+        from collections import defaultdict as _dd
+        counts: dict = _dd(int)
+        for r in metrics_collector.metrics.get("requests", []):
+            key = (r.get("method", ""), r.get("endpoint", ""), str(r.get("status_code", "")))
+            counts[key] += 1
+    for (method, endpoint, status), count in counts.items():
+        lines.append(
+            f'pypitch_requests_total{{method="{method}",endpoint="{endpoint}",status="{status}"}} {count}'
+        )
+
+    # ── Response-time summary ─────────────────────────────────────────────────
+    lines.append("# HELP pypitch_request_duration_seconds Average HTTP request duration in seconds")
+    lines.append("# TYPE pypitch_request_duration_seconds gauge")
+    lines.append(f"pypitch_request_duration_seconds {api.get('avg_response_time', 0):.6f}")
+
+    # ── Error counter ─────────────────────────────────────────────────────────
+    lines.append("# HELP pypitch_errors_total Total errors recorded")
+    lines.append("# TYPE pypitch_errors_total counter")
+    with metrics_collector.lock:
+        error_count = len(metrics_collector.metrics.get("errors", []))
+    lines.append(f"pypitch_errors_total {error_count}")
+
+    # ── System gauges ─────────────────────────────────────────────────────────
+    if system:
+        lines.append("# HELP pypitch_cpu_percent CPU usage percentage")
+        lines.append("# TYPE pypitch_cpu_percent gauge")
+        lines.append(f"pypitch_cpu_percent {system.get('cpu_percent', 0):.2f}")
+
+        lines.append("# HELP pypitch_memory_percent Memory usage percentage")
+        lines.append("# TYPE pypitch_memory_percent gauge")
+        lines.append(f"pypitch_memory_percent {system.get('memory_percent', 0):.2f}")
+
+        lines.append("# HELP pypitch_disk_usage_percent Disk usage percentage")
+        lines.append("# TYPE pypitch_disk_usage_percent gauge")
+        lines.append(f"pypitch_disk_usage_percent {system.get('disk_usage_percent', 0):.2f}")
+
+    lines.append("")  # trailing newline required by spec
+    return "\n".join(lines)
