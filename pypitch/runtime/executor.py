@@ -152,7 +152,9 @@ class RuntimeExecutor:
         # 1. Hash & Cache Check (Standard)
         # We include the metric name in the hash to differentiate results
         metric_name = getattr(metric_func, "__name__", "unknown_metric")
-        query_hash = f"{query.cache_key}:{metric_name}"
+        metric_qualname = getattr(metric_func, "__qualname__", metric_name)
+        metric_module = getattr(metric_func, "__module__", "unknown_module")
+        query_hash = f"{query.cache_key}:{metric_module}.{metric_qualname}"
 
         cached = self.cache.get(query_hash)
         if cached is not None:
