@@ -1,5 +1,5 @@
 """
-PyPitch — The Open Source Cricket Intelligence SDK.
+Midwicket (formerly PyPitch) — The Open Source Cricket Intelligence SDK.
 
 Quick start::
 
@@ -105,7 +105,7 @@ def serve(*args: Any, **kwargs: Any) -> None:
 
 
 __version__ = "0.1.0"
-__author__ = "PyPitch Team"
+__author__ = "Midwicket Team"
 __email__ = "srjnupadhyay@gmail.com"
 
 __all__ = [
