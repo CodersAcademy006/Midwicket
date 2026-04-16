@@ -122,9 +122,24 @@ class QueryPlanner:
 
         for table in preferred_tables:
             if table in available_tables:
-                strategy = "materialized_view"
-                target_table = table
-                break
+                table_exists = True
+                table_exists_fn = getattr(self.engine, "table_exists", None)
+                if callable(table_exists_fn):
+                    try:
+                        table_exists = bool(table_exists_fn(table))
+                    except Exception:
+                        table_exists = False
+
+                if table_exists:
+                    strategy = "materialized_view"
+                    target_table = table
+                    break
+
+                logger.warning(
+                    "Planner metadata marked %s as available, but table does not exist. "
+                    "Falling back to raw scan.",
+                    table,
+                )
 
         sql, params = self._generate_sql(query, target_table)
 

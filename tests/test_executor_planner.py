@@ -35,11 +35,15 @@ class _FakeCache:
             self._store[key] = value
 
 
-def _make_engine(derived_versions: dict | None = None) -> MagicMock:
+def _make_engine(
+    derived_versions: dict | None = None,
+    *,
+    table_exists: bool = True,
+) -> MagicMock:
     engine = MagicMock()
     engine.derived_versions = derived_versions or {}
     engine.execute_sql.return_value = pa.table({"col": [1, 2, 3]})
-    engine.table_exists.return_value = False
+    engine.table_exists.return_value = table_exists
     return engine
 
 
@@ -365,6 +369,19 @@ class TestQueryPlannerLegacy:
         assert plan["strategy"] == "materialized_view"
         assert plan["target_table"] == "matchup_stats"
         assert plan["cost"] == "low"
+
+    def test_stale_derived_metadata_falls_back_to_raw_scan(self):
+        engine = _make_engine(
+            derived_versions={"matchup_stats": "v1"},
+            table_exists=False,
+        )
+        planner = QueryPlanner(engine)
+        query = _matchup_query()
+
+        plan = planner.create_legacy_plan(query)
+        assert plan["strategy"] == "raw_scan"
+        assert plan["target_table"] == "ball_events"
+        assert plan["cost"] == "high"
 
     def test_falls_back_to_raw_scan(self):
         engine = _make_engine(derived_versions={})
