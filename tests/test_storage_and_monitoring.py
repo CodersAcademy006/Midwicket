@@ -545,6 +545,39 @@ class TestMetricsCollector:
         mc.record_error("ValueError", "/test")
         # Should not raise
 
+    def test_get_api_metrics_handles_zero_time_span(self):
+        from unittest.mock import patch
+        from pypitch.serve.monitoring import MetricsCollector
+
+        mc = MetricsCollector()
+        with patch("pypitch.serve.monitoring.time.time", return_value=1000.0):
+            mc.record_request("GET", "/health", 200, 0.05)
+
+        with patch("pypitch.serve.monitoring.time.time", return_value=1000.0):
+            metrics = mc.get_api_metrics(since=1000.0)
+
+        assert metrics["total_requests"] == 1
+        assert metrics["requests_per_minute"] == 0
+
+    def test_record_error_cleans_up_stale_metrics(self):
+        from unittest.mock import patch
+        from pypitch.serve.monitoring import MetricsCollector
+
+        mc = MetricsCollector()
+        mc.max_metrics_age = 10
+
+        # First error becomes stale.
+        with patch("pypitch.serve.monitoring.time.time", return_value=1000.0):
+            mc.record_error("ValueError", "old")
+
+        # Second error should trigger cleanup and remove stale entry.
+        with patch("pypitch.serve.monitoring.time.time", return_value=1015.0):
+            mc.record_error("ValueError", "new")
+
+        errors = mc.metrics["errors"]
+        assert len(errors) == 1
+        assert errors[0]["message"] == "new"
+
 
 # ---------------------------------------------------------------------------
 # RateLimiter (serve/rate_limit.py)

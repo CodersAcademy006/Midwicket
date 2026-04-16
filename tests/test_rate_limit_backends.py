@@ -39,3 +39,24 @@ def test_build_rate_limiter_uses_duckdb_when_configured(monkeypatch, tmp_path):
         assert Path(limiter.db_path) == db
     finally:
         limiter.close()
+
+
+def test_memory_limiter_read_helpers_do_not_create_keys():
+    limiter = RateLimiter(requests_per_minute=3)
+
+    assert limiter.requests == {}
+    assert limiter.get_remaining_requests("unknown-client") == 3
+    assert limiter.get_reset_time("unknown-client") == 0
+    # Read-only helpers should not mutate state or create empty buckets.
+    assert limiter.requests == {}
+
+
+def test_memory_limiter_key_created_only_on_is_allowed():
+    limiter = RateLimiter(requests_per_minute=2)
+
+    # Reads should not create internal key buckets.
+    limiter.get_remaining_requests("client-a")
+    assert "client-a" not in limiter.requests
+
+    assert limiter.is_allowed("client-a") is True
+    assert "client-a" in limiter.requests

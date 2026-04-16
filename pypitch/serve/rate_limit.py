@@ -29,7 +29,9 @@ class RateLimiter:
 
     def _cleanup_old_requests(self, key: str, window_start: float) -> None:
         """Remove requests older than window_start for the given key."""
-        timestamps = self.requests[key]
+        timestamps = self.requests.get(key)
+        if timestamps is None:
+            return
         # Find first valid timestamp
         start_index = bisect.bisect_right(timestamps, window_start)
             
@@ -72,23 +74,29 @@ class RateLimiter:
         window_start = now - 60
 
         with self.lock:
+            if key not in self.requests:
+                return self.requests_per_minute
             # Clean up old requests
             self._cleanup_old_requests(key, window_start)
-            return max(0, self.requests_per_minute - len(self.requests[key]))
+            timestamps = self.requests.get(key, [])
+            return max(0, self.requests_per_minute - len(timestamps))
 
     def get_reset_time(self, key: str) -> float:
         """Get time until rate limit resets."""
         now = time.time()
         window_start = now - 60
         with self.lock:
+            if key not in self.requests:
+                return 0
             # Expire stale entries first so the oldest remaining timestamp is
             # actually inside the current window.  Without this, a completed
             # burst from >60 s ago would report a reset time far in the past
             # while requests in the new window counted against the wrong limit.
             self._cleanup_old_requests(key, window_start)
-            if not self.requests[key]:
+            timestamps = self.requests.get(key, [])
+            if not timestamps:
                 return 0
-            oldest_request = self.requests[key][0]  # list is sorted; first = oldest
+            oldest_request = timestamps[0]  # list is sorted; first = oldest
             return max(0, (oldest_request + 60) - now)
 
     def cleanup_old_keys(self) -> None:
