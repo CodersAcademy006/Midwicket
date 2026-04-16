@@ -5,11 +5,14 @@ MetricsCollector (serve/monitoring.py), RateLimiter (serve/rate_limit.py).
 
 import time
 import threading
+import tempfile
+from pathlib import Path
 import pytest
 import pyarrow as pa
 
 from pypitch.storage.engine import QueryEngine, StorageEngine
 from pypitch.storage.connection_pool import ConnectionPool
+from pypitch.storage.thread_safe_engine import create_thread_safe_engine
 from pypitch.schema.v1 import BALL_EVENT_SCHEMA
 
 
@@ -297,6 +300,48 @@ class TestConnectionPool:
         assert outcome.get("status") == "closed"
         # Returning after close should be a no-op, not an error.
         pool.return_connection(held)
+
+
+# ---------------------------------------------------------------------------
+# ThreadSafeQueryEngine
+# ---------------------------------------------------------------------------
+
+class TestThreadSafeQueryEngine:
+    def test_in_memory_pool_connections_share_state(self):
+        engine = create_thread_safe_engine(":memory:")
+        try:
+            engine.execute_sql("CREATE TABLE t (x INTEGER)", read_only=False)
+            engine.execute_sql("INSERT INTO t VALUES (?)", params=[1], read_only=False)
+            result = engine.execute_sql("SELECT COUNT(*) AS c FROM t")
+            assert result.to_pydict()["c"] == [1]
+        finally:
+            engine.close()
+
+    def test_run_plan_forwards_params_and_flags(self):
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path = f.name
+
+        engine = create_thread_safe_engine(db_path)
+        try:
+            engine.run({"sql": "CREATE TABLE t (x INTEGER)", "read_only": False})
+            engine.run(
+                {
+                    "sql": "INSERT INTO t VALUES (?)",
+                    "params": [11],
+                    "read_only": False,
+                }
+            )
+            result = engine.run(
+                {
+                    "sql": "SELECT x FROM t WHERE x = ?",
+                    "params": [11],
+                    "timeout": 1.0,
+                }
+            )
+            assert result.to_pydict()["x"] == [11]
+        finally:
+            engine.close()
+            Path(db_path).unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------

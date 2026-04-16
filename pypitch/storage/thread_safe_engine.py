@@ -11,6 +11,7 @@ from typing import Dict, Any, Optional, List
 import threading
 import queue
 import time
+import uuid
 from contextlib import contextmanager
 
 from .engine import QueryEngine
@@ -26,6 +27,12 @@ class ConnectionPool:
     def __init__(self, db_path: str = ":memory:", max_connections: int = 10,
                  read_pool_size: int = 5, write_pool_size: int = 2):
         self.db_path = db_path
+        self._connect_path = db_path
+        if db_path == ":memory:":
+            # DuckDB's plain :memory: creates isolated databases per connection.
+            # Use a unique named in-memory database so all pooled connections
+            # share the same state within this engine instance.
+            self._connect_path = f":memory:pypitch_pool_{uuid.uuid4().hex}"
         self.max_connections = max_connections
         self.read_pool_size = read_pool_size
         self.write_pool_size = write_pool_size
@@ -75,7 +82,7 @@ class ConnectionPool:
         """Create a new DuckDB connection with appropriate settings."""
         # Always create read-write connections to avoid configuration conflicts
         # We manage read/write separation via the pools
-        conn = duckdb.connect(self.db_path, read_only=False)
+        conn = duckdb.connect(self._connect_path, read_only=False)
 
         # Performance tuning
         conn.execute("PRAGMA threads=2;")  # Reduced for connection pooling
@@ -287,7 +294,12 @@ class ThreadSafeQueryEngine:
     def run(self, plan: Dict[str, Any]) -> pa.Table:
         """Execute a query plan."""
         if "sql" in plan:
-            return self.execute_sql(plan["sql"])
+            return self.execute_sql(
+                plan["sql"],
+                params=plan.get("params"),
+                read_only=plan.get("read_only", True),
+                timeout=plan.get("timeout", 30.0),
+            )
         raise NotImplementedError("Plan execution without SQL not implemented")
 
     def table_exists(self, table_name: str) -> bool:
