@@ -8,6 +8,7 @@ from typing import Dict, Any, Optional, List
 import hashlib
 import os
 import signal
+import threading
 import uvicorn
 from fastapi import FastAPI, Request, HTTPException, Depends, Query
 from fastapi.responses import JSONResponse, Response
@@ -143,7 +144,14 @@ class PyPitchAPI:
             self._draining = True
             logger.info("SIGTERM received — drain mode active; rejecting new non-probe requests")
 
-        signal.signal(signal.SIGTERM, _handle_sigterm)
+        # Python only allows signal registration in the main thread.
+        if threading.current_thread() is threading.main_thread():
+            try:
+                signal.signal(signal.SIGTERM, _handle_sigterm)
+            except (ValueError, AttributeError):
+                logger.debug("SIGTERM handler registration unavailable in this runtime")
+        else:
+            logger.debug("Skipping SIGTERM handler registration outside main thread")
 
         @self.app.middleware("http")
         async def drain_middleware(request: Request, call_next):
@@ -728,6 +736,15 @@ class PyPitchAPI:
                 ]
                 return {"entries": entries, "count": len(entries)}
             except Exception as e:
+                err = str(e).lower()
+                if "audit_log" in err and (
+                    "does not exist" in err
+                    or "not found" in err
+                    or "catalog error" in err
+                ):
+                    # Graceful fallback when audit table could not be created
+                    # (e.g. read-only engine startup).
+                    return {"entries": [], "count": 0}
                 logger.warning("get_audit_log failed: %s", e)
                 raise HTTPException(status_code=500, detail="Internal server error")
 
