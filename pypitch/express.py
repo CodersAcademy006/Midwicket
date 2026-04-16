@@ -58,29 +58,29 @@ def _auto_setup_session(data_dir: Optional[str] = None) -> PyPitchSession:
     global _cached_session, _cached_session_dir
 
     resolved = str(_ensure_data_dir(data_dir))
+    with _session_lock:
+        # Return cached session only if the data dir matches
+        if _cached_session is not None and _cached_session_dir == resolved:
+            return _cached_session
 
-    # Return cached session only if the data dir matches
-    if _cached_session is not None and _cached_session_dir == resolved:
-        return _cached_session
+        data_path = Path(resolved)
 
-    data_path = Path(resolved)
+        # Download data on first run if not already present
+        loader = DataLoader(str(data_path))
+        raw_present = loader.raw_dir.exists() and bool(list(loader.raw_dir.glob("*.json")))
 
-    # Download data on first run if not already present
-    loader = DataLoader(str(data_path))
-    raw_present = loader.raw_dir.exists() and bool(list(loader.raw_dir.glob("*.json")))
-
-    if not raw_present:
-        if _DEBUG_MODE:
-            print("No local data found. Downloading IPL dataset (~50 MB)...")
-        try:
-            loader.download()
-        except Exception as exc:
+        if not raw_present:
             if _DEBUG_MODE:
-                print(f"Download failed: {exc}. Continuing without data.")
+                print("No local data found. Downloading IPL dataset (~50 MB)...")
+            try:
+                loader.download()
+            except Exception as exc:
+                if _DEBUG_MODE:
+                    print(f"Download failed: {exc}. Continuing without data.")
 
-    _cached_session = PyPitchSession(str(data_path))
-    _cached_session_dir = resolved
-    return _cached_session
+        _cached_session = PyPitchSession(str(data_path))
+        _cached_session_dir = resolved
+        return _cached_session
 
 def load_competition(competition: str, season: int, data_dir: str = "./data") -> CricsheetLoader:
     """
