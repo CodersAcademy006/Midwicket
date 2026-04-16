@@ -305,7 +305,7 @@ class QueryEngine:
                 con.execute("ATTACH 'other.duckdb' AS other (READ_ONLY)")
                 df = con.execute("SELECT * FROM other.main.my_table").df()
         """
-        con = duckdb.connect(self.db_path)
+        con = duckdb.connect(self.pool.connect_path)
         try:
             yield con
         finally:

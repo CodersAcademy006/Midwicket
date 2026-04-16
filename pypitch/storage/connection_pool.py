@@ -8,6 +8,7 @@ from typing import Any, Optional
 from contextlib import contextmanager
 import duckdb
 import logging
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,12 @@ class ConnectionPool:
         from pypitch.config import DATABASE_THREADS, DATABASE_MEMORY_LIMIT
 
         self.db_path = db_path
+        self._connect_path = db_path
+        if db_path == ":memory:":
+            # Plain :memory: creates isolated DBs per connection.
+            # Use a unique named in-memory DB so all pooled connections in
+            # this pool share the same state.
+            self._connect_path = f":memory:pypitch_pool_{uuid.uuid4().hex}"
         self.max_connections = max_connections
         self.max_idle_time = max_idle_time
         self._threads = threads or DATABASE_THREADS
@@ -33,6 +40,11 @@ class ConnectionPool:
         self._condition = threading.Condition(threading.Lock())
         self._closed = False
 
+    @property
+    def connect_path(self) -> str:
+        """Return the concrete DuckDB path used by pooled connections."""
+        return self._connect_path
+
     def _create_connection(self) -> duckdb.DuckDBPyConnection:
         """Create a new database connection."""
         # Validate before use — config.py enforces [1, 16] at import time,
@@ -40,7 +52,7 @@ class ConnectionPool:
         threads = int(self._threads)
         if not (1 <= threads <= 16):
             raise ValueError(f"Invalid thread count {threads}; must be 1-16")
-        con = duckdb.connect(self.db_path)
+        con = duckdb.connect(self._connect_path)
         con.execute(f"PRAGMA threads={threads};")  # nosec B608 – integer validated above
         con.execute(f"PRAGMA memory_limit='{self._memory_limit}';")
         return con
