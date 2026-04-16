@@ -213,10 +213,13 @@ class PyPitchSession:
     @classmethod
     def cleanup(cls) -> None:
         """Clean up the singleton instance."""
+        instance: Optional["PyPitchSession"]
         with cls._instance_lock:
-            if cls._instance is not None:
-                cls._instance.close()
-                cls._instance = None
+            instance = cls._instance
+            cls._instance = None
+
+        if instance is not None:
+            instance.close()
 
     def close(self) -> None:
         """Close all database connections."""
