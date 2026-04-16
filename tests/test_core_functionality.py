@@ -69,3 +69,35 @@ def test_init_replaces_singleton_and_closes_previous(
 def test_get_player_stats_none_input_returns_none(tmp_path) -> None:
     with PyPitchSession(data_dir=str(tmp_path / "stats-none"), skip_registry_build=True) as session:
         assert session.get_player_stats(None) is None  # type: ignore[arg-type]
+
+
+def test_session_close_best_effort_when_component_close_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    """Session close should continue cleanup and clear singleton even after one close failure."""
+    session = PyPitchSession(data_dir=str(tmp_path / "close-fail"), skip_registry_build=True)
+
+    with PyPitchSession._instance_lock:
+        PyPitchSession._instance = session
+
+    call_order: list[str] = []
+
+    def _registry_close() -> None:
+        call_order.append("registry")
+        raise RuntimeError("simulated close failure")
+
+    def _engine_close() -> None:
+        call_order.append("engine")
+
+    def _cache_close() -> None:
+        call_order.append("cache")
+
+    monkeypatch.setattr(session.registry, "close", _registry_close)
+    monkeypatch.setattr(session.engine, "close", _engine_close)
+    monkeypatch.setattr(session.cache, "close", _cache_close)
+
+    session.close()
+
+    assert call_order == ["registry", "engine", "cache"]
+    assert PyPitchSession._instance is None
