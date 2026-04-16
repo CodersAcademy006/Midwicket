@@ -7,6 +7,7 @@ import time
 import threading
 import tempfile
 from pathlib import Path
+from contextlib import contextmanager
 import pytest
 import pyarrow as pa
 
@@ -14,6 +15,7 @@ from pypitch.storage.engine import QueryEngine, StorageEngine
 from pypitch.storage.connection_pool import ConnectionPool
 from pypitch.storage.thread_safe_engine import create_thread_safe_engine
 from pypitch.schema.v1 import BALL_EVENT_SCHEMA
+from pypitch.exceptions import QueryTimeoutError
 
 
 # ---------------------------------------------------------------------------
@@ -342,6 +344,91 @@ class TestThreadSafeQueryEngine:
         finally:
             engine.close()
             Path(db_path).unlink(missing_ok=True)
+
+    def test_execute_sql_raises_query_timeout_on_slow_query(self, monkeypatch):
+        class _FakeResult:
+            def arrow(self):
+                return pa.table({"x": [1]})
+
+        class _SlowConn:
+            def __init__(self) -> None:
+                self.interrupted = False
+
+            def execute(self, sql, params):
+                time.sleep(0.05)
+                return _FakeResult()
+
+            def interrupt(self):
+                self.interrupted = True
+
+        slow_conn = _SlowConn()
+
+        @contextmanager
+        def _fake_read_connection(timeout: float = 5.0):
+            yield slow_conn
+
+        engine = create_thread_safe_engine(":memory:")
+        try:
+            monkeypatch.setattr(engine.pool, "get_read_connection", _fake_read_connection)
+            with pytest.raises(QueryTimeoutError, match="timed out"):
+                engine.execute_sql("SELECT 1", timeout=0.01)
+            assert slow_conn.interrupted is True
+        finally:
+            engine.close()
+
+    def test_execute_sql_uses_timeout_for_connection_wait(self, monkeypatch):
+        captured: dict[str, float] = {}
+
+        class _FakeResult:
+            def arrow(self):
+                return pa.table({"x": [1]})
+
+        class _Conn:
+            def execute(self, sql, params):
+                return _FakeResult()
+
+        @contextmanager
+        def _fake_read_connection(timeout: float = 5.0):
+            captured["timeout"] = timeout
+            yield _Conn()
+
+        engine = create_thread_safe_engine(":memory:")
+        try:
+            monkeypatch.setattr(engine.pool, "get_read_connection", _fake_read_connection)
+            result = engine.execute_sql("SELECT 1", timeout=0.25)
+            assert result.to_pydict()["x"] == [1]
+            assert captured["timeout"] == pytest.approx(0.25)
+        finally:
+            engine.close()
+
+    def test_derived_versions_mapping_is_mutable_for_compat(self):
+        engine = create_thread_safe_engine(":memory:")
+        try:
+            engine.derived_versions["temp_metric"] = "snap-a"
+            assert engine.derived_versions == {"temp_metric": "snap-a"}
+        finally:
+            engine.close()
+
+    def test_ingest_invalidates_derived_state(self):
+        engine = create_thread_safe_engine(":memory:")
+        table = _make_valid_ball_event_table(1)
+        try:
+            engine.ingest_events(table, "snap-a")
+            engine.execute_sql(
+                "CREATE TABLE derived.temp_metric AS SELECT 1 AS x",
+                read_only=False,
+            )
+            engine.derived_versions["temp_metric"] = "snap-a"
+
+            engine.ingest_events(table, "snap-b")
+
+            assert engine.derived_versions == {}
+            count = engine.execute_sql(
+                "SELECT COUNT(*) AS c FROM information_schema.tables WHERE table_schema = 'derived'"
+            ).to_pydict()["c"][0]
+            assert count == 0
+        finally:
+            engine.close()
 
 
 # ---------------------------------------------------------------------------
