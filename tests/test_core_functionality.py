@@ -3,6 +3,7 @@ Core pypitch functionality tests — session lifecycle and cleanup.
 Moved from repo root to tests/ for correct pytest discovery.
 Fixes: Session → PyPitchSession, StorageEngine → QueryEngine.
 """
+import threading
 import pytest
 from pypitch.api import session as session_module
 from pypitch.api.session import PyPitchSession
@@ -100,4 +101,26 @@ def test_session_close_best_effort_when_component_close_fails(
     session.close()
 
     assert call_order == ["registry", "engine", "cache"]
+    assert PyPitchSession._instance is None
+
+
+def test_cleanup_does_not_deadlock_when_instance_exists(tmp_path) -> None:
+    """cleanup() should not call close() while holding the singleton lock."""
+    session = PyPitchSession(data_dir=str(tmp_path / "cleanup-deadlock"), skip_registry_build=True)
+
+    with PyPitchSession._instance_lock:
+        PyPitchSession._instance = session
+
+    finished = threading.Event()
+
+    def _run_cleanup() -> None:
+        PyPitchSession.cleanup()
+        finished.set()
+
+    t = threading.Thread(target=_run_cleanup, daemon=True)
+    t.start()
+    t.join(timeout=2.0)
+
+    assert finished.is_set()
+    assert not t.is_alive()
     assert PyPitchSession._instance is None
