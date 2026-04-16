@@ -77,6 +77,8 @@ class MetricsCollector:
                 'type': error_type,
                 'message': message
             })
+            # Keep error-only traffic from growing unbounded in memory.
+            self._cleanup_old_metrics()
 
     def get_system_metrics(self) -> dict[str, Any]:
         """Get current system metrics.
@@ -125,7 +127,10 @@ class MetricsCollector:
 
         # Calculate requests per minute
         time_span = time.time() - since
-        requests_per_minute = total_requests / (time_span / 60)
+        if time_span <= 0:
+            requests_per_minute = 0.0
+        else:
+            requests_per_minute = total_requests / (time_span / 60)
 
         # Status code distribution
         status_codes: dict = defaultdict(int)
