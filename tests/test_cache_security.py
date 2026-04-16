@@ -86,3 +86,34 @@ class TestCacheNoPickle:
         mem_cache.clear()
         assert mem_cache.get("a") is None
         assert mem_cache.get("b") is None
+
+    def test_in_memory_cache_is_thread_safe(self):
+        """Concurrent get/set calls should not corrupt shared in-memory state."""
+        import threading
+
+        cache = DuckDBCache(":memory:")
+        errors: list[str] = []
+        start = threading.Barrier(10)
+
+        def _worker(worker_id: int) -> None:
+            try:
+                start.wait()
+                for i in range(120):
+                    key = f"k{worker_id}_{i}"
+                    expected = {"v": i}
+                    cache.set(key, expected, ttl=60)
+                    actual = cache.get(key)
+                    if actual != expected:
+                        errors.append(f"mismatch:{worker_id}:{i}:{actual}")
+                        return
+            except Exception as exc:  # pragma: no cover - defensive capture
+                errors.append(f"{type(exc).__name__}:{exc}")
+
+        threads = [threading.Thread(target=_worker, args=(i,), daemon=True) for i in range(10)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=3.0)
+
+        cache.close()
+        assert not errors
