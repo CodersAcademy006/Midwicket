@@ -223,6 +223,25 @@ class TestTableExists:
         assert engine.table_exists("ball_events") is True
         engine.close()
 
+    def test_table_exists_can_scope_schema(self):
+        engine = QueryEngine(":memory:")
+        try:
+            engine.execute_sql(
+                "CREATE TABLE matchup_stats (x INTEGER)",
+                read_only=False,
+            )
+            assert engine.table_exists("matchup_stats") is True
+            assert engine.table_exists("matchup_stats", schema="derived") is False
+
+            engine.execute_sql("CREATE SCHEMA IF NOT EXISTS derived", read_only=False)
+            engine.execute_sql(
+                "CREATE TABLE derived.matchup_stats (x INTEGER)",
+                read_only=False,
+            )
+            assert engine.table_exists("matchup_stats", schema="derived") is True
+        finally:
+            engine.close()
+
     def test_run_with_sql_plan(self):
         engine = QueryEngine(":memory:")
         engine.ingest_events(_make_valid_ball_event_table(1), "snap")
