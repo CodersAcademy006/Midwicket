@@ -29,9 +29,48 @@ if not (1 <= DATABASE_THREADS <= 16):
     )
 DATABASE_MEMORY_LIMIT = os.getenv("PYPITCH_DB_MEMORY", "2GB")
 
+
+def _safe_int_env(
+    name: str,
+    default: int,
+    *,
+    minimum: int | None = None,
+    maximum: int | None = None,
+) -> int:
+    """Return a bounded integer env var, falling back to default on invalid input."""
+    raw = os.getenv(name, str(default))
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        logging.getLogger(__name__).warning(
+            "Invalid %s=%r; using default %s", name, raw, default
+        )
+        return default
+
+    if minimum is not None and value < minimum:
+        logging.getLogger(__name__).warning(
+            "%s=%r is below minimum %s; using default %s",
+            name,
+            value,
+            minimum,
+            default,
+        )
+        return default
+    if maximum is not None and value > maximum:
+        logging.getLogger(__name__).warning(
+            "%s=%r is above maximum %s; using default %s",
+            name,
+            value,
+            maximum,
+            default,
+        )
+        return default
+
+    return value
+
 # API settings
 API_HOST = os.getenv("PYPITCH_API_HOST", "0.0.0.0")  # nosec B104 – container default, operator configures via env
-API_PORT = int(os.getenv("PYPITCH_API_PORT", "8000"))
+API_PORT = _safe_int_env("PYPITCH_API_PORT", 8000, minimum=1, maximum=65535)
 # Default to empty list (no cross-origin access) — operators must explicitly
 # allow origins via PYPITCH_CORS_ORIGINS="https://app.example.com".
 # Wildcards ("*") are intentionally not accepted as a default.
@@ -39,7 +78,7 @@ _cors_raw = os.getenv("PYPITCH_CORS_ORIGINS", "")
 API_CORS_ORIGINS = [o.strip() for o in _cors_raw.split(",") if o.strip()]
 
 # Cache settings
-CACHE_TTL = int(os.getenv("PYPITCH_CACHE_TTL", "3600"))  # 1 hour default
+CACHE_TTL = _safe_int_env("PYPITCH_CACHE_TTL", 3600, minimum=1)  # 1 hour default
 
 # Security settings — lazy accessor to avoid crashing on import
 _SECRET_KEY: str | None = os.getenv("PYPITCH_SECRET_KEY")
