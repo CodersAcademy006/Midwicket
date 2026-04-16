@@ -202,7 +202,9 @@ class ThreadSafeQueryEngine:
     @property
     def derived_versions(self) -> Dict[str, str]:
         with self._state_lock:
-            return self._derived_versions.copy()
+            # Return the underlying mapping for compatibility with QueryEngine
+            # and DerivedStore, which mutate this dict directly.
+            return self._derived_versions
 
     def ingest_events(self, arrow_table: pa.Table, snapshot_tag: str, append: bool = False) -> None:
         """
@@ -222,6 +224,10 @@ class ThreadSafeQueryEngine:
                 else:
                     conn.execute("CREATE OR REPLACE TABLE ball_events AS SELECT * FROM arrow_view")
 
+                # New source data invalidates any previously materialized
+                # derived state to avoid stale table reuse.
+                self._invalidate_derived_state_conn(conn)
+
             finally:
                 try:
                     conn.unregister('arrow_view')
@@ -230,6 +236,13 @@ class ThreadSafeQueryEngine:
 
         with self._state_lock:
             self._snapshot_id = snapshot_tag
+
+    def _invalidate_derived_state_conn(self, conn) -> None:
+        """Drop stale derived schema and clear planner-visible versions."""
+        conn.execute("DROP SCHEMA IF EXISTS derived CASCADE")
+        conn.execute("CREATE SCHEMA IF NOT EXISTS derived")
+        with self._state_lock:
+            self._derived_versions.clear()
 
     def insert_live_delivery(self, delivery_data: Dict[str, Any]):
         """
@@ -271,25 +284,50 @@ class ThreadSafeQueryEngine:
         if params is None:
             params = []
 
-        start_time = time.time()
+        timeout_enabled = timeout is not None and timeout > 0
+        conn_timeout = timeout if timeout_enabled else 5.0
 
-        try:
-            if read_only:
-                with self.pool.get_read_connection(timeout=5.0) as conn:
-                    result = conn.execute(sql, params).arrow()
-            else:
-                with self.pool.get_write_connection(timeout=5.0) as conn:
-                    result = conn.execute(sql, params).arrow()
+        connection_ctx = (
+            self.pool.get_read_connection(timeout=conn_timeout)
+            if read_only
+            else self.pool.get_write_connection(timeout=conn_timeout)
+        )
 
-            # Ensure we return a Table
-            if isinstance(result, pa.RecordBatchReader):
-                return result.read_all()
-            return result
+        with connection_ctx as conn:
+            timed_out = False
+            timer: Optional[threading.Timer] = None
 
-        except Exception as e:
-            if time.time() - start_time > timeout:
-                raise QueryTimeoutError(f"Query timed out after {timeout}s: {sql}")
-            raise e
+            def _interrupt_query() -> None:
+                nonlocal timed_out
+                timed_out = True
+                interrupt = getattr(conn, "interrupt", None)
+                if callable(interrupt):
+                    try:
+                        interrupt()
+                    except Exception:
+                        pass
+
+            if timeout_enabled:
+                timer = threading.Timer(timeout, _interrupt_query)
+                timer.daemon = True
+                timer.start()
+
+            try:
+                result = conn.execute(sql, params).arrow()
+                if timed_out:
+                    raise QueryTimeoutError(f"Query timed out after {timeout}s: {sql}")
+
+                # Ensure we return a Table
+                if isinstance(result, pa.RecordBatchReader):
+                    return result.read_all()
+                return result
+            except Exception as e:
+                if timed_out:
+                    raise QueryTimeoutError(f"Query timed out after {timeout}s: {sql}") from e
+                raise
+            finally:
+                if timer is not None:
+                    timer.cancel()
 
     def run(self, plan: Dict[str, Any]) -> pa.Table:
         """Execute a query plan."""
