@@ -36,6 +36,16 @@ class PyPitchClient:
                 "Authorization": f"Bearer {api_key}",
             })
 
+    def close(self) -> None:
+        """Close the underlying requests session and release pooled sockets."""
+        self.session.close()
+
+    def __enter__(self) -> "PyPitchClient":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.close()
+
     def _get(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Make a GET request to the API."""
         url = urljoin(self.base_url + '/', endpoint.lstrip('/'))
@@ -306,9 +316,14 @@ def quick_health_check(
     timeout: float = 30.0,
 ) -> bool:
     """Quick health check - returns True if API is healthy."""
+    client = PyPitchClient(base_url, api_key, timeout)
     try:
-        client = PyPitchClient(base_url, api_key, timeout)
         health = client.health_check()
         return health.get("status") == "healthy"
     except (requests.RequestException, ValueError, ConnectionError):
         return False
+    finally:
+        try:
+            client.close()
+        except Exception:  # nosec B110 - best effort cleanup for health checks
+            pass

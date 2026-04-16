@@ -102,7 +102,7 @@ class PyPitchSession:
         try:
             player_id_int = int(player_id)
             entity_id = player_id_int
-        except ValueError:
+        except (TypeError, ValueError):
             # It's a name, try to resolve with different dates
             dates_to_try = [date.today(), date(2024, 1, 1), date(2023, 1, 1), date(2022, 1, 1)]
             entity_id = None
@@ -245,7 +245,16 @@ def init(source: Optional[str] = None) -> PyPitchSession:
     Initialize the PyPitch session.
     """
     session = PyPitchSession(data_dir=source)
+    previous: Optional[PyPitchSession]
     with PyPitchSession._instance_lock:
+        previous = PyPitchSession._instance
         PyPitchSession._instance = session
+
+    if previous is not None and previous is not session:
+        try:
+            previous.close()
+        except Exception:
+            logger.warning("Failed to close previous singleton session during init()", exc_info=True)
+
     return session
 
