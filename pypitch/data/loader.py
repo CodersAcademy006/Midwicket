@@ -11,12 +11,57 @@ from tqdm import tqdm
 # Constants
 from pypitch.config import CRICSHEET_URL, DEFAULT_DATA_DIR
 
+
+def _safe_int_env(name: str, default: int, minimum: int = 1) -> int:
+    raw = os.getenv(name, str(default))
+    log = logging.getLogger(__name__)
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        log.warning("Invalid %s=%r; using default %s", name, raw, default)
+        return default
+    if value < minimum:
+        log.warning(
+            "%s=%r is below minimum %s; using default %s",
+            name,
+            value,
+            minimum,
+            default,
+        )
+        return default
+    return value
+
+
+def _safe_float_env(name: str, default: float, minimum: float = 0.0) -> float:
+    raw = os.getenv(name, str(default))
+    log = logging.getLogger(__name__)
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        log.warning("Invalid %s=%r; using default %s", name, raw, default)
+        return default
+    if value < minimum:
+        log.warning(
+            "%s=%r is below minimum %s; using default %s",
+            name,
+            value,
+            minimum,
+            default,
+        )
+        return default
+    return value
+
+
 # M4: make timeouts configurable via env vars
-_DOWNLOAD_TIMEOUT = int(os.getenv("PYPITCH_DOWNLOAD_TIMEOUT", "60"))
-_EXTRACT_TIMEOUT = int(os.getenv("PYPITCH_EXTRACT_TIMEOUT", "120"))
-_DOWNLOAD_RETRY_ATTEMPTS = max(1, int(os.getenv("PYPITCH_DOWNLOAD_RETRIES", "3")))
-_DOWNLOAD_RETRY_BACKOFF_BASE = float(os.getenv("PYPITCH_DOWNLOAD_RETRY_BACKOFF_BASE", "0.5"))
-_DOWNLOAD_RETRY_BACKOFF_MAX = float(os.getenv("PYPITCH_DOWNLOAD_RETRY_BACKOFF_MAX", "8"))
+_DOWNLOAD_TIMEOUT = _safe_int_env("PYPITCH_DOWNLOAD_TIMEOUT", 60, minimum=1)
+_EXTRACT_TIMEOUT = _safe_int_env("PYPITCH_EXTRACT_TIMEOUT", 120, minimum=1)
+_DOWNLOAD_RETRY_ATTEMPTS = _safe_int_env("PYPITCH_DOWNLOAD_RETRIES", 3, minimum=1)
+_DOWNLOAD_RETRY_BACKOFF_BASE = _safe_float_env(
+    "PYPITCH_DOWNLOAD_RETRY_BACKOFF_BASE", 0.5, minimum=0.0
+)
+_DOWNLOAD_RETRY_BACKOFF_MAX = _safe_float_env(
+    "PYPITCH_DOWNLOAD_RETRY_BACKOFF_MAX", 8.0, minimum=0.0
+)
 
 logger = logging.getLogger(__name__)
 

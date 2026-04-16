@@ -202,7 +202,18 @@ class DuckDBRateLimiter:
 
 
 def _build_rate_limiter() -> RateLimiter | DuckDBRateLimiter:
-    requests_per_minute = int(os.getenv("PYPITCH_RATE_LIMIT_REQUESTS_PER_MINUTE", "60"))
+    raw_rpm = os.getenv("PYPITCH_RATE_LIMIT_REQUESTS_PER_MINUTE", "60")
+    try:
+        requests_per_minute = int(raw_rpm)
+        if requests_per_minute <= 0:
+            raise ValueError
+    except (TypeError, ValueError):
+        logger.warning(
+            "Invalid PYPITCH_RATE_LIMIT_REQUESTS_PER_MINUTE=%r; using default 60",
+            raw_rpm,
+        )
+        requests_per_minute = 60
+
     configured_backend = os.getenv("PYPITCH_RATE_LIMIT_BACKEND", "").strip().lower()
 
     if configured_backend in {"duckdb", "memory"}:

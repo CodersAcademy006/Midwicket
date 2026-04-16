@@ -1,6 +1,7 @@
 """Tests for rate limiter backends and multi-worker behavior."""
 
 from pathlib import Path
+import pytest
 
 from pypitch.serve.rate_limit import DuckDBRateLimiter, RateLimiter, _build_rate_limiter
 
@@ -39,6 +40,16 @@ def test_build_rate_limiter_uses_duckdb_when_configured(monkeypatch, tmp_path):
         assert Path(limiter.db_path) == db
     finally:
         limiter.close()
+
+
+@pytest.mark.parametrize("bad_value", ["not-an-int", "0", "-5", ""]) 
+def test_build_rate_limiter_invalid_requests_per_minute_falls_back(monkeypatch, bad_value):
+    monkeypatch.setenv("PYPITCH_RATE_LIMIT_BACKEND", "memory")
+    monkeypatch.setenv("PYPITCH_RATE_LIMIT_REQUESTS_PER_MINUTE", bad_value)
+
+    limiter = _build_rate_limiter()
+    assert isinstance(limiter, RateLimiter)
+    assert limiter.requests_per_minute == 60
 
 
 def test_memory_limiter_read_helpers_do_not_create_keys():

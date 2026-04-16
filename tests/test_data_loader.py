@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import importlib
 import requests
 import pytest
 
 from pypitch.data.loader import DataLoader
+
+
+def _reload_loader_module():
+    import pypitch.data.loader as loader_mod
+    return importlib.reload(loader_mod)
 
 
 class _FakeResponse:
@@ -55,3 +61,25 @@ def test_download_exhausted_retries_raises(monkeypatch, tmp_path):
         loader.download(force=True)
 
     assert not loader.zip_path.exists()
+
+
+def test_loader_invalid_int_env_values_fall_back(monkeypatch):
+    monkeypatch.setenv("PYPITCH_DOWNLOAD_TIMEOUT", "not-int")
+    monkeypatch.setenv("PYPITCH_EXTRACT_TIMEOUT", "0")
+    monkeypatch.setenv("PYPITCH_DOWNLOAD_RETRIES", "-3")
+
+    loader_mod = _reload_loader_module()
+
+    assert loader_mod._DOWNLOAD_TIMEOUT == 60
+    assert loader_mod._EXTRACT_TIMEOUT == 120
+    assert loader_mod._DOWNLOAD_RETRY_ATTEMPTS == 3
+
+
+def test_loader_invalid_float_env_values_fall_back(monkeypatch):
+    monkeypatch.setenv("PYPITCH_DOWNLOAD_RETRY_BACKOFF_BASE", "not-float")
+    monkeypatch.setenv("PYPITCH_DOWNLOAD_RETRY_BACKOFF_MAX", "-1")
+
+    loader_mod = _reload_loader_module()
+
+    assert loader_mod._DOWNLOAD_RETRY_BACKOFF_BASE == 0.5
+    assert loader_mod._DOWNLOAD_RETRY_BACKOFF_MAX == 8.0
