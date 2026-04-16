@@ -332,8 +332,12 @@ class StreamIngestor:
     def _process_updates(self):
         """Process match updates from the queue with deduplication and retry."""
         while not self.stop_event.is_set():
+            task_acquired = False
+            match_id: Optional[str] = None
+            delivery_data: Optional[Dict[str, Any]] = None
             try:
                 match_id, delivery_data = self.update_queue.get(timeout=1.0)
+                task_acquired = True
 
                 key = self._delivery_key(match_id, delivery_data)
                 if self._is_duplicate(key):
@@ -341,7 +345,6 @@ class StreamIngestor:
                         "ingestor: duplicate delivery dropped — match=%s key=%s",
                         match_id, key,
                     )
-                    self.update_queue.task_done()
                     continue
 
                 # Retry loop with exponential back-off
@@ -374,12 +377,19 @@ class StreamIngestor:
                         except Exception as cb_exc:
                             logger.error("ingestor: update callback error: %s", cb_exc)
 
-                self.update_queue.task_done()
-
             except queue.Empty:
                 continue
             except Exception as exc:
                 logger.error("ingestor: unexpected processing error: %s", exc)
+                if task_acquired and match_id is not None and delivery_data is not None:
+                    self._send_to_dead_letter(
+                        match_id,
+                        delivery_data,
+                        reason=f"processing_error: {exc}",
+                    )
+            finally:
+                if task_acquired:
+                    self.update_queue.task_done()
 
     def _ingest_delivery_data(self, match_id: str, delivery_data: Dict[str, Any]):
         """Ingest a single delivery into the database (raises on failure)."""

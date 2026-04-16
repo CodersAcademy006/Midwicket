@@ -589,6 +589,26 @@ class TestIngestorResilience:
         assert len(ingestor.dead_letter) == 1
         assert "m1" == ingestor.dead_letter[0]["match_id"]
 
+    def test_unexpected_processing_error_dead_letters_and_finalizes_task(self, ingestor):
+        """Malformed payloads should not strand queue tasks or get silently dropped."""
+        bad_delivery = {
+            "runs_total": 12,
+            "wickets_fallen": 1,
+            "raw_payload": object(),  # non-JSON-serializable triggers key fallback failure
+        }
+
+        ingestor.update_queue.put(("m1", bad_delivery))
+        ingestor.stop_event.is_set = Mock(side_effect=[False, True])
+
+        ingestor._process_updates()
+
+        dead = ingestor.get_dead_letter_items()
+        assert len(dead) == 1
+        assert dead[0]["match_id"] == "m1"
+        assert "processing_error" in dead[0]["reason"]
+        assert ingestor.update_queue.unfinished_tasks == 0
+        ingestor.query_engine.insert_live_delivery.assert_not_called()
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
