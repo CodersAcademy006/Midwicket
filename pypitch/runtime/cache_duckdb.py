@@ -3,11 +3,15 @@ import json
 import pyarrow as pa
 import time
 from typing import Any, Optional, Tuple
+import threading
+from contextlib import nullcontext
 from pypitch.runtime.cache import CacheInterface
 
 class DuckDBCache(CacheInterface):
     def __init__(self, path: str = ".pypitch_cache.db"):
         self.path = path
+        self._in_memory = path == ":memory:"
+        self._lock = threading.RLock()
         self._init_db()
 
     def _init_db(self) -> None:
@@ -78,58 +82,66 @@ class DuckDBCache(CacheInterface):
             return self.con
         return duckdb.connect(self.path, read_only=read_only)
 
+    def _operation_guard(self):
+        """Serialize operations for in-memory mode where one connection is shared."""
+        return self._lock if self._in_memory else nullcontext()
+
     def get(self, key: str) -> Optional[Any]:
         current_time = int(time.time())
-        
-        # Connect strictly for this operation
-        con = self._get_con(read_only=True if self.path != ":memory:" else False)
-        try:
-            # 1. Check existence and expiry in SQL (Pushdown optimization)
-            row = con.execute("""
-                SELECT value, is_arrow 
-                FROM cache_store 
-                WHERE key = ? AND expires_at > ?
-            """, [key, current_time]).fetchone()
 
-            if row is None:
-                return None
-            
-            blob, is_arrow = row
-            return self._deserialize(blob, is_arrow)
-        finally:
-            if self.path != ":memory:":
-                con.close()
+        with self._operation_guard():
+            # Connect strictly for this operation
+            con = self._get_con(read_only=True if self.path != ":memory:" else False)
+            try:
+                # 1. Check existence and expiry in SQL (Pushdown optimization)
+                row = con.execute("""
+                    SELECT value, is_arrow 
+                    FROM cache_store 
+                    WHERE key = ? AND expires_at > ?
+                """, [key, current_time]).fetchone()
+
+                if row is None:
+                    return None
+
+                blob, is_arrow = row
+                return self._deserialize(blob, is_arrow)
+            finally:
+                if self.path != ":memory:":
+                    con.close()
 
     def set(self, key: str, value: Any, ttl: int = 3600) -> None:
         blob, is_arrow = self._serialize(value)
         expires_at = int(time.time()) + ttl
 
-        # ACID Transaction for Write
-        con = self._get_con()
-        try:
-            con.execute("""
-                INSERT OR REPLACE INTO cache_store (key, value, is_arrow, expires_at)
-                VALUES (?, ?, ?, ?)
-            """, [key, blob, is_arrow, expires_at])
-        finally:
-            if self.path != ":memory:":
-                con.close()
+        with self._operation_guard():
+            # ACID Transaction for Write
+            con = self._get_con()
+            try:
+                con.execute("""
+                    INSERT OR REPLACE INTO cache_store (key, value, is_arrow, expires_at)
+                    VALUES (?, ?, ?, ?)
+                """, [key, blob, is_arrow, expires_at])
+            finally:
+                if self.path != ":memory:":
+                    con.close()
 
     def clear(self) -> None:
-        con = self._get_con()
-        try:
-            con.execute("DELETE FROM cache_store")
-            if self.path != ":memory:":
-                con.execute("CHECKPOINT")  # Reclaim disk space
-        finally:
-            if self.path != ":memory:":
-                con.close()
+        with self._operation_guard():
+            con = self._get_con()
+            try:
+                con.execute("DELETE FROM cache_store")
+                if self.path != ":memory:":
+                    con.execute("CHECKPOINT")  # Reclaim disk space
+            finally:
+                if self.path != ":memory:":
+                    con.close()
 
     def close(self) -> None:
         """Close persistent connections (in-memory caches hold one)."""
         if self.path == ":memory:" and hasattr(self, "con"):
-            try:
-                self.con.close()
-            except Exception:  # nosec B110 — best-effort cleanup; connection may already be closed
-                pass
+            with self._operation_guard():
+                try:
+                    self.con.close()
+                except Exception:  # nosec B110 — best-effort cleanup; connection may already be closed
+                    pass
 
