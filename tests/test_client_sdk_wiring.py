@@ -3,8 +3,9 @@
 from typing import Any, Dict, Optional
 
 import pytest
+import requests
 
-from pypitch.client import PyPitchClient
+from pypitch.client import PyPitchClient, quick_health_check
 
 
 def test_list_matches_builds_expected_query_params(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -202,3 +203,51 @@ def test_path_wrappers_encode_reserved_characters(monkeypatch: pytest.MonkeyPatc
         "/matches/ipl%2F2024%3Fsemi",
         "/v1/players/A%2FB/vs-team/KKR%3FA",
     ]
+
+
+def test_client_context_manager_closes_session() -> None:
+    client = PyPitchClient()
+    closed = {"count": 0}
+
+    class _DummySession:
+        def close(self) -> None:
+            closed["count"] += 1
+
+    client.session = _DummySession()  # type: ignore[assignment]
+
+    with client as active:
+        assert active is client
+
+    assert closed["count"] == 1
+
+
+def test_quick_health_check_closes_client_on_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    close_calls = {"count": 0}
+
+    def _fake_health(self) -> Dict[str, Any]:
+        return {"status": "healthy"}
+
+    def _fake_close(self) -> None:
+        close_calls["count"] += 1
+
+    monkeypatch.setattr(PyPitchClient, "health_check", _fake_health)
+    monkeypatch.setattr(PyPitchClient, "close", _fake_close)
+
+    assert quick_health_check(base_url="http://example.test") is True
+    assert close_calls["count"] == 1
+
+
+def test_quick_health_check_closes_client_on_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    close_calls = {"count": 0}
+
+    def _fake_health(self) -> Dict[str, Any]:
+        raise requests.RequestException("boom")
+
+    def _fake_close(self) -> None:
+        close_calls["count"] += 1
+
+    monkeypatch.setattr(PyPitchClient, "health_check", _fake_health)
+    monkeypatch.setattr(PyPitchClient, "close", _fake_close)
+
+    assert quick_health_check(base_url="http://example.test") is False
+    assert close_calls["count"] == 1
