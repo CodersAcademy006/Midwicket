@@ -370,6 +370,15 @@ class TestQueryPlannerLegacy:
         assert plan["target_table"] == "matchup_stats"
         assert plan["cost"] == "low"
 
+    def test_prefers_materialized_view_checks_derived_schema(self):
+        engine = _make_engine(derived_versions={"matchup_stats": "v1"})
+        planner = QueryPlanner(engine)
+        query = _matchup_query()
+
+        planner.create_legacy_plan(query)
+
+        engine.table_exists.assert_called_with("matchup_stats", schema="derived")
+
     def test_stale_derived_metadata_falls_back_to_raw_scan(self):
         engine = _make_engine(
             derived_versions={"matchup_stats": "v1"},

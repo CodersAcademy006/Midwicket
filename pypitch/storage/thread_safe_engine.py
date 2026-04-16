@@ -410,18 +410,25 @@ class ThreadSafeQueryEngine:
             )
         raise NotImplementedError("Plan execution without SQL not implemented")
 
-    def table_exists(self, table_name: str) -> bool:
+    def table_exists(self, table_name: str, schema: Optional[str] = None) -> bool:
         """Check if a table exists."""
         with self.pool.get_read_connection() as conn:
-            return self._table_exists_conn(conn, table_name)
+            return self._table_exists_conn(conn, table_name, schema=schema)
 
-    def _table_exists_conn(self, conn, table_name: str) -> bool:
+    def _table_exists_conn(self, conn, table_name: str, schema: Optional[str] = None) -> bool:
         """Check table existence using a specific connection."""
         try:
-            res = conn.execute(
-                "SELECT count(*) FROM information_schema.tables WHERE table_name = ?",
-                [table_name]
-            ).fetchone()
+            if schema is None:
+                res = conn.execute(
+                    "SELECT count(*) FROM information_schema.tables WHERE table_name = ?",
+                    [table_name],
+                ).fetchone()
+            else:
+                res = conn.execute(
+                    "SELECT count(*) FROM information_schema.tables "
+                    "WHERE table_schema = ? AND table_name = ?",
+                    [schema, table_name],
+                ).fetchone()
             return res[0] > 0 if res else False
         except Exception:
             return False

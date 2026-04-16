@@ -272,19 +272,29 @@ class QueryEngine:
         ).fetchall()
         return {str(row[0]).lower() for row in rows}
 
-    def table_exists(self, table_name: str, con=None) -> bool:
+    def table_exists(self, table_name: str, con=None, schema: Optional[str] = None) -> bool:
         """Checks if a table exists in the database."""
         if con is None:
             with self.pool.connection() as con:
-                return self._table_exists(table_name, con)
+                return self._table_exists(table_name, con, schema=schema)
         else:
-            return self._table_exists(table_name, con)
+            return self._table_exists(table_name, con, schema=schema)
 
-    def _table_exists(self, table_name: str, con) -> bool:
+    def _table_exists(self, table_name: str, con, schema: Optional[str] = None) -> bool:
         """Checks if a table exists using the provided connection."""
         try:
             # DuckDB specific query
-            res = con.execute("SELECT count(*) FROM information_schema.tables WHERE table_name = ?", [table_name]).fetchone()
+            if schema is None:
+                res = con.execute(
+                    "SELECT count(*) FROM information_schema.tables WHERE table_name = ?",
+                    [table_name],
+                ).fetchone()
+            else:
+                res = con.execute(
+                    "SELECT count(*) FROM information_schema.tables "
+                    "WHERE table_schema = ? AND table_name = ?",
+                    [schema, table_name],
+                ).fetchone()
             return res[0] > 0 if res else False
         except duckdb.Error as e:
             logger.warning("Error checking table existence: %s", e)

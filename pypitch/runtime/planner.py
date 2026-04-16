@@ -126,6 +126,15 @@ class QueryPlanner:
                 table_exists_fn = getattr(self.engine, "table_exists", None)
                 if callable(table_exists_fn):
                     try:
+                        if table == "ball_events":
+                            table_exists = bool(table_exists_fn(table))
+                        else:
+                            table_exists = bool(
+                                table_exists_fn(table, schema="derived")
+                            )
+                    except TypeError:
+                        # Backward compatibility for engines exposing
+                        # table_exists(table_name) only.
                         table_exists = bool(table_exists_fn(table))
                     except Exception:
                         table_exists = False
