@@ -191,6 +191,21 @@ class TestQueryEngineExecuteSQL:
         assert result.to_pydict()["total"][0] == 10
         engine.close()
 
+    def test_in_memory_pool_connections_share_state(self):
+        engine = QueryEngine(":memory:")
+        held = engine.pool.get_connection()
+        try:
+            held.execute("CREATE TABLE t (x INTEGER)")
+            held.execute("INSERT INTO t VALUES (1)")
+
+            # With one connection held, execute_sql must use a different
+            # pooled connection and still observe the same in-memory state.
+            result = engine.execute_sql("SELECT COUNT(*) AS c FROM t")
+            assert result.to_pydict()["c"] == [1]
+        finally:
+            engine.pool.return_connection(held)
+            engine.close()
+
 
 # ---------------------------------------------------------------------------
 # QueryEngine — table_exists
@@ -249,6 +264,18 @@ class TestRawConnection:
             result = con.execute("SELECT 99 AS x").fetchone()
             assert result[0] == 99
         engine.close()
+
+    def test_raw_connection_shares_in_memory_engine_state(self):
+        engine = QueryEngine(":memory:")
+        try:
+            engine.execute_sql("CREATE TABLE t (x INTEGER)", read_only=False)
+            engine.execute_sql("INSERT INTO t VALUES (42)", read_only=False)
+
+            with engine.raw_connection() as con:
+                count = con.execute("SELECT COUNT(*) FROM t").fetchone()[0]
+                assert count == 1
+        finally:
+            engine.close()
 
 
 # ---------------------------------------------------------------------------
