@@ -1,5 +1,6 @@
 import logging
 import time
+import threading
 from typing import Any, Dict, Optional, Callable, List
 import pyarrow as pa
 from pydantic import BaseModel, Field, ConfigDict
@@ -38,6 +39,28 @@ class RuntimeExecutor:
         self.engine = engine
         self.planner = QueryPlanner(engine)
         self.derived = DerivedStore(engine)
+        self._inflight_guard = threading.Lock()
+        self._inflight_events: Dict[str, threading.Event] = {}
+
+    def _enter_inflight(self, key: str) -> tuple[bool, threading.Event]:
+        """Register an in-flight key. Returns (is_leader, event)."""
+        with self._inflight_guard:
+            existing = self._inflight_events.get(key)
+            if existing is not None:
+                return False, existing
+            event = threading.Event()
+            self._inflight_events[key] = event
+            return True, event
+
+    def _leave_inflight(self, key: str, event: threading.Event) -> None:
+        """Release in-flight key and wake waiters."""
+        with self._inflight_guard:
+            current = self._inflight_events.get(key)
+            if current is event:
+                event.set()
+                del self._inflight_events[key]
+            else:
+                event.set()
 
     def execute(self, query: BaseQuery, mode: ExecutionMode = ExecutionMode.EXACT) -> ExecutionResult:
         """
@@ -88,19 +111,87 @@ class RuntimeExecutor:
                 )
             )
 
-        # Special handling for WinProbQuery: call robust model, not SQL
-        if isinstance(query, WinProbQuery):
-            from pypitch.compute.winprob import win_probability
-            result = win_probability(
-                target=query.target_score,
-                current_runs=query.current_runs,
-                wickets_down=query.current_wickets,
-                overs_done=20.0 - query.overs_remaining,
-                venue=None  # Optionally pass venue name/id if model supports
+        is_leader, inflight_event = self._enter_inflight(query_hash)
+        if not is_leader:
+            inflight_event.wait()
+            cached_after_wait = self.cache.get(query_hash)
+            if cached_after_wait is not None:
+                if modes.debug_mode and hasattr(cached_after_wait, 'collect'):
+                    cached_after_wait = cached_after_wait.collect()
+                return ExecutionResult(
+                    data=cached_after_wait,
+                    meta=ResultMetadata(
+                        query_hash=query_hash,
+                        snapshot_id=query.snapshot_id,
+                        execution_time_ms=(time.perf_counter() - start_time) * 1000,
+                        source="cache"
+                    )
+                )
+
+        # Leader computes and populates cache; waiters reuse it.
+        try:
+            # Special handling for WinProbQuery: call robust model, not SQL
+            if isinstance(query, WinProbQuery):
+                from pypitch.compute.winprob import win_probability
+                result = win_probability(
+                    target=query.target_score,
+                    current_runs=query.current_runs,
+                    wickets_down=query.current_wickets,
+                    overs_done=20.0 - query.overs_remaining,
+                    venue=None  # Optionally pass venue name/id if model supports
+                )
+                self.cache.set(query_hash, result)
+                return ExecutionResult(
+                    data=result,
+                    meta=ResultMetadata(
+                        query_hash=query_hash,
+                        snapshot_id=query.snapshot_id,
+                        execution_time_ms=(time.perf_counter() - start_time) * 1000,
+                        source="compute"
+                    )
+                )
+
+            # ── Planner routing ───────────────────────────────────────────────
+            # planner.plan() is the unified entry point; it checks the built-in
+            # _QUERY_PREFERRED_TABLES map and query.requires["preferred_tables"]
+            # against engine.derived_versions, selecting "materialized_view" when
+            # a registered table is found, otherwise "raw_scan".
+            plan = precomputed_plan or self.planner.plan(query)
+            strategy = plan.get("strategy", "raw_scan")
+
+            if strategy == "materialized_view":
+                _log.debug(
+                    "Planner: using materialized view %r for %s",
+                    plan.get("target_table"),
+                    query.__class__.__name__,
+                )
+            elif mode == ExecutionMode.BUDGET:
+                raise RuntimeError(
+                    f"ExecutionMode.BUDGET forbids raw scans, but no materialized "
+                    f"view covers query {query.__class__.__name__}. "
+                    f"Either materialise the required table first or use "
+                    f"ExecutionMode.EXACT."
+                )
+            elif mode == ExecutionMode.APPROX:
+                _log.warning(
+                    "ExecutionMode.APPROX: no materialized view available for %s, "
+                    "falling back to raw_scan",
+                    query.__class__.__name__,
+                )
+            else:
+                _log.debug(
+                    "Planner: raw_scan for %s (no materialized view registered)",
+                    query.__class__.__name__,
+                )
+
+            result_table = self.engine.execute_sql(
+                plan["sql"], params=plan.get("params")
             )
-            self.cache.set(query_hash, result)
+            if modes.debug_mode and hasattr(result_table, 'collect'):
+                result_table = result_table.collect()
+            self.cache.set(query_hash, result_table)
             return ExecutionResult(
-                data=result,
+                data=result_table,
                 meta=ResultMetadata(
                     query_hash=query_hash,
                     snapshot_id=query.snapshot_id,
@@ -108,55 +199,9 @@ class RuntimeExecutor:
                     source="compute"
                 )
             )
-
-        # ── Planner routing ───────────────────────────────────────────────────
-        # planner.plan() is the unified entry point; it checks the built-in
-        # _QUERY_PREFERRED_TABLES map and query.requires["preferred_tables"]
-        # against engine.derived_versions, selecting "materialized_view" when
-        # a registered table is found, otherwise "raw_scan".
-        plan = precomputed_plan or self.planner.plan(query)
-        strategy = plan.get("strategy", "raw_scan")
-
-        if strategy == "materialized_view":
-            _log.debug(
-                "Planner: using materialized view %r for %s",
-                plan.get("target_table"),
-                query.__class__.__name__,
-            )
-        elif mode == ExecutionMode.BUDGET:
-            raise RuntimeError(
-                f"ExecutionMode.BUDGET forbids raw scans, but no materialized "
-                f"view covers query {query.__class__.__name__}. "
-                f"Either materialise the required table first or use "
-                f"ExecutionMode.EXACT."
-            )
-        elif mode == ExecutionMode.APPROX:
-            _log.warning(
-                "ExecutionMode.APPROX: no materialized view available for %s, "
-                "falling back to raw_scan",
-                query.__class__.__name__,
-            )
-        else:
-            _log.debug(
-                "Planner: raw_scan for %s (no materialized view registered)",
-                query.__class__.__name__,
-            )
-
-        result_table = self.engine.execute_sql(
-            plan["sql"], params=plan.get("params")
-        )
-        if modes.debug_mode and hasattr(result_table, 'collect'):
-            result_table = result_table.collect()
-        self.cache.set(query_hash, result_table)
-        return ExecutionResult(
-            data=result_table,
-            meta=ResultMetadata(
-                query_hash=query_hash,
-                snapshot_id=query.snapshot_id,
-                execution_time_ms=(time.perf_counter() - start_time) * 1000,
-                source="compute"
-            )
-        )
+        finally:
+            if is_leader:
+                self._leave_inflight(query_hash, inflight_event)
 
     def execute_metric(self, query: BaseQuery, metric_func: Callable[..., Any]) -> ExecutionResult:
         """
@@ -183,36 +228,55 @@ class RuntimeExecutor:
                 )
             )
 
-        # 2. Pre-Flight: Ensure Dependencies Exist
-        if hasattr(metric_func, "_pypitch_spec"):
-            for req in metric_func._pypitch_spec.requirements:
-                # This ensures 'derived.venue_baselines' exists in DuckDB
-                self.derived.ensure_materialized(
-                    req["table"], 
-                    snapshot_id=query.snapshot_id
+        is_leader, inflight_event = self._enter_inflight(query_hash)
+        if not is_leader:
+            inflight_event.wait()
+            cached_after_wait = self.cache.get(query_hash)
+            if cached_after_wait is not None:
+                return ExecutionResult(
+                    data=cached_after_wait,
+                    meta=ResultMetadata(
+                        query_hash=query_hash,
+                        snapshot_id=query.snapshot_id,
+                        execution_time_ms=(time.perf_counter() - start_time) * 1000,
+                        source="cache"
+                    )
                 )
 
-        # 3. Plan: Generate the Complex SQL
-        sql, params = self.planner.create_plan(query, metric_func)
+        try:
+            # 2. Pre-Flight: Ensure Dependencies Exist
+            if hasattr(metric_func, "_pypitch_spec"):
+                for req in metric_func._pypitch_spec.requirements:
+                    # This ensures 'derived.venue_baselines' exists in DuckDB
+                    self.derived.ensure_materialized(
+                        req["table"],
+                        snapshot_id=query.snapshot_id
+                    )
 
-        # 4. Execute: Let DuckDB do the heavy lifting (JOIN)
-        # This returns an Arrow Table with 'runs' AND 'venue_avg_sr' columns
-        enriched_events = self.engine.execute_sql(sql, params=params)
+            # 3. Plan: Generate the Complex SQL
+            sql, params = self.planner.create_plan(query, metric_func)
 
-        # 5. Compute: Run the Pure Function
-        # The metric simply expects column 'venue_avg_sr' to exist
-        result_value = metric_func(enriched_events)
+            # 4. Execute: Let DuckDB do the heavy lifting (JOIN)
+            # This returns an Arrow Table with 'runs' AND 'venue_avg_sr' columns
+            enriched_events = self.engine.execute_sql(sql, params=params)
 
-        # 6. Cache & Return
-        self.cache.set(query_hash, result_value)
+            # 5. Compute: Run the Pure Function
+            # The metric simply expects column 'venue_avg_sr' to exist
+            result_value = metric_func(enriched_events)
 
-        return ExecutionResult(
-            data=result_value,
-            meta=ResultMetadata(
-                query_hash=query_hash,
-                snapshot_id=query.snapshot_id,
-                execution_time_ms=(time.perf_counter() - start_time) * 1000,
-                source="compute"
+            # 6. Cache & Return
+            self.cache.set(query_hash, result_value)
+
+            return ExecutionResult(
+                data=result_value,
+                meta=ResultMetadata(
+                    query_hash=query_hash,
+                    snapshot_id=query.snapshot_id,
+                    execution_time_ms=(time.perf_counter() - start_time) * 1000,
+                    source="compute"
+                )
             )
-        )
+        finally:
+            if is_leader:
+                self._leave_inflight(query_hash, inflight_event)
 

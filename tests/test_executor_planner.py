@@ -4,6 +4,8 @@ Tests for RuntimeExecutor and QueryPlanner.
 
 import pytest
 import pyarrow as pa
+import threading
+import time
 from unittest.mock import MagicMock, patch
 from pypitch.runtime.executor import RuntimeExecutor, ExecutionMode, ExecutionResult
 from pypitch.runtime.planner import (
@@ -22,12 +24,15 @@ from pypitch.query.base import MatchupQuery
 class _FakeCache:
     def __init__(self):
         self._store: dict = {}
+        self._lock = threading.Lock()
 
     def get(self, key: str):
-        return self._store.get(key)
+        with self._lock:
+            return self._store.get(key)
 
     def set(self, key: str, value) -> None:
-        self._store[key] = value
+        with self._lock:
+            self._store[key] = value
 
 
 def _make_engine(derived_versions: dict | None = None) -> MagicMock:
@@ -137,6 +142,42 @@ class TestRuntimeExecutorCacheHit:
 
         result = executor.execute(query)
         assert result.meta.execution_time_ms >= 0
+
+    def test_concurrent_cache_miss_singleflight(self):
+        cache = _FakeCache()
+        engine = _make_engine()
+
+        def _slow_execute(*_args, **_kwargs):
+            time.sleep(0.05)
+            return pa.table({"col": [1, 2, 3]})
+
+        engine.execute_sql.side_effect = _slow_execute
+        executor = RuntimeExecutor(cache, engine)
+        baseline_calls = engine.execute_sql.call_count
+        query = _matchup_query(snapshot_id="snap-concurrent")
+
+        barrier = threading.Barrier(2)
+        results: list[ExecutionResult] = []
+        errors: list[Exception] = []
+
+        def _worker() -> None:
+            try:
+                barrier.wait(timeout=2)
+                results.append(executor.execute(query))
+            except Exception as exc:  # nosec B110
+                errors.append(exc)
+
+        t1 = threading.Thread(target=_worker)
+        t2 = threading.Thread(target=_worker)
+        t1.start()
+        t2.start()
+        t1.join(timeout=5)
+        t2.join(timeout=5)
+
+        assert not errors
+        assert len(results) == 2
+        assert sorted(r.meta.source for r in results) == ["cache", "compute"]
+        assert engine.execute_sql.call_count == baseline_calls + 1
 
 
 class TestRuntimeExecutorMetricCaching:
