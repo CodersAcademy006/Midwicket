@@ -220,12 +220,21 @@ class PyPitchSession:
 
     def close(self) -> None:
         """Close all database connections."""
-        self.registry.close()
-        self.engine.close()
-        self.cache.close()
-        # Clear singleton reference to prevent stale instances
-        if PyPitchSession._instance is self:
-            PyPitchSession._instance = None
+        for name, component in (
+            ("registry", self.registry),
+            ("engine", self.engine),
+            ("cache", self.cache),
+        ):
+            try:
+                component.close()
+            except Exception:
+                logger.warning("Failed to close session %s component", name, exc_info=True)
+
+        # Clear singleton reference to prevent stale instances.
+        # Hold the class lock so concurrent get/init calls see a consistent state.
+        with PyPitchSession._instance_lock:
+            if PyPitchSession._instance is self:
+                PyPitchSession._instance = None
 
     def __enter__(self) -> "PyPitchSession":
         return self
