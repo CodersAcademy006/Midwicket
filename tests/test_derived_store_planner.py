@@ -4,6 +4,8 @@ from typing import Any, Dict
 
 from pypitch.compute.derived.store import DerivedStore
 from pypitch.query.base import BaseQuery
+from pypitch.runtime.cache_duckdb import DuckDBCache
+from pypitch.runtime.executor import RuntimeExecutor
 from pypitch.runtime.planner import QueryPlanner
 from pypitch.storage.engine import QueryEngine
 
@@ -55,3 +57,19 @@ def test_planner_sees_materialized_table_after_ensure() -> None:
     assert plan["strategy"] == "materialized_view"
     assert plan["target_table"] == "venue_baselines"
     engine.close()
+
+
+def test_executor_reads_materialized_table_from_derived_schema() -> None:
+    engine = _engine_with_ball_events()
+    cache = DuckDBCache(":memory:")
+    store = DerivedStore(engine)
+    executor = RuntimeExecutor(cache, engine)
+
+    try:
+        store.ensure_materialized("venue_baselines", snapshot_id="snap-3")
+        result = executor.execute(_VenueBaselineQuery(snapshot_id="snap-3"))
+
+        assert result.meta.source == "compute"
+    finally:
+        cache.close()
+        engine.close()

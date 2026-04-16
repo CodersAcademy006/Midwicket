@@ -6,7 +6,12 @@ import pytest
 import pyarrow as pa
 from unittest.mock import MagicMock, patch
 from pypitch.runtime.executor import RuntimeExecutor, ExecutionMode, ExecutionResult
-from pypitch.runtime.planner import QueryPlanner, _validate_table, _QUERY_PREFERRED_TABLES
+from pypitch.runtime.planner import (
+    QueryPlanner,
+    _validate_table,
+    _table_ref,
+    _QUERY_PREFERRED_TABLES,
+)
 from pypitch.query.base import MatchupQuery
 
 
@@ -425,6 +430,13 @@ class TestPlannerGenerateSQL:
         assert "101" in params
         assert "202" in params
 
+    def test_matchup_materialized_sql_uses_derived_schema(self):
+        engine = _make_engine()
+        planner = QueryPlanner(engine)
+        query = _matchup_query(batter_id="101", bowler_id="202")
+        sql, _ = planner._generate_sql(query, "matchup_stats")
+        assert "FROM derived.matchup_stats" in sql
+
     def test_fantasy_query_generates_sql(self):
         from pypitch.query.defs import FantasyQuery
         engine = _make_engine()
@@ -473,6 +485,12 @@ class TestValidateTable:
         from pypitch.runtime.planner import _VALID_TABLES
         for t in _VALID_TABLES:
             assert _validate_table(t) == t
+
+    def test_table_ref_for_ball_events_unqualified(self):
+        assert _table_ref("ball_events") == "ball_events"
+
+    def test_table_ref_for_materialized_table_is_derived_qualified(self):
+        assert _table_ref("venue_baselines") == "derived.venue_baselines"
 
 
 # ---------------------------------------------------------------------------

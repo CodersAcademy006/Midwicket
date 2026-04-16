@@ -31,6 +31,12 @@ def _validate_table(name: str) -> str:
     return name
 
 
+def _table_ref(table: str) -> str:
+    """Return fully-qualified table reference for planner SQL generation."""
+    table = _validate_table(table)
+    return table if table == "ball_events" else f"derived.{table}"
+
+
 class QueryPlanner:
     def __init__(self, engine: Any) -> None:
         self.engine = engine
@@ -169,6 +175,7 @@ class QueryPlanner:
     ) -> Tuple[str, List[Any]]:
         """Return ``(sql, params)`` for the given query type."""
         table = _validate_table(table)
+        table_ref = _table_ref(table)
 
         qtype = query.__class__.__name__
 
@@ -183,7 +190,7 @@ class QueryPlanner:
                     ROUND(sum(runs_batter)*100.0/NULLIF(count(*),0), 2)    AS strike_rate,
                     ROUND(sum(runs_batter)*1.0/NULLIF(
                         sum(case when is_wicket=true then 1 else 0 end),0), 2) AS average
-                FROM {table}
+                                FROM {table_ref}
                 WHERE batter_id = ?
                   AND bowler_id = ?
             """  # nosec B608 – {table} is an internal constant; user values are parameterised
@@ -200,7 +207,7 @@ class QueryPlanner:
                     SUM(CASE WHEN is_wicket THEN 20 ELSE 0 END)
                         + SUM(runs_batter)                                          AS avg_points,
                     COUNT(DISTINCT match_id)                                        AS matches
-                FROM {table}
+                FROM {table_ref}
                 WHERE venue_id = ?
                 GROUP BY batter_id
                 ORDER BY avg_points DESC
@@ -218,7 +225,7 @@ class QueryPlanner:
                     sum(runs_batter)                                        AS runs,
                     sum(case when is_wicket then 1 else 0 end)             AS wickets,
                     ROUND(sum(runs_batter)*100.0/NULLIF(count(*),0), 2)   AS strike_rate
-                FROM {table}
+                FROM {table_ref}
                 WHERE {where}
                 GROUP BY phase
                 ORDER BY phase
@@ -233,7 +240,7 @@ class QueryPlanner:
                     COUNT(DISTINCT match_id)        AS matches,
                     SUM(runs_batter + runs_extras)  AS total_runs,
                     AVG(runs_batter + runs_extras)  AS avg_runs_per_ball
-                FROM {table}
+                FROM {table_ref}
                 WHERE venue_id = ?
                 GROUP BY inning
             """  # nosec B608
@@ -246,4 +253,4 @@ class QueryPlanner:
             qtype,
         )
         where, params = self._build_where_clause(query)
-        return f"SELECT * FROM {table} WHERE {where}", params  # nosec B608
+        return f"SELECT * FROM {table_ref} WHERE {where}", params  # nosec B608
