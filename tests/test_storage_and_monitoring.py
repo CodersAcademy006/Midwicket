@@ -139,6 +139,30 @@ class TestQueryEngineIngest:
         assert count == 0
         engine.close()
 
+    def test_insert_live_delivery_after_schema_v1_ingest(self):
+        engine = QueryEngine(":memory:")
+        table = _make_valid_ball_event_table(1)
+        engine.ingest_events(table, "snap-live")
+
+        engine.insert_live_delivery(
+            {
+                "match_id": "live-match",
+                "inning": 2,
+                "over": 17,
+                "ball": 1,
+                "runs_total": 120,
+                "wickets_fallen": 3,
+            }
+        )
+
+        rows = engine.execute_sql(
+            "SELECT match_id, phase FROM ball_events WHERE match_id = ?",
+            params=["live-match"],
+        ).to_pydict()
+        assert rows["match_id"] == ["live-match"]
+        assert rows["phase"] == ["death"]
+        engine.close()
+
 
 # ---------------------------------------------------------------------------
 # QueryEngine — execute_sql
@@ -427,6 +451,31 @@ class TestThreadSafeQueryEngine:
                 "SELECT COUNT(*) AS c FROM information_schema.tables WHERE table_schema = 'derived'"
             ).to_pydict()["c"][0]
             assert count == 0
+        finally:
+            engine.close()
+
+    def test_insert_live_delivery_after_schema_v1_ingest(self):
+        engine = create_thread_safe_engine(":memory:")
+        table = _make_valid_ball_event_table(1)
+        try:
+            engine.ingest_events(table, "snap-live")
+            engine.insert_live_delivery(
+                {
+                    "match_id": "live-ts",
+                    "inning": 2,
+                    "over": 16,
+                    "ball": 3,
+                    "runs_total": 140,
+                    "wickets_fallen": 4,
+                }
+            )
+
+            rows = engine.execute_sql(
+                "SELECT match_id, phase FROM ball_events WHERE match_id = ?",
+                params=["live-ts"],
+            ).to_pydict()
+            assert rows["match_id"] == ["live-ts"]
+            assert rows["phase"] == ["death"]
         finally:
             engine.close()
 

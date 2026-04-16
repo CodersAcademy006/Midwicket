@@ -3,6 +3,7 @@ import duckdb
 import pyarrow as pa
 import logging
 import threading
+from datetime import date
 from typing import Any, Iterator, Optional
 from pypitch.schema.v1 import BALL_EVENT_SCHEMA
 from pypitch.storage.connection_pool import ConnectionPool
@@ -183,22 +184,93 @@ class QueryEngine:
                 )
                 """)
 
-            con.execute("""
-                INSERT INTO ball_events (
-                    match_id, inning, over, ball, runs_total,
-                    wickets_fallen, target, venue, timestamp
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, [
-                delivery_data['match_id'],
-                delivery_data['inning'],
-                delivery_data['over'],
-                delivery_data['ball'],
-                delivery_data['runs_total'],
-                delivery_data['wickets_fallen'],
-                delivery_data.get('target'),
-                delivery_data.get('venue'),
-                delivery_data.get('timestamp')
-            ])
+            columns = self._table_columns("ball_events", con)
+            legacy_cols = {"runs_total", "wickets_fallen", "target", "venue", "timestamp"}
+            schema_v1_cols = {
+                "date", "venue_id", "batter_id", "bowler_id", "non_striker_id",
+                "batting_team_id", "bowling_team_id", "runs_batter", "runs_extras",
+                "is_wicket", "wicket_type", "phase",
+            }
+
+            if legacy_cols.issubset(columns):
+                con.execute(
+                    """
+                    INSERT INTO ball_events (
+                        match_id, inning, over, ball, runs_total,
+                        wickets_fallen, target, venue, timestamp
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        delivery_data["match_id"],
+                        delivery_data["inning"],
+                        delivery_data["over"],
+                        delivery_data["ball"],
+                        delivery_data["runs_total"],
+                        delivery_data["wickets_fallen"],
+                        delivery_data.get("target"),
+                        delivery_data.get("venue"),
+                        delivery_data.get("timestamp"),
+                    ],
+                )
+                return
+
+            if schema_v1_cols.issubset(columns):
+                con.execute(
+                    """
+                    INSERT INTO ball_events (
+                        match_id, date, venue_id, inning, over, ball,
+                        batter_id, bowler_id, non_striker_id,
+                        batting_team_id, bowling_team_id,
+                        runs_batter, runs_extras, is_wicket, wicket_type, phase
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        delivery_data["match_id"],
+                        delivery_data.get("date", date.today()),
+                        delivery_data.get("venue_id"),
+                        delivery_data["inning"],
+                        delivery_data["over"],
+                        delivery_data["ball"],
+                        delivery_data.get("batter_id"),
+                        delivery_data.get("bowler_id"),
+                        delivery_data.get("non_striker_id"),
+                        delivery_data.get("batting_team_id"),
+                        delivery_data.get("bowling_team_id"),
+                        delivery_data.get("runs_batter", 0),
+                        delivery_data.get("runs_extras", 0),
+                        bool(delivery_data.get("is_wicket", False)),
+                        delivery_data.get("wicket_type"),
+                        delivery_data.get("phase", self._infer_phase(delivery_data.get("over"))),
+                    ],
+                )
+                return
+
+            raise ValueError(
+                "Unsupported ball_events schema for live delivery insert. "
+                "Expected legacy live schema or BALL_EVENT_SCHEMA columns."
+            )
+
+    @staticmethod
+    def _infer_phase(over_value: Any) -> str:
+        """Infer innings phase from over index when explicit phase is unavailable."""
+        try:
+            over = int(over_value)
+        except (TypeError, ValueError):
+            return "middle"
+        if over <= 5:
+            return "powerplay"
+        if over <= 14:
+            return "middle"
+        return "death"
+
+    @staticmethod
+    def _table_columns(table_name: str, con) -> set[str]:
+        """Return lowercase column names for a table."""
+        rows = con.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = ?",
+            [table_name],
+        ).fetchall()
+        return {str(row[0]).lower() for row in rows}
 
     def table_exists(self, table_name: str, con=None) -> bool:
         """Checks if a table exists in the database."""
