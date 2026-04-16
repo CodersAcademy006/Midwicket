@@ -259,6 +259,29 @@ class TestFastAPIApp:
         for expected_route in expected_routes:
             assert expected_route in route_paths, f"Missing route: {expected_route}"
 
+    def test_api_initialization_from_worker_thread(self):
+        """API initialization should not fail when invoked outside main thread."""
+        import threading
+
+        outcome = {}
+
+        def worker():
+            try:
+                session = Mock()
+                session.engine = Mock()
+                session.registry = Mock()
+                with PyPitchAPI(session=session, start_ingestor=False) as api:
+                    outcome["ok"] = hasattr(api.app, "routes")
+            except Exception as exc:
+                outcome["ok"] = False
+                outcome["error"] = repr(exc)
+
+        thread = threading.Thread(target=worker)
+        thread.start()
+        thread.join(timeout=5)
+
+        assert outcome.get("ok") is True, outcome.get("error", "thread initialization failed")
+
     @pytest.fixture
     def client(self, mock_session):
         """Create a test client for the FastAPI app.
@@ -434,6 +457,31 @@ class TestFastAPIApp:
         response = client.get("/live/matches")
         assert response.status_code == 200
         assert isinstance(response.json(), list)
+
+    def test_audit_endpoint_graceful_when_table_missing(self):
+        """/v1/audit should degrade to empty output if audit_log table is unavailable."""
+        from fastapi.testclient import TestClient
+
+        session = Mock()
+        session.registry = Mock()
+        session.engine = Mock()
+
+        def _execute_sql(sql, *args, **kwargs):
+            normalized = " ".join(str(sql).split()).lower()
+            if "create table if not exists audit_log" in normalized:
+                raise RuntimeError("read-only connection")
+            if "from audit_log" in normalized:
+                raise RuntimeError("Catalog Error: Table with name audit_log does not exist")
+            raise RuntimeError("unexpected SQL in test")
+
+        session.engine.execute_sql.side_effect = _execute_sql
+
+        app = create_app(session=session, start_ingestor=False)
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.get("/v1/audit")
+
+        assert response.status_code == 200
+        assert response.json() == {"entries": [], "count": 0}
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
