@@ -15,7 +15,7 @@ from pypitch.storage.engine import QueryEngine, StorageEngine
 from pypitch.storage.connection_pool import ConnectionPool
 from pypitch.storage.thread_safe_engine import create_thread_safe_engine
 from pypitch.schema.v1 import BALL_EVENT_SCHEMA
-from pypitch.exceptions import QueryTimeoutError
+from pypitch.exceptions import DataIngestionError, QueryTimeoutError
 
 
 # ---------------------------------------------------------------------------
@@ -150,17 +150,41 @@ class TestQueryEngineIngest:
                 "inning": 2,
                 "over": 17,
                 "ball": 1,
-                "runs_total": 120,
-                "wickets_fallen": 3,
+                "venue_id": 301,
+                "batter_id": 101,
+                "bowler_id": 201,
+                "non_striker_id": 102,
+                "batting_team_id": 1,
+                "bowling_team_id": 2,
+                "runs_batter": 4,
+                "runs_extras": 0,
             }
         )
 
         rows = engine.execute_sql(
-            "SELECT match_id, phase FROM ball_events WHERE match_id = ?",
+            "SELECT match_id, phase, batter_id FROM ball_events WHERE match_id = ?",
             params=["live-match"],
         ).to_pydict()
         assert rows["match_id"] == ["live-match"]
         assert rows["phase"] == ["death"]
+        assert rows["batter_id"] == [101]
+        engine.close()
+
+    def test_insert_live_delivery_schema_v1_requires_identity_fields(self):
+        engine = QueryEngine(":memory:")
+        table = _make_valid_ball_event_table(1)
+        engine.ingest_events(table, "snap-live")
+
+        with pytest.raises(DataIngestionError, match="schema v1"):
+            engine.insert_live_delivery(
+                {
+                    "match_id": "live-match",
+                    "inning": 2,
+                    "over": 17,
+                    "ball": 1,
+                    "runs_batter": 1,
+                }
+            )
         engine.close()
 
 
@@ -511,17 +535,43 @@ class TestThreadSafeQueryEngine:
                     "inning": 2,
                     "over": 16,
                     "ball": 3,
-                    "runs_total": 140,
-                    "wickets_fallen": 4,
+                    "venue_id": 301,
+                    "batter_id": 101,
+                    "bowler_id": 201,
+                    "non_striker_id": 102,
+                    "batting_team_id": 1,
+                    "bowling_team_id": 2,
+                    "runs_batter": 6,
+                    "runs_extras": 0,
                 }
             )
 
             rows = engine.execute_sql(
-                "SELECT match_id, phase FROM ball_events WHERE match_id = ?",
+                "SELECT match_id, phase, bowler_id FROM ball_events WHERE match_id = ?",
                 params=["live-ts"],
             ).to_pydict()
             assert rows["match_id"] == ["live-ts"]
             assert rows["phase"] == ["death"]
+            assert rows["bowler_id"] == [201]
+        finally:
+            engine.close()
+
+    def test_insert_live_delivery_schema_v1_requires_identity_fields(self):
+        engine = create_thread_safe_engine(":memory:")
+        table = _make_valid_ball_event_table(1)
+        try:
+            engine.ingest_events(table, "snap-live")
+
+            with pytest.raises(DataIngestionError, match="schema v1"):
+                engine.insert_live_delivery(
+                    {
+                        "match_id": "live-ts",
+                        "inning": 2,
+                        "over": 16,
+                        "ball": 3,
+                        "runs_batter": 1,
+                    }
+                )
         finally:
             engine.close()
 
