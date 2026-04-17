@@ -106,3 +106,14 @@ class TestArchitecturalInvariants:
                 bowler_id="Y", 
                 magic_parameter="please_work" # Should fail
             )
+
+    def test_invariant_execution_timeout_accepts_fractional_seconds(self):
+        """Execution options should support sub-second timeout precision."""
+        query = MatchupQuery(
+            batter_id="kohli_18",
+            bowler_id="bumrah_93",
+            snapshot_id="2025-01-01",
+            execution_opts={"timeout": 0.25},
+        )
+
+        assert query.execution_opts.timeout == pytest.approx(0.25)

@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field, ConfigDict
 
 class ExecutionOptions(BaseModel):
     """Runtime controls that do NOT affect the data definition."""
-    timeout: int = 30
+    timeout: float = 30.0
     verbose: bool = False
     mode: str = "exact"  # or "approx"
 
