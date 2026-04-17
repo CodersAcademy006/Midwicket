@@ -178,18 +178,22 @@ class StreamIngestor:
                 key for key in self._seen_delivery_keys if not key.startswith(prefix)
             }
 
-    def update_match_data(self, match_id: str, delivery_data: Dict[str, Any]):
+    def update_match_data(self, match_id: str, delivery_data: Dict[str, Any]) -> bool:
         """
         Update match data for a registered match.
 
         Args:
             match_id: Match identifier
             delivery_data: Delivery/ball data to ingest
+
+        Returns:
+            True when the update was accepted and queued, False when the
+            match is not currently registered for live tracking.
         """
         with self._matches_lock:
             if match_id not in self.live_matches:
                 logger.warning("Match %s not registered for live tracking", match_id)
-                return
+                return False
             self.live_matches[match_id].last_update = time.time()
 
         # Add to processing queue outside the lock — non-blocking; raise
@@ -201,6 +205,7 @@ class StreamIngestor:
                 "Live ingestion queue is full. "
                 "The server is under load; please retry after a short delay."
             )
+        return True
 
     def add_api_endpoint(self, name: str, url: str, headers: Dict[str, str] = None):
         """
@@ -262,7 +267,14 @@ class StreamIngestor:
                             self.wfile.write(json.dumps({'error': 'invalid match_id'}).encode())
                             return
 
-                        self.ingestor.update_match_data(safe_id, data)
+                        accepted = self.ingestor.update_match_data(safe_id, data)
+                        if accepted is False:
+                            self.send_response(404)
+                            self.send_header('Content-type', 'application/json')
+                            self.end_headers()
+                            self.wfile.write(json.dumps({'error': 'match not registered'}).encode())
+                            return
+
                         self.send_response(200)
                         self.send_header('Content-type', 'application/json')
                         self.end_headers()

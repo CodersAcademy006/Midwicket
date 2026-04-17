@@ -110,7 +110,8 @@ class TestStreamIngestor:
             'venue': 'Test Stadium'
         }
 
-        ingestor.update_match_data("match_123", delivery_data)
+        accepted = ingestor.update_match_data("match_123", delivery_data)
+        assert accepted is True
 
         # Check that update was queued (we can't easily test the processing without starting the ingestor)
         assert not ingestor.update_queue.empty()
@@ -125,8 +126,9 @@ class TestStreamIngestor:
             'wickets_fallen': 1
         }
 
-        # This should not raise an error, just log a warning
-        ingestor.update_match_data("unregistered_match", delivery_data)
+        # This should not raise an error, just log a warning and reject.
+        accepted = ingestor.update_match_data("unregistered_match", delivery_data)
+        assert accepted is False
 
     def test_get_live_matches(self, ingestor):
         """Test getting list of live matches."""
