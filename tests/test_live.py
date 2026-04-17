@@ -76,8 +76,20 @@ class TestStreamIngestor:
         ingestor.register_match("match_123", "webhook")
         assert "match_123" in ingestor.live_matches
 
+        # Simulate dedup entries accumulated for multiple matches.
+        ingestor._seen_delivery_keys.update(
+            {
+                "match_123:1:1:1",
+                "match_123:hash:abc",
+                "other_match:1:1:1",
+            }
+        )
+
         ingestor.unregister_match("match_123")
         assert "match_123" not in ingestor.live_matches
+        assert "match_123:1:1:1" not in ingestor._seen_delivery_keys
+        assert "match_123:hash:abc" not in ingestor._seen_delivery_keys
+        assert "other_match:1:1:1" in ingestor._seen_delivery_keys
 
         # Unregistering non-existent match should not error
         ingestor.unregister_match("non_existent")
@@ -430,6 +442,11 @@ class TestIngestorResilience:
         key1 = ingestor._delivery_key("match_A", d)
         key2 = ingestor._delivery_key("match_B", d)
         assert key1 != key2
+
+    def test_delivery_key_fallback_is_match_scoped(self, ingestor):
+        d = {"runs_total": 10}  # no inning/over/ball → fallback hash path
+        key = ingestor._delivery_key("match_A", d)
+        assert key.startswith("match_A:hash:")
 
     def test_is_duplicate_first_call_false(self, ingestor):
         key = "m1:1:5:3"
