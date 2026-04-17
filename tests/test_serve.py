@@ -200,6 +200,28 @@ class TestPyPitchAPI:
             "venue": "Test Stadium",
         }
 
+    def test_ingest_delivery_data_unregistered_match(self, api_instance, monkeypatch):
+        """Helper method should reject deliveries for unregistered matches."""
+
+        def _fake_update(match_id, delivery_data):
+            return False
+
+        monkeypatch.setattr(api_instance.ingestor, "update_match_data", _fake_update)
+
+        request = DeliveryDataRequest(
+            match_id="missing_match",
+            inning=1,
+            over=5,
+            ball=3,
+            runs_total=12,
+            wickets_fallen=0,
+        )
+
+        response = api_instance.ingest_delivery_data(request)
+        assert response["ingested"] is False
+        assert response["match_id"] == "missing_match"
+        assert response["error"] == "match not registered"
+
     def test_get_live_matches(self, api_instance):
         """Test getting list of live matches."""
         response = api_instance.get_live_matches()
@@ -600,6 +622,32 @@ class TestFastAPIApp:
 
         assert response.status_code == 429
         assert "queue is full" in response.json().get("detail", "").lower()
+
+    def test_ingest_delivery_endpoint_unregistered_match_returns_404(self, mock_session):
+        """Unregistered match deliveries should be rejected with 404."""
+        from fastapi.testclient import TestClient
+
+        class _DummyIngestor:
+            def update_match_data(self, match_id, delivery_data):
+                return False
+
+        with PyPitchAPI(session=mock_session, start_ingestor=False) as api:
+            api.ingestor = _DummyIngestor()
+            with TestClient(api.app, raise_server_exceptions=False) as client:
+                response = client.post(
+                    "/live/ingest",
+                    json={
+                        "match_id": "missing_match",
+                        "inning": 1,
+                        "over": 5,
+                        "ball": 2,
+                        "runs_total": 34,
+                        "wickets_fallen": 1,
+                    },
+                )
+
+        assert response.status_code == 404
+        assert "not registered" in response.json().get("detail", "").lower()
 
     def test_get_live_matches_endpoint(self, client):
         """Live matches endpoint returns a list."""

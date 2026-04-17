@@ -462,10 +462,16 @@ class PyPitchAPI:
             if not match_id:
                 raise ValueError("match_id is required")
 
-            self.ingestor.update_match_data(
+            accepted = self.ingestor.update_match_data(
                 str(match_id),
                 delivery_data=payload,
             )
+            if accepted is False:
+                return {
+                    "match_id": str(match_id),
+                    "ingested": False,
+                    "error": "match not registered",
+                }
             return {"match_id": str(match_id), "ingested": True}
         except Exception as exc:
             logger.warning("ingest_delivery_data failed: %s", exc)
@@ -952,7 +958,9 @@ class PyPitchAPI:
 
                 delivery_dict = data.model_dump(exclude_none=True)
                 match_id = delivery_dict.pop("match_id")
-                self.ingestor.update_match_data(match_id, delivery_dict)
+                accepted = self.ingestor.update_match_data(match_id, delivery_dict)
+                if accepted is False:
+                    raise HTTPException(status_code=404, detail="Match not registered")
                 return {"success": True}
             except HTTPException:
                 raise
