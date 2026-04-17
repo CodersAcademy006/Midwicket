@@ -50,9 +50,12 @@ class RuntimeExecutor:
         if timeout is None:
             return None
         try:
-            return float(timeout)
+            seconds = float(timeout)
         except (TypeError, ValueError):
             return None
+        if seconds <= 0:
+            return None
+        return seconds
 
     def _enter_inflight(self, key: str) -> tuple[bool, threading.Event]:
         """Register an in-flight key. Returns (is_leader, event)."""
