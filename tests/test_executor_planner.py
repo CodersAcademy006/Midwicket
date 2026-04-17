@@ -354,6 +354,43 @@ class TestExecutionModeEnforcement:
         with pytest.raises(RuntimeError, match="BUDGET"):
             executor.execute(query, mode=ExecutionMode.BUDGET)
 
+    def test_exact_mode_falls_back_when_materialized_table_missing_at_execution(self):
+        cache = _FakeCache()
+        engine = _make_engine(derived_versions={"matchup_stats": "v1"}, table_exists=False)
+        executor = RuntimeExecutor(cache, engine)
+        query = _matchup_query(snapshot_id="stale-mv-fallback")
+
+        with patch.object(executor.planner, "plan") as mock_plan:
+            mock_plan.return_value = {
+                "strategy": "materialized_view",
+                "target_table": "matchup_stats",
+                "sql": "SELECT * FROM derived.matchup_stats WHERE batter_id = ? AND bowler_id = ?",
+                "params": [query.batter_id, query.bowler_id],
+                "cost": "low",
+            }
+            result = executor.execute(query, mode=ExecutionMode.EXACT)
+
+        assert result.meta.source == "compute"
+        executed_sql = engine.execute_sql.call_args[0][0]
+        assert "FROM ball_events" in executed_sql
+
+    def test_budget_mode_raises_when_materialized_table_missing_at_execution(self):
+        cache = _FakeCache()
+        engine = _make_engine(derived_versions={"matchup_stats": "v1"}, table_exists=False)
+        executor = RuntimeExecutor(cache, engine)
+        query = _matchup_query(snapshot_id="stale-mv-budget")
+
+        with patch.object(executor.planner, "plan") as mock_plan:
+            mock_plan.return_value = {
+                "strategy": "materialized_view",
+                "target_table": "matchup_stats",
+                "sql": "SELECT * FROM derived.matchup_stats WHERE batter_id = ? AND bowler_id = ?",
+                "params": [query.batter_id, query.bowler_id],
+                "cost": "low",
+            }
+            with pytest.raises(RuntimeError, match="BUDGET"):
+                executor.execute(query, mode=ExecutionMode.BUDGET)
+
 
 # ---------------------------------------------------------------------------
 # QueryPlanner — create_legacy_plan

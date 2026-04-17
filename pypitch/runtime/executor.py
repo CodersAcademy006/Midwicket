@@ -62,6 +62,22 @@ class RuntimeExecutor:
             else:
                 event.set()
 
+    def _table_available_for_plan(self, table_name: str) -> bool:
+        """Best-effort existence check for a planned SQL target table."""
+        table_exists_fn = getattr(self.engine, "table_exists", None)
+        if not callable(table_exists_fn):
+            return True
+
+        try:
+            if table_name == "ball_events":
+                return bool(table_exists_fn(table_name))
+            return bool(table_exists_fn(table_name, schema="derived"))
+        except TypeError:
+            # Backward compatibility for engines with table_exists(table_name)
+            return bool(table_exists_fn(table_name))
+        except Exception:
+            return False
+
     def execute(self, query: BaseQuery, mode: ExecutionMode = ExecutionMode.EXACT) -> ExecutionResult:
         """
         Main execute for all queries, including WinProbQuery (win probability model).
@@ -183,6 +199,29 @@ class RuntimeExecutor:
                     "Planner: raw_scan for %s (no materialized view registered)",
                     query.__class__.__name__,
                 )
+
+            if strategy == "materialized_view":
+                target_table = str(plan.get("target_table", ""))
+                if not self._table_available_for_plan(target_table):
+                    if mode == ExecutionMode.BUDGET:
+                        raise RuntimeError(
+                            f"ExecutionMode.BUDGET requires materialized views, "
+                            f"but target table {target_table!r} is unavailable at execution time."
+                        )
+                    _log.warning(
+                        "Planner selected materialized view %r but it is unavailable at execution time; "
+                        "falling back to raw_scan",
+                        target_table,
+                    )
+                    fallback_sql, fallback_params = self.planner._generate_sql(query, "ball_events")
+                    plan = {
+                        **plan,
+                        "strategy": "raw_scan",
+                        "target_table": "ball_events",
+                        "sql": fallback_sql,
+                        "params": fallback_params,
+                    }
+                    strategy = "raw_scan"
 
             result_table = self.engine.execute_sql(
                 plan["sql"], params=plan.get("params")
