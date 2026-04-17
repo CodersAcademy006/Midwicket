@@ -270,7 +270,9 @@ class PyPitchAPI:
     def close(self):
         """Explicitly close and cleanup resources."""
         if hasattr(self, 'ingestor') and self.ingestor is not None:
-            self.ingestor.stop()
+            stop = getattr(self.ingestor, "stop", None)
+            if callable(stop):
+                stop()
             self.ingestor = None
 
     def __enter__(self):
@@ -957,7 +959,12 @@ class PyPitchAPI:
             except Exception as e:
                 from pypitch.exceptions import DataIngestionError
                 if isinstance(e, DataIngestionError):
-                    raise HTTPException(status_code=429, detail=str(e))
+                    message = str(e)
+                    # Queue saturation is a transient overload signal.
+                    # Other ingestion errors are request/data issues.
+                    if "queue is full" in message.lower():
+                        raise HTTPException(status_code=429, detail=message)
+                    raise HTTPException(status_code=400, detail=message)
                 logger.warning("ingest_delivery failed: %s", e)
                 raise HTTPException(status_code=500, detail="Internal server error")
 
