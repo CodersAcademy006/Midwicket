@@ -282,3 +282,69 @@ def test_quick_health_check_closes_client_on_error(monkeypatch: pytest.MonkeyPat
 
     assert quick_health_check(base_url="http://example.test") is False
     assert close_calls["count"] == 1
+
+
+def test_get_closes_response_on_http_error() -> None:
+    client = PyPitchClient()
+    closed = {"count": 0}
+
+    class _Response:
+        def raise_for_status(self) -> None:
+            raise requests.HTTPError("boom")
+
+        def json(self) -> Dict[str, Any]:
+            return {"ok": True}
+
+        def close(self) -> None:
+            closed["count"] += 1
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+            self.close()
+            return False
+
+    class _Session:
+        def get(self, *args, **kwargs) -> _Response:  # type: ignore[no-untyped-def]
+            return _Response()
+
+    client.session = _Session()  # type: ignore[assignment]
+
+    with pytest.raises(requests.HTTPError):
+        client._get("/health")
+
+    assert closed["count"] == 1
+
+
+def test_post_closes_response_on_success() -> None:
+    client = PyPitchClient()
+    closed = {"count": 0}
+
+    class _Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> Dict[str, Any]:
+            return {"ok": True}
+
+        def close(self) -> None:
+            closed["count"] += 1
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+            self.close()
+            return False
+
+    class _Session:
+        def post(self, *args, **kwargs) -> _Response:  # type: ignore[no-untyped-def]
+            return _Response()
+
+    client.session = _Session()  # type: ignore[assignment]
+
+    payload = client._post("/live/register", {"match_id": "m1"})
+
+    assert payload == {"ok": True}
+    assert closed["count"] == 1

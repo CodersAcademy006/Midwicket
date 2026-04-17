@@ -63,16 +63,16 @@ class PyPitchClient:
     def _get(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Make a GET request to the API."""
         url = urljoin(self.base_url + '/', endpoint.lstrip('/'))
-        response = self.session.get(url, params=params, timeout=self.timeout)
-        response.raise_for_status()
-        return response.json()  # type: ignore[no-any-return]
+        with self.session.get(url, params=params, timeout=self.timeout) as response:
+            response.raise_for_status()
+            return response.json()  # type: ignore[no-any-return]
 
     def _post(self, endpoint: str, data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Make a POST request to the API."""
         url = urljoin(self.base_url + '/', endpoint.lstrip('/'))
-        response = self.session.post(url, json=data, timeout=self.timeout)
-        response.raise_for_status()
-        return response.json()  # type: ignore[no-any-return]
+        with self.session.post(url, json=data, timeout=self.timeout) as response:
+            response.raise_for_status()
+            return response.json()  # type: ignore[no-any-return]
 
     @staticmethod
     def _clean_params(params: Dict[str, Any]) -> Dict[str, Any]:
