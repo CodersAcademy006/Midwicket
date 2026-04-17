@@ -262,6 +262,25 @@ class ThreadSafeQueryEngine:
             }
 
             if legacy_cols.issubset(columns):
+                required_legacy = [
+                    "match_id",
+                    "inning",
+                    "over",
+                    "ball",
+                    "runs_total",
+                    "wickets_fallen",
+                ]
+                missing = [
+                    field
+                    for field in required_legacy
+                    if delivery_data.get(field) is None
+                ]
+                if missing:
+                    raise DataIngestionError(
+                        "Missing required live delivery fields for legacy schema: "
+                        + ", ".join(missing)
+                    )
+
                 conn.execute(
                     """
                     INSERT INTO ball_events (
@@ -284,6 +303,29 @@ class ThreadSafeQueryEngine:
                 return
 
             if schema_v1_cols.issubset(columns):
+                required_schema_v1 = [
+                    "match_id",
+                    "inning",
+                    "over",
+                    "ball",
+                    "venue_id",
+                    "batter_id",
+                    "bowler_id",
+                    "non_striker_id",
+                    "batting_team_id",
+                    "bowling_team_id",
+                ]
+                missing = [
+                    field
+                    for field in required_schema_v1
+                    if delivery_data.get(field) is None
+                ]
+                if missing:
+                    raise DataIngestionError(
+                        "Missing required live delivery fields for schema v1 table: "
+                        + ", ".join(missing)
+                    )
+
                 conn.execute(
                     """
                     INSERT INTO ball_events (
@@ -296,15 +338,15 @@ class ThreadSafeQueryEngine:
                     [
                         delivery_data["match_id"],
                         delivery_data.get("date", date.today()),
-                        delivery_data.get("venue_id"),
+                        delivery_data["venue_id"],
                         delivery_data["inning"],
                         delivery_data["over"],
                         delivery_data["ball"],
-                        delivery_data.get("batter_id"),
-                        delivery_data.get("bowler_id"),
-                        delivery_data.get("non_striker_id"),
-                        delivery_data.get("batting_team_id"),
-                        delivery_data.get("bowling_team_id"),
+                        delivery_data["batter_id"],
+                        delivery_data["bowler_id"],
+                        delivery_data["non_striker_id"],
+                        delivery_data["batting_team_id"],
+                        delivery_data["bowling_team_id"],
                         delivery_data.get("runs_batter", 0),
                         delivery_data.get("runs_extras", 0),
                         bool(delivery_data.get("is_wicket", False)),
