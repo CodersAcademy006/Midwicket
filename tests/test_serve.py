@@ -165,8 +165,16 @@ class TestPyPitchAPI:
         assert response["match_id"] == "test_match_123"
         assert "match_id" in response
 
-    def test_ingest_delivery_data(self, api_instance):
+    def test_ingest_delivery_data(self, api_instance, monkeypatch):
         """Test ingesting live delivery data."""
+        captured = {}
+
+        def _fake_update(match_id, delivery_data):
+            captured["match_id"] = match_id
+            captured["delivery_data"] = delivery_data
+
+        monkeypatch.setattr(api_instance.ingestor, "update_match_data", _fake_update)
+
         request = DeliveryDataRequest(
             match_id="test_match_123",
             inning=1,
@@ -181,6 +189,16 @@ class TestPyPitchAPI:
         response = api_instance.ingest_delivery_data(request)
         assert response["ingested"] is True
         assert response["match_id"] == "test_match_123"
+        assert captured["match_id"] == "test_match_123"
+        assert captured["delivery_data"] == {
+            "inning": 1,
+            "over": 5,
+            "ball": 3,
+            "runs_total": 45,
+            "wickets_fallen": 1,
+            "target": 150,
+            "venue": "Test Stadium",
+        }
 
     def test_get_live_matches(self, api_instance):
         """Test getting list of live matches."""
@@ -259,6 +277,31 @@ class TestFastAPIApp:
         for expected_route in expected_routes:
             assert expected_route in route_paths, f"Missing route: {expected_route}"
 
+    def test_create_app_shutdown_stops_ingestor(self, mock_session, monkeypatch):
+        """ASGI shutdown should stop the background ingestor exactly once."""
+        import pypitch.serve.api as api_mod
+        from fastapi.testclient import TestClient
+
+        calls = {"stop": 0}
+
+        class _DummyIngestor:
+            def __init__(self, engine):
+                self.engine = engine
+
+            def start(self):
+                return None
+
+            def stop(self):
+                calls["stop"] += 1
+
+        monkeypatch.setattr(api_mod, "StreamIngestor", _DummyIngestor)
+
+        app = api_mod.create_app(session=mock_session, start_ingestor=True)
+        with TestClient(app):
+            pass
+
+        assert calls["stop"] == 1
+
     def test_api_initialization_from_worker_thread(self):
         """API initialization should not fail when invoked outside main thread."""
         import threading
@@ -281,6 +324,38 @@ class TestFastAPIApp:
         thread.join(timeout=5)
 
         assert outcome.get("ok") is True, outcome.get("error", "thread initialization failed")
+
+    def test_drain_mode_blocks_non_probe_requests(self, mock_session):
+        """When draining is active, non-probe requests should be rejected with 503."""
+        from fastapi.testclient import TestClient
+
+        with PyPitchAPI(session=mock_session, start_ingestor=False) as api:
+            api._draining_event.set()
+            with TestClient(api.app, raise_server_exceptions=False) as c:
+                response = c.get(
+                    "/win_probability",
+                    params={
+                        "target": 150,
+                        "current_runs": 50,
+                        "wickets_down": 2,
+                        "overs_done": 10.0,
+                    },
+                )
+
+        assert response.status_code == 503
+        assert response.json().get("detail") == "Service draining"
+
+    def test_drain_mode_allows_probe_requests(self, mock_session):
+        """Internal probe endpoints should remain available during drain mode."""
+        from fastapi.testclient import TestClient
+
+        with PyPitchAPI(session=mock_session, start_ingestor=False) as api:
+            api._draining_event.set()
+            with TestClient(api.app, raise_server_exceptions=False) as c:
+                response = c.get("/_internal/health")
+
+        assert response.status_code == 200
+        assert response.json().get("status") == "ok"
 
     @pytest.fixture
     def client(self, mock_session):
@@ -313,6 +388,24 @@ class TestFastAPIApp:
         assert "version" in data
         assert "uptime_seconds" in data
         assert "database_status" in data
+
+    def test_health_endpoint_degraded_when_db_unhealthy(self):
+        """/v1/health should degrade (not 500) when DB probe fails."""
+        from fastapi.testclient import TestClient
+
+        session = Mock()
+        session.registry = Mock()
+        session.engine = Mock()
+        session.engine.execute_sql.side_effect = RuntimeError("db down")
+
+        app = create_app(session=session, start_ingestor=False)
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.get("/v1/health")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload.get("status") == "degraded"
+        assert payload.get("database_status") == "unhealthy"
 
     def test_health_legacy_endpoint(self, client):
         """Legacy /health path must still work."""
