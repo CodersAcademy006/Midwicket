@@ -169,9 +169,9 @@ class ConnectionPool:
             self._condition.notify_all()
 
     @contextmanager
-    def connection(self):
+    def connection(self, timeout: Optional[float] = 30.0):
         """Context manager for getting a connection."""
-        conn = self.get_connection()
+        conn = self.get_connection(timeout=timeout)
         try:
             yield conn
         finally:

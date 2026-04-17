@@ -230,6 +230,47 @@ class TestQueryEngineExecuteSQL:
             engine.pool.return_connection(held)
             engine.close()
 
+    def test_execute_sql_uses_timeout_for_connection_wait(self, monkeypatch):
+        captured: dict[str, float] = {}
+
+        class _FakeResult:
+            def arrow(self):
+                return pa.table({"x": [1]})
+
+        class _Conn:
+            def execute(self, sql, params):
+                return _FakeResult()
+
+        def _fake_get_connection(timeout=30.0):
+            captured["timeout"] = float(timeout) if timeout is not None else -1.0
+            return _Conn()
+
+        def _fake_return_connection(_conn) -> None:
+            return None
+
+        engine = QueryEngine(":memory:")
+        try:
+            monkeypatch.setattr(engine.pool, "get_connection", _fake_get_connection)
+            monkeypatch.setattr(engine.pool, "return_connection", _fake_return_connection)
+
+            result = engine.execute_sql("SELECT 1", timeout=0.25)
+
+            assert result.to_pydict()["x"] == [1]
+            assert captured["timeout"] == pytest.approx(0.25)
+        finally:
+            engine.close()
+
+    def test_execute_sql_raises_timeout_when_pool_exhausted(self):
+        engine = QueryEngine(":memory:")
+        held_connections = [engine.pool.get_connection() for _ in range(engine.pool.max_connections)]
+        try:
+            with pytest.raises(TimeoutError):
+                engine.execute_sql("SELECT 1", timeout=0.01)
+        finally:
+            for conn in held_connections:
+                engine.pool.return_connection(conn)
+            engine.close()
+
     def test_timeout_uses_elapsed_fallback_when_timer_callback_is_delayed(self, monkeypatch):
         class _NoFireTimer:
             def __init__(self, *_args, **_kwargs):
@@ -259,7 +300,8 @@ class TestQueryEngineExecuteSQL:
         slow_conn = _SlowConn()
 
         @contextmanager
-        def _fake_connection():
+        def _fake_connection(timeout=30.0):
+            del timeout
             yield slow_conn
 
         engine = QueryEngine(":memory:")

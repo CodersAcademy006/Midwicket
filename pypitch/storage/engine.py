@@ -115,8 +115,9 @@ class QueryEngine:
             params = []
 
         timeout_enabled = timeout is not None and timeout > 0
+        conn_timeout = timeout if timeout_enabled else 30.0
 
-        with self.pool.connection() as con:
+        with self.pool.connection(timeout=conn_timeout) as con:
             timed_out = False
             timer: Optional[threading.Timer] = None
             started_at = time.perf_counter()
