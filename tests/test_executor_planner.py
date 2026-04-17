@@ -210,6 +210,31 @@ class TestRuntimeExecutorCacheHit:
 
         assert engine.execute_sql.call_count == baseline_calls
 
+    def test_execute_zero_timeout_waits_for_inflight_cache(self):
+        cache = _FakeCache()
+        engine = _make_engine()
+        executor = RuntimeExecutor(cache, engine)
+        baseline_calls = engine.execute_sql.call_count
+        query = _matchup_query(snapshot_id="zero-timeout-follower", execution_opts={"timeout": 0})
+        inflight_event = threading.Event()
+
+        def _release() -> None:
+            time.sleep(0.02)
+            cache.set(query.cache_key, {"ok": True})
+            inflight_event.set()
+
+        releaser = threading.Thread(target=_release)
+        releaser.start()
+        try:
+            with patch.object(executor, "_enter_inflight", return_value=(False, inflight_event)):
+                result = executor.execute(query)
+        finally:
+            releaser.join(timeout=1.0)
+
+        assert result.meta.source == "cache"
+        assert result.data == {"ok": True}
+        assert engine.execute_sql.call_count == baseline_calls
+
 
 class TestRuntimeExecutorMetricCaching:
     def test_execute_metric_caches_falsy_value(self):
@@ -288,6 +313,39 @@ class TestRuntimeExecutorMetricCaching:
             with pytest.raises(TimeoutError, match="Timed out waiting"):
                 executor.execute_metric(query, metric_alpha)
 
+        assert engine.execute_sql.call_count == baseline_calls
+
+    def test_execute_metric_zero_timeout_waits_for_inflight_cache(self):
+        cache = _FakeCache()
+        engine = _make_engine()
+        executor = RuntimeExecutor(cache, engine)
+        baseline_calls = engine.execute_sql.call_count
+        query = _matchup_query(snapshot_id="zero-timeout-metric", execution_opts={"timeout": 0})
+        inflight_event = threading.Event()
+
+        def metric_alpha(_events):
+            return 1.0
+
+        metric_name = getattr(metric_alpha, "__name__", "unknown_metric")
+        metric_qualname = getattr(metric_alpha, "__qualname__", metric_name)
+        metric_module = getattr(metric_alpha, "__module__", "unknown_module")
+        metric_cache_key = f"{query.cache_key}:{metric_module}.{metric_qualname}"
+
+        def _release() -> None:
+            time.sleep(0.02)
+            cache.set(metric_cache_key, 3.14)
+            inflight_event.set()
+
+        releaser = threading.Thread(target=_release)
+        releaser.start()
+        try:
+            with patch.object(executor, "_enter_inflight", return_value=(False, inflight_event)):
+                result = executor.execute_metric(query, metric_alpha)
+        finally:
+            releaser.join(timeout=1.0)
+
+        assert result.meta.source == "cache"
+        assert result.data == 3.14
         assert engine.execute_sql.call_count == baseline_calls
 
 
