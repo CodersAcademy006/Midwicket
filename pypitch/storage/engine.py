@@ -3,6 +3,7 @@ import duckdb
 import pyarrow as pa
 import logging
 import threading
+import time
 from datetime import date
 from typing import Any, Iterator, Optional
 from pypitch.schema.v1 import BALL_EVENT_SCHEMA
@@ -113,9 +114,19 @@ class QueryEngine:
         if params is None:
             params = []
 
+        timeout_enabled = timeout is not None and timeout > 0
+
         with self.pool.connection() as con:
             timed_out = False
             timer: Optional[threading.Timer] = None
+            started_at = time.perf_counter()
+
+            def _has_timed_out() -> bool:
+                if not timeout_enabled:
+                    return False
+                if timed_out:
+                    return True
+                return (time.perf_counter() - started_at) >= float(timeout)
 
             def _interrupt_query() -> None:
                 nonlocal timed_out
@@ -125,7 +136,7 @@ class QueryEngine:
                     with contextlib.suppress(Exception):
                         interrupt()
 
-            if timeout is not None and timeout > 0:
+            if timeout_enabled:
                 timer = threading.Timer(timeout, _interrupt_query)
                 timer.daemon = True
                 timer.start()
@@ -133,20 +144,20 @@ class QueryEngine:
             try:
                 if not read_only:
                     con.execute(sql, params)
-                    if timed_out:
+                    if _has_timed_out():
                         raise TimeoutError(f"Query timed out after {timeout}s")
                     return pa.Table.from_pylist([])  # empty table for non-select queries
 
                 result = con.execute(sql, params).arrow()
-                if timed_out:
-                    raise TimeoutError(f"Query timed out after {timeout}s")
-
                 # Ensure we return a Table, not a RecordBatchReader
                 if isinstance(result, pa.RecordBatchReader):
-                    return result.read_all()
+                    result = result.read_all()
+
+                if _has_timed_out():
+                    raise TimeoutError(f"Query timed out after {timeout}s")
                 return result
             except Exception as exc:
-                if timed_out:
+                if _has_timed_out():
                     raise TimeoutError(f"Query timed out after {timeout}s") from exc
                 raise
             finally:

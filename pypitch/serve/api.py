@@ -29,6 +29,7 @@ from pypitch.serve.rate_limit import check_rate_limit, rate_limiter, get_client_
 from pypitch.serve.monitoring import record_request_metrics, record_error_metrics, metrics_collector, generate_prometheus_metrics
 from pypitch.config import API_CORS_ORIGINS, is_production, get_secret_key
 from pypitch.api.session import PyPitchSession
+from pypitch.exceptions import QueryTimeoutError
 from pypitch.compute.winprob import win_probability as wp_func
 
 logger = logging.getLogger(__name__)
@@ -914,7 +915,7 @@ class PyPitchAPI:
 
                 return {"rows": n, "data": records}
 
-            except TimeoutError:
+            except (TimeoutError, QueryTimeoutError):
                 raise HTTPException(
                     status_code=408,
                     detail="Query execution timed out. Reduce query complexity or tighten filters.",
