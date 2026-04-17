@@ -2,6 +2,7 @@
 PyPitch API Client SDK
 """
 
+import contextlib
 import requests
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote, urljoin
@@ -29,6 +30,7 @@ class PyPitchClient:
         self.api_key = api_key
         self.timeout = timeout
         self.session = requests.Session()
+        self._closed = False
 
         if api_key:
             self.session.headers.update({
@@ -38,7 +40,19 @@ class PyPitchClient:
 
     def close(self) -> None:
         """Close the underlying requests session and release pooled sockets."""
+        self._close_once()
+
+    def _close_once(self) -> None:
+        """Close the session exactly once, even across multiple callers."""
+        if self._closed:
+            return
+        self._closed = True
         self.session.close()
+
+    def __del__(self) -> None:
+        """Best-effort cleanup when caller forgets to close explicitly."""
+        with contextlib.suppress(Exception):
+            self._close_once()
 
     def __enter__(self) -> "PyPitchClient":
         return self

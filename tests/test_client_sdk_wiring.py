@@ -221,6 +221,37 @@ def test_client_context_manager_closes_session() -> None:
     assert closed["count"] == 1
 
 
+def test_client_close_is_idempotent() -> None:
+    client = PyPitchClient()
+    closed = {"count": 0}
+
+    class _DummySession:
+        def close(self) -> None:
+            closed["count"] += 1
+
+    client.session = _DummySession()  # type: ignore[assignment]
+
+    client.close()
+    client.close()
+
+    assert closed["count"] == 1
+
+
+def test_client_destructor_attempts_close() -> None:
+    client = PyPitchClient()
+    closed = {"count": 0}
+
+    class _DummySession:
+        def close(self) -> None:
+            closed["count"] += 1
+
+    client.session = _DummySession()  # type: ignore[assignment]
+
+    client.__del__()
+
+    assert closed["count"] == 1
+
+
 def test_quick_health_check_closes_client_on_success(monkeypatch: pytest.MonkeyPatch) -> None:
     close_calls = {"count": 0}
 
