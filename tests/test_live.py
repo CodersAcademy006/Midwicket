@@ -218,6 +218,38 @@ class TestStreamIngestor:
         assert not ingestor.update_queue.empty()
 
     @patch('pypitch.live.ingestor.requests.get')
+    def test_api_polling_applies_backoff_on_queue_pressure(self, mock_get, ingestor):
+        """Queue saturation from update_match_data should trigger endpoint backoff."""
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {
+            "match_id": "match_123",
+            "inning": 1,
+            "over": 10,
+            "ball": 2,
+            "runs_total": 89,
+            "wickets_fallen": 2,
+        }
+        mock_get.return_value = mock_response
+
+        ingestor.add_api_endpoint("test_api", "https://api.example.com/live")
+        ingestor.register_match("match_123", "api_poll")
+        ingestor.poll_interval = 0
+
+        def _raise_queue_full(_match_id, _delivery_data):
+            raise DataIngestionError(
+                "Live ingestion queue is full. The server is under load; please retry after a short delay."
+            )
+
+        ingestor.update_match_data = _raise_queue_full
+        ingestor.stop_event.is_set = Mock(side_effect=[False, True])
+
+        ingestor._poll_apis()
+
+        assert "test_api" in ingestor._api_backoff_state
+        assert int(ingestor._api_backoff_state["test_api"]["attempts"]) == 1
+
+    @patch('pypitch.live.ingestor.requests.get')
     def test_api_polling_tolerates_endpoint_add_during_iteration(
         self,
         mock_get,
@@ -646,6 +678,38 @@ class TestIngestorResilience:
 
         assert len(ingestor.dead_letter) == 1
         assert "m1" == ingestor.dead_letter[0]["match_id"]
+
+    def test_failed_delivery_can_be_retried_with_same_key(self, ingestor):
+        """Failed deliveries should release dedup key so retries are not dropped."""
+        ingestor.register_match("m1", "webhook")
+        delivery = self._delivery(1, 5, 3)
+
+        import pypitch.live.ingestor as _mod
+        original_backoff = _mod._RETRY_BACKOFF_BASE
+        _mod._RETRY_BACKOFF_BASE = 0.0
+
+        # First processing fails and dead-letters the delivery.
+        ingestor._ingest_delivery_data = MagicMock(side_effect=RuntimeError("db down"))
+        ingestor.update_queue.put(("m1", delivery))
+        ingestor.stop_event.is_set = Mock(side_effect=[False, True])
+        ingestor._process_updates()
+
+        assert len(ingestor.dead_letter) == 1
+
+        # Re-submit the same delivery key after recovery.
+        calls = {"count": 0}
+
+        def _successful_ingest(_match_id, _delivery_data):
+            calls["count"] += 1
+
+        ingestor._ingest_delivery_data = _successful_ingest
+        ingestor.update_queue.put(("m1", delivery))
+        ingestor.stop_event.is_set = Mock(side_effect=[False, True])
+        ingestor._process_updates()
+
+        _mod._RETRY_BACKOFF_BASE = original_backoff
+
+        assert calls["count"] == 1
 
     def test_unexpected_processing_error_dead_letters_and_finalizes_task(self, ingestor):
         """Malformed payloads should not strand queue tasks or get silently dropped."""

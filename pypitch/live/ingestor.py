@@ -337,6 +337,22 @@ class StreamIngestor:
             self._seen_delivery_keys.add(key)
             return False
 
+    def _clear_seen_key(self, key: str) -> None:
+        """Remove a dedup key so failed deliveries can be retried later."""
+        with self._seen_lock:
+            self._seen_delivery_keys.discard(key)
+
+    def _set_api_backoff(self, name: str, now: float) -> float:
+        """Increment endpoint backoff and return delay in seconds."""
+        prev_attempts = int(self._api_backoff_state.get(name, {}).get('attempts', 0))
+        attempts = prev_attempts + 1
+        delay = min(300.0, _RETRY_BACKOFF_BASE * (2 ** attempts))
+        self._api_backoff_state[name] = {
+            'attempts': float(attempts),
+            'next_retry': now + delay,
+        }
+        return delay
+
     def _send_to_dead_letter(
         self,
         match_id: str,
@@ -365,6 +381,7 @@ class StreamIngestor:
             task_acquired = False
             match_id: Optional[str] = None
             delivery_data: Optional[Dict[str, Any]] = None
+            key: Optional[str] = None
             try:
                 match_id, delivery_data = self.update_queue.get(timeout=1.0)
                 task_acquired = True
@@ -399,6 +416,9 @@ class StreamIngestor:
                         match_id, delivery_data,
                         reason=f"exhausted {_MAX_RETRY_ATTEMPTS} retries: {last_exc}",
                     )
+                    # Keep dedup strict on successful ingest only. Failed
+                    # deliveries must remain retryable when re-sent later.
+                    self._clear_seen_key(key)
                 else:
                     # Notify callbacks only on success
                     if self.on_match_update:
@@ -417,6 +437,8 @@ class StreamIngestor:
                         delivery_data,
                         reason=f"processing_error: {exc}",
                     )
+                    if key is not None:
+                        self._clear_seen_key(key)
             finally:
                 if task_acquired:
                     self.update_queue.task_done()
@@ -469,13 +491,8 @@ class StreamIngestor:
                             self._api_backoff_state.pop(name, None)
 
                     except requests.RequestException as e:
-                        prev_attempts = int(self._api_backoff_state.get(name, {}).get('attempts', 0))
-                        attempts = prev_attempts + 1
-                        delay = min(300.0, _RETRY_BACKOFF_BASE * (2 ** attempts))
-                        self._api_backoff_state[name] = {
-                            'attempts': float(attempts),
-                            'next_retry': now + delay,
-                        }
+                        delay = self._set_api_backoff(name, now)
+                        attempts = int(self._api_backoff_state[name]['attempts'])
                         logger.warning(
                             "API poll failed for %s: %s (attempt=%d, next_retry_in=%.1fs)",
                             name,
@@ -483,6 +500,21 @@ class StreamIngestor:
                             attempts,
                             delay,
                         )
+                    except DataIngestionError as e:
+                        message = str(e).lower()
+                        if "queue is full" in message:
+                            delay = self._set_api_backoff(name, now)
+                            attempts = int(self._api_backoff_state[name]['attempts'])
+                            logger.warning(
+                                "API poll backoff for %s due to ingest pressure: %s "
+                                "(attempt=%d, next_retry_in=%.1fs)",
+                                name,
+                                e,
+                                attempts,
+                                delay,
+                            )
+                        else:
+                            logger.error(f"API processing error for {name}: {e}")
                     except Exception as e:
                         logger.error(f"API processing error for {name}: {e}")
 
