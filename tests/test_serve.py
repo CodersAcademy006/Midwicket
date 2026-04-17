@@ -411,6 +411,40 @@ class TestFastAPIApp:
         assert "uptime_seconds" in data
         assert "database_status" in data
 
+    def test_v1_health_bypasses_rate_limit_middleware(self, mock_session, monkeypatch):
+        """/v1/health should not invoke rate limiting middleware."""
+        from fastapi.testclient import TestClient
+        import pypitch.serve.api as api_mod
+
+        calls = {"count": 0}
+
+        async def _fake_check_rate_limit(request):
+            calls["count"] += 1
+            raise AssertionError("rate limiter should be bypassed for /v1/health")
+
+        monkeypatch.setattr(api_mod, "check_rate_limit", _fake_check_rate_limit)
+
+        app = api_mod.create_app(session=mock_session, start_ingestor=False)
+        with TestClient(app, raise_server_exceptions=False) as c:
+            response = c.get("/v1/health")
+
+        assert response.status_code == 200
+        assert calls["count"] == 0
+
+    def test_close_ignores_ingestor_stop_failures(self, mock_session):
+        """API close should continue even when ingestor stop raises."""
+
+        class _FailingIngestor:
+            def stop(self):
+                raise RuntimeError("stop failed")
+
+        api = PyPitchAPI(session=mock_session, start_ingestor=False)
+        api.ingestor = _FailingIngestor()
+
+        # Should not raise and should clear ingestor reference.
+        api.close()
+        assert api.ingestor is None
+
     def test_health_endpoint_degraded_when_db_unhealthy(self):
         """/v1/health should degrade (not 500) when DB probe fails."""
         from fastapi.testclient import TestClient
