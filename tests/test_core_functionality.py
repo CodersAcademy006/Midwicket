@@ -124,3 +124,27 @@ def test_cleanup_does_not_deadlock_when_instance_exists(tmp_path) -> None:
     assert finished.is_set()
     assert not t.is_alive()
     assert PyPitchSession._instance is None
+
+
+def test_get_uses_singleton_lock_even_when_instance_exists(monkeypatch: pytest.MonkeyPatch) -> None:
+    """get() should read singleton state under the class lock to avoid cleanup races."""
+
+    class _SpyLock:
+        def __init__(self) -> None:
+            self.enter_count = 0
+
+        def __enter__(self):
+            self.enter_count += 1
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> bool:
+            return False
+
+    sentinel_instance = object()
+    spy_lock = _SpyLock()
+
+    monkeypatch.setattr(PyPitchSession, "_instance", sentinel_instance)
+    monkeypatch.setattr(PyPitchSession, "_instance_lock", spy_lock)
+
+    assert PyPitchSession.get() is sentinel_instance
+    assert spy_lock.enter_count == 1

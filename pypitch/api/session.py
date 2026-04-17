@@ -202,13 +202,12 @@ class PyPitchSession:
     @classmethod
     def get(cls) -> "PyPitchSession":
         """Singleton Accessor"""
-        if cls._instance is None:
-            with cls._instance_lock:
-                if cls._instance is None:
-                    # AUTO-BOOT: If user forgot pp.init(), just do it for them.
-                    logger.info("Auto-initializing PyPitch (defaulting to ./data)...")
-                    cls._instance = PyPitchSession(data_dir="./data")
-        return cls._instance
+        with cls._instance_lock:
+            if cls._instance is None:
+                # AUTO-BOOT: If user forgot pp.init(), just do it for them.
+                logger.info("Auto-initializing PyPitch (defaulting to ./data)...")
+                cls._instance = PyPitchSession(data_dir="./data")
+            return cls._instance
 
     @classmethod
     def cleanup(cls) -> None:
