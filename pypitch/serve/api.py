@@ -174,7 +174,7 @@ class PyPitchAPI:
         @self.app.middleware("http")
         async def rate_limit_middleware(request: Request, call_next):
             # Skip rate limiting for docs, probes, and health endpoints
-            if request.url.path in {"/v1/docs", "/v1/redoc", "/v1/openapi.json", "/health",
+            if request.url.path in {"/v1/docs", "/v1/redoc", "/v1/openapi.json", "/health", "/v1/health",
                                      "/_internal/health", "/live", "/ready", "/v1/ready", "/metrics", "/"}:
                 return await call_next(request)
 
@@ -271,9 +271,13 @@ class PyPitchAPI:
         """Explicitly close and cleanup resources."""
         if hasattr(self, 'ingestor') and self.ingestor is not None:
             stop = getattr(self.ingestor, "stop", None)
-            if callable(stop):
-                stop()
-            self.ingestor = None
+            try:
+                if callable(stop):
+                    stop()
+            except Exception as exc:  # nosec B110 - best effort shutdown cleanup
+                logger.warning("ingestor stop failed during API close: %s", exc)
+            finally:
+                self.ingestor = None
 
     def __enter__(self):
         """Context manager entry."""
