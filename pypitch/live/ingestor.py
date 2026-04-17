@@ -51,8 +51,11 @@ class StreamIngestor:
     def __init__(self, query_engine: QueryEngine, max_workers: int = 4):
         self.query_engine = query_engine
         self.max_workers = max_workers
-        self.executor = ThreadPoolExecutor(max_workers=max_workers)
-        self.webhook_executor = ThreadPoolExecutor(max_workers=1)
+        self.executor: Optional[ThreadPoolExecutor] = None
+        self.webhook_executor: Optional[ThreadPoolExecutor] = None
+        self._lifecycle_lock = threading.Lock()
+        self._started = False
+        self._create_executors()
 
         # Live match tracking — protected by _matches_lock (C4)
         self.live_matches: Dict[str, LiveMatch] = {}
@@ -90,16 +93,32 @@ class StreamIngestor:
         self.on_match_update: Optional[Callable] = None
         self.on_match_complete: Optional[Callable] = None
 
+    def _create_executors(self) -> None:
+        """Create background executors for worker and webhook threads."""
+        self.executor = ThreadPoolExecutor(max_workers=self.max_workers)
+        self.webhook_executor = ThreadPoolExecutor(max_workers=1)
+
     def start(self):
         """Start the ingestion pipeline."""
-        logger.info("Starting live data ingestion pipeline...")
+        with self._lifecycle_lock:
+            if self._started:
+                logger.info("Live data ingestion pipeline already started")
+                return
 
-        # Start background threads
-        self.executor.submit(self._process_updates)
-        self.executor.submit(self._poll_apis)
+            logger.info("Starting live data ingestion pipeline...")
+            if self.executor is None or self.webhook_executor is None:
+                self._create_executors()
+            if self.stop_event.is_set():
+                self.stop_event.clear()
 
-        # Start webhook server
-        self._start_webhook_server()
+            # Start background threads
+            self.executor.submit(self._process_updates)
+            self.executor.submit(self._poll_apis)
+
+            # Start webhook server
+            self._start_webhook_server()
+
+            self._started = True
 
         logger.info("Live data ingestion pipeline started")
 
@@ -108,12 +127,23 @@ class StreamIngestor:
         logger.info("Stopping live data ingestion pipeline...")
         self.stop_event.set()
 
-        if self.webhook_server:
-            self.webhook_server.shutdown()
-            self.webhook_server.server_close()
+        with self._lifecycle_lock:
+            webhook_server = self.webhook_server
+            self.webhook_server = None
+            executor = self.executor
+            webhook_executor = self.webhook_executor
+            self.executor = None
+            self.webhook_executor = None
+            self._started = False
 
-        self.executor.shutdown(wait=True)
-        self.webhook_executor.shutdown(wait=True)
+        if webhook_server:
+            webhook_server.shutdown()
+            webhook_server.server_close()
+
+        if executor is not None:
+            executor.shutdown(wait=True)
+        if webhook_executor is not None:
+            webhook_executor.shutdown(wait=True)
 
         # Drain remaining queued deliveries into dead-letter on shutdown.
         while True:
@@ -269,7 +299,17 @@ class StreamIngestor:
                             self.wfile.write(json.dumps({'error': 'invalid match_id'}).encode())
                             return
 
-                        accepted = self.ingestor.update_match_data(safe_id, data)
+                        try:
+                            accepted = self.ingestor.update_match_data(safe_id, data)
+                        except DataIngestionError as exc:
+                            message = str(exc)
+                            status = 429 if "queue is full" in message.lower() else 400
+                            self.send_response(status)
+                            self.send_header('Content-type', 'application/json')
+                            self.end_headers()
+                            self.wfile.write(json.dumps({'error': message}).encode())
+                            return
+
                         if accepted is False:
                             self.send_response(404)
                             self.send_header('Content-type', 'application/json')
@@ -304,6 +344,8 @@ class StreamIngestor:
 
         try:
             self.webhook_server = HTTPServer((self.webhook_host, self.webhook_port), create_handler)
+            if self.webhook_executor is None:
+                raise RuntimeError("Webhook executor is not initialized")
             self.webhook_executor.submit(self.webhook_server.serve_forever)
             logger.info("Webhook server started on %s:%s", self.webhook_host, self.webhook_port)
         except Exception as e:
