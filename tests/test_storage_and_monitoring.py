@@ -230,6 +230,54 @@ class TestQueryEngineExecuteSQL:
             engine.pool.return_connection(held)
             engine.close()
 
+    def test_timeout_uses_elapsed_fallback_when_timer_callback_is_delayed(self, monkeypatch):
+        class _NoFireTimer:
+            def __init__(self, *_args, **_kwargs):
+                self.daemon = False
+
+            def start(self):
+                return None
+
+            def cancel(self):
+                return None
+
+        class _FakeResult:
+            def arrow(self):
+                return pa.table({"x": [1]})
+
+        class _SlowConn:
+            def __init__(self) -> None:
+                self.interrupted = False
+
+            def execute(self, _sql, _params):
+                time.sleep(0.05)
+                return _FakeResult()
+
+            def interrupt(self):
+                self.interrupted = True
+
+        slow_conn = _SlowConn()
+
+        @contextmanager
+        def _fake_connection():
+            yield slow_conn
+
+        engine = QueryEngine(":memory:")
+        try:
+            import pypitch.storage.engine as engine_mod
+
+            monkeypatch.setattr(engine_mod.threading, "Timer", _NoFireTimer)
+            monkeypatch.setattr(engine.pool, "connection", _fake_connection)
+
+            with pytest.raises(TimeoutError, match="timed out"):
+                engine.execute_sql("SELECT 1", timeout=0.01)
+
+            # Timer callback never fired in this test setup, so this verifies
+            # elapsed-time fallback enforcement.
+            assert slow_conn.interrupted is False
+        finally:
+            engine.close()
+
 
 # ---------------------------------------------------------------------------
 # QueryEngine — table_exists
@@ -410,6 +458,52 @@ class TestThreadSafeQueryEngine:
             engine.execute_sql("INSERT INTO t VALUES (?)", params=[1], read_only=False)
             result = engine.execute_sql("SELECT COUNT(*) AS c FROM t")
             assert result.to_pydict()["c"] == [1]
+        finally:
+            engine.close()
+
+    def test_timeout_uses_elapsed_fallback_when_timer_callback_is_delayed(self, monkeypatch):
+        class _NoFireTimer:
+            def __init__(self, *_args, **_kwargs):
+                self.daemon = False
+
+            def start(self):
+                return None
+
+            def cancel(self):
+                return None
+
+        class _FakeResult:
+            def arrow(self):
+                return pa.table({"x": [1]})
+
+        class _SlowConn:
+            def __init__(self) -> None:
+                self.interrupted = False
+
+            def execute(self, _sql, _params):
+                time.sleep(0.05)
+                return _FakeResult()
+
+            def interrupt(self):
+                self.interrupted = True
+
+        slow_conn = _SlowConn()
+
+        @contextmanager
+        def _fake_read_connection(timeout: float = 5.0):
+            yield slow_conn
+
+        engine = create_thread_safe_engine(":memory:")
+        try:
+            import pypitch.storage.thread_safe_engine as ts_mod
+
+            monkeypatch.setattr(ts_mod.threading, "Timer", _NoFireTimer)
+            monkeypatch.setattr(engine.pool, "get_read_connection", _fake_read_connection)
+
+            with pytest.raises(QueryTimeoutError, match="timed out"):
+                engine.execute_sql("SELECT 1", timeout=0.01)
+
+            assert slow_conn.interrupted is False
         finally:
             engine.close()
 

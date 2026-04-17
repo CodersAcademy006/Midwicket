@@ -500,6 +500,25 @@ class TestFastAPIApp:
         # Should return 403 when PYPITCH_ANALYZE_ENABLED != 'true'
         assert response.status_code == 403
 
+    def test_analyze_query_timeout_error_maps_to_408(self, monkeypatch):
+        """Thread-safe engine timeout exceptions should map to HTTP 408."""
+        from fastapi.testclient import TestClient
+        from pypitch.exceptions import QueryTimeoutError
+
+        monkeypatch.setenv("PYPITCH_ANALYZE_ENABLED", "true")
+
+        session = Mock()
+        session.registry = Mock()
+        session.engine = Mock()
+        session.engine.execute_sql.side_effect = QueryTimeoutError("timed out")
+
+        app = create_app(session=session, start_ingestor=False)
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.post("/analyze", json={"sql": "SELECT 1"})
+
+        assert response.status_code == 408
+        assert "timed out" in response.json().get("detail", "").lower()
+
     def test_auth_required_without_key(self, mock_session, monkeypatch):
         """When auth IS required, missing key returns 401."""
         import os

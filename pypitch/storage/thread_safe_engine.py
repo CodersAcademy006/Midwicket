@@ -408,6 +408,14 @@ class ThreadSafeQueryEngine:
         with connection_ctx as conn:
             timed_out = False
             timer: Optional[threading.Timer] = None
+            started_at = time.perf_counter()
+
+            def _has_timed_out() -> bool:
+                if not timeout_enabled:
+                    return False
+                if timed_out:
+                    return True
+                return (time.perf_counter() - started_at) >= float(timeout)
 
             def _interrupt_query() -> None:
                 nonlocal timed_out
@@ -426,15 +434,16 @@ class ThreadSafeQueryEngine:
 
             try:
                 result = conn.execute(sql, params).arrow()
-                if timed_out:
-                    raise QueryTimeoutError(f"Query timed out after {timeout}s: {sql}")
 
                 # Ensure we return a Table
                 if isinstance(result, pa.RecordBatchReader):
-                    return result.read_all()
+                    result = result.read_all()
+
+                if _has_timed_out():
+                    raise QueryTimeoutError(f"Query timed out after {timeout}s: {sql}")
                 return result
             except Exception as e:
-                if timed_out:
+                if _has_timed_out():
                     raise QueryTimeoutError(f"Query timed out after {timeout}s: {sql}") from e
                 raise
             finally:
