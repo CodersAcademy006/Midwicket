@@ -158,10 +158,25 @@ class StreamIngestor:
 
     def unregister_match(self, match_id: str):
         """Unregister a match from live tracking."""
+        removed = False
         with self._matches_lock:
             if match_id in self.live_matches:
                 del self.live_matches[match_id]
-                logger.info("Unregistered live match: %s", match_id)
+                removed = True
+
+        if removed:
+            # Prevent unbounded memory growth: once a match is no longer tracked,
+            # dedup keys for that match are no longer needed.
+            self._prune_seen_keys_for_match(match_id)
+            logger.info("Unregistered live match: %s", match_id)
+
+    def _prune_seen_keys_for_match(self, match_id: str) -> None:
+        """Remove dedup cache entries for a completed/unregistered match."""
+        prefix = f"{match_id}:"
+        with self._seen_lock:
+            self._seen_delivery_keys = {
+                key for key in self._seen_delivery_keys if not key.startswith(prefix)
+            }
 
     def update_match_data(self, match_id: str, delivery_data: Dict[str, Any]):
         """
@@ -297,7 +312,8 @@ class StreamIngestor:
             return f"{match_id}:{inning}:{over}:{ball}"
         # Fallback: hash the full payload
         payload = json.dumps({**delivery_data, "_mid": match_id}, sort_keys=True)
-        return hashlib.sha256(payload.encode()).hexdigest()
+        digest = hashlib.sha256(payload.encode()).hexdigest()
+        return f"{match_id}:hash:{digest}"
 
     def _is_duplicate(self, key: str) -> bool:
         """Thread-safe duplicate check + mark-seen in one atomic operation."""
