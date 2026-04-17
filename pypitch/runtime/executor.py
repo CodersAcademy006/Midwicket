@@ -42,6 +42,18 @@ class RuntimeExecutor:
         self._inflight_guard = threading.Lock()
         self._inflight_events: Dict[str, threading.Event] = {}
 
+    @staticmethod
+    def _query_timeout_seconds(query: BaseQuery) -> Optional[float]:
+        """Best-effort extraction of per-query timeout budget in seconds."""
+        opts = getattr(query, "execution_opts", None)
+        timeout = getattr(opts, "timeout", None)
+        if timeout is None:
+            return None
+        try:
+            return float(timeout)
+        except (TypeError, ValueError):
+            return None
+
     def _enter_inflight(self, key: str) -> tuple[bool, threading.Event]:
         """Register an in-flight key. Returns (is_leader, event)."""
         with self._inflight_guard:
@@ -129,7 +141,12 @@ class RuntimeExecutor:
 
         is_leader, inflight_event = self._enter_inflight(query_hash)
         if not is_leader:
-            inflight_event.wait()
+            wait_timeout = self._query_timeout_seconds(query)
+            waited = inflight_event.wait(timeout=wait_timeout)
+            if not waited:
+                raise TimeoutError(
+                    f"Timed out waiting for in-flight query result after {wait_timeout}s"
+                )
             cached_after_wait = self.cache.get(query_hash)
             if cached_after_wait is not None:
                 if modes.debug_mode and hasattr(cached_after_wait, 'collect'):
@@ -224,7 +241,9 @@ class RuntimeExecutor:
                     strategy = "raw_scan"
 
             result_table = self.engine.execute_sql(
-                plan["sql"], params=plan.get("params")
+                plan["sql"],
+                params=plan.get("params"),
+                timeout=self._query_timeout_seconds(query),
             )
             if modes.debug_mode and hasattr(result_table, 'collect'):
                 result_table = result_table.collect()
@@ -269,7 +288,12 @@ class RuntimeExecutor:
 
         is_leader, inflight_event = self._enter_inflight(query_hash)
         if not is_leader:
-            inflight_event.wait()
+            wait_timeout = self._query_timeout_seconds(query)
+            waited = inflight_event.wait(timeout=wait_timeout)
+            if not waited:
+                raise TimeoutError(
+                    f"Timed out waiting for in-flight metric result after {wait_timeout}s"
+                )
             cached_after_wait = self.cache.get(query_hash)
             if cached_after_wait is not None:
                 return ExecutionResult(
@@ -297,7 +321,11 @@ class RuntimeExecutor:
 
             # 4. Execute: Let DuckDB do the heavy lifting (JOIN)
             # This returns an Arrow Table with 'runs' AND 'venue_avg_sr' columns
-            enriched_events = self.engine.execute_sql(sql, params=params)
+            enriched_events = self.engine.execute_sql(
+                sql,
+                params=params,
+                timeout=self._query_timeout_seconds(query),
+            )
 
             # 5. Compute: Run the Pure Function
             # The metric simply expects column 'venue_avg_sr' to exist
