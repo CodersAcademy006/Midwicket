@@ -8,6 +8,8 @@ import pytest
 import json
 import time
 import threading
+import socket
+import http.client
 from unittest.mock import MagicMock, Mock, patch
 import tempfile
 import os
@@ -179,6 +181,144 @@ class TestStreamIngestor:
         """Test setting webhook port."""
         ingestor.set_webhook_port(9090)
         assert ingestor.webhook_port == 9090
+
+    def test_start_is_idempotent(self, ingestor, monkeypatch):
+        """Calling start() twice should not create duplicate worker submissions."""
+        monkeypatch.setattr(ingestor, "_process_updates", lambda: None)
+        monkeypatch.setattr(ingestor, "_poll_apis", lambda: None)
+
+        submit_calls = {"count": 0}
+
+        def _fake_submit(*args, **kwargs):
+            submit_calls["count"] += 1
+            return Mock()
+
+        start_calls = {"count": 0}
+
+        def _fake_start_webhook() -> None:
+            start_calls["count"] += 1
+
+        monkeypatch.setattr(ingestor.executor, "submit", _fake_submit)
+        monkeypatch.setattr(ingestor, "_start_webhook_server", _fake_start_webhook)
+
+        ingestor.start()
+        ingestor.start()
+
+        assert submit_calls["count"] == 2
+        assert start_calls["count"] == 1
+
+    def test_restart_after_stop_recreates_executors(self, ingestor, monkeypatch):
+        """An ingestor can be started again after stop() without lifecycle errors."""
+        monkeypatch.setattr(ingestor, "_process_updates", lambda: None)
+        monkeypatch.setattr(ingestor, "_poll_apis", lambda: None)
+        monkeypatch.setattr(ingestor, "_start_webhook_server", lambda: None)
+
+        first_executor = ingestor.executor
+        ingestor.start()
+        ingestor.stop()
+
+        assert ingestor.stop_event.is_set() is True
+
+        ingestor.start()
+
+        assert ingestor.stop_event.is_set() is False
+        assert ingestor.executor is not None
+        assert ingestor.executor is not first_executor
+
+    def test_webhook_queue_full_maps_to_429(self, ingestor):
+        """Webhook endpoint should surface ingestion backpressure as HTTP 429."""
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind(("127.0.0.1", 0))
+            port = sock.getsockname()[1]
+
+        ingestor.set_webhook_host("127.0.0.1")
+        ingestor.set_webhook_port(port)
+        ingestor.register_match("m1", "webhook")
+
+        def _raise_queue_full(_match_id, _delivery_data):
+            raise DataIngestionError(
+                "Live ingestion queue is full. The server is under load; please retry after a short delay."
+            )
+
+        ingestor.update_match_data = _raise_queue_full
+        ingestor._start_webhook_server()
+
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        payload = json.dumps(
+            {
+                "match_id": "m1",
+                "inning": 1,
+                "over": 5,
+                "ball": 2,
+                "runs_total": 34,
+                "wickets_fallen": 1,
+            }
+        ).encode("utf-8")
+
+        try:
+            conn.request(
+                "POST",
+                "/webhook/m1",
+                body=payload,
+                headers={"Content-Type": "application/json"},
+            )
+            response = conn.getresponse()
+            body = response.read().decode("utf-8")
+
+            assert response.status == 429
+            assert "queue is full" in body.lower()
+        finally:
+            conn.close()
+            if ingestor.webhook_server is not None:
+                ingestor.webhook_server.shutdown()
+                ingestor.webhook_server.server_close()
+                ingestor.webhook_server = None
+
+    def test_webhook_validation_ingestion_error_maps_to_400(self, ingestor):
+        """Webhook endpoint should map non-backpressure ingestion errors to HTTP 400."""
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind(("127.0.0.1", 0))
+            port = sock.getsockname()[1]
+
+        ingestor.set_webhook_host("127.0.0.1")
+        ingestor.set_webhook_port(port)
+        ingestor.register_match("m2", "webhook")
+
+        def _raise_schema_error(_match_id, _delivery_data):
+            raise DataIngestionError("Missing required fields: ['inning']")
+
+        ingestor.update_match_data = _raise_schema_error
+        ingestor._start_webhook_server()
+
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        payload = json.dumps(
+            {
+                "match_id": "m2",
+                "over": 5,
+                "ball": 2,
+                "runs_total": 34,
+                "wickets_fallen": 1,
+            }
+        ).encode("utf-8")
+
+        try:
+            conn.request(
+                "POST",
+                "/webhook/m2",
+                body=payload,
+                headers={"Content-Type": "application/json"},
+            )
+            response = conn.getresponse()
+            body = response.read().decode("utf-8")
+
+            assert response.status == 400
+            assert "missing required fields" in body.lower()
+        finally:
+            conn.close()
+            if ingestor.webhook_server is not None:
+                ingestor.webhook_server.shutdown()
+                ingestor.webhook_server.server_close()
+                ingestor.webhook_server = None
 
     @patch('pypitch.live.ingestor.requests.get')
     def test_api_polling(self, mock_get, ingestor):
