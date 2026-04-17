@@ -17,7 +17,7 @@ from pypitch.api.validation import (
     MatchupRequest, FantasyPointsRequest, StatsFilterRequest,
     LiveMatchRegistrationRequest, DeliveryDataRequest
 )
-from pypitch.exceptions import PyPitchError, DataValidationError
+from pypitch.exceptions import PyPitchError, DataIngestionError, DataValidationError
 
 from pypitch.storage.engine import QueryEngine
 from pypitch.storage.registry import IdentityRegistry
@@ -544,6 +544,62 @@ class TestFastAPIApp:
         }
         response = client.post("/live/ingest", json=delivery_payload)
         assert response.status_code == 503
+
+    def test_ingest_delivery_endpoint_validation_error_returns_400(self, mock_session):
+        """Non-backpressure DataIngestionError should map to HTTP 400."""
+        from fastapi.testclient import TestClient
+
+        class _DummyIngestor:
+            def update_match_data(self, match_id, delivery_data):
+                raise DataIngestionError(
+                    "Missing required live delivery fields for schema v1 table: batter_id"
+                )
+
+        with PyPitchAPI(session=mock_session, start_ingestor=False) as api:
+            api.ingestor = _DummyIngestor()
+            with TestClient(api.app, raise_server_exceptions=False) as client:
+                response = client.post(
+                    "/live/ingest",
+                    json={
+                        "match_id": "m1",
+                        "inning": 1,
+                        "over": 5,
+                        "ball": 2,
+                        "runs_total": 34,
+                        "wickets_fallen": 1,
+                    },
+                )
+
+        assert response.status_code == 400
+        assert "Missing required live delivery fields" in response.json().get("detail", "")
+
+    def test_ingest_delivery_endpoint_queue_full_returns_429(self, mock_session):
+        """Queue backpressure DataIngestionError should map to HTTP 429."""
+        from fastapi.testclient import TestClient
+
+        class _DummyIngestor:
+            def update_match_data(self, match_id, delivery_data):
+                raise DataIngestionError(
+                    "Live ingestion queue is full. The server is under load; please retry after a short delay."
+                )
+
+        with PyPitchAPI(session=mock_session, start_ingestor=False) as api:
+            api.ingestor = _DummyIngestor()
+            with TestClient(api.app, raise_server_exceptions=False) as client:
+                response = client.post(
+                    "/live/ingest",
+                    json={
+                        "match_id": "m1",
+                        "inning": 1,
+                        "over": 5,
+                        "ball": 2,
+                        "runs_total": 34,
+                        "wickets_fallen": 1,
+                    },
+                )
+
+        assert response.status_code == 429
+        assert "queue is full" in response.json().get("detail", "").lower()
 
     def test_get_live_matches_endpoint(self, client):
         """Live matches endpoint returns a list."""
