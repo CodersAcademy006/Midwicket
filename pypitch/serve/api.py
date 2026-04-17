@@ -9,6 +9,7 @@ import hashlib
 import os
 import signal
 import threading
+from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI, Request, HTTPException, Depends, Query
 from fastapi.responses import JSONResponse, Response
@@ -104,6 +105,13 @@ class PyPitchAPI:
                 "Use only for local development/testing."
             )
 
+        @asynccontextmanager
+        async def _lifespan(_app: FastAPI):
+            try:
+                yield
+            finally:
+                self.close()
+
         self.app = FastAPI(
             title="PyPitch API",
             description="Cricket Analytics API powered by PyPitch",
@@ -111,6 +119,7 @@ class PyPitchAPI:
             docs_url=None if _prod else "/v1/docs",
             redoc_url=None if _prod else "/v1/redoc",
             openapi_url=None if _prod else "/v1/openapi.json",
+            lifespan=_lifespan,
         )
 
         # CORS — never default to wildcard; require explicit config in production.
@@ -137,11 +146,13 @@ class PyPitchAPI:
             self.app.add_middleware(TrustedHostMiddleware, allowed_hosts=_allowed_hosts)
 
         # ── Drain mode — set by SIGTERM handler ──────────────────────────────
-        self._draining = False
+        self._draining = False  # legacy mirror for compatibility
+        self._draining_event = threading.Event()
         _PROBE_PATHS = frozenset({"/ready", "/v1/ready", "/live", "/_internal/health"})
 
         def _handle_sigterm(*_):
             self._draining = True
+            self._draining_event.set()
             logger.info("SIGTERM received — drain mode active; rejecting new non-probe requests")
 
         # Python only allows signal registration in the main thread.
@@ -155,7 +166,7 @@ class PyPitchAPI:
 
         @self.app.middleware("http")
         async def drain_middleware(request: Request, call_next):
-            if self._draining and request.url.path not in _PROBE_PATHS:
+            if self._draining_event.is_set() and request.url.path not in _PROBE_PATHS:
                 return JSONResponse(status_code=503, content={"detail": "Service draining"})
             return await call_next(request)
 
@@ -434,14 +445,33 @@ class PyPitchAPI:
         if self.ingestor is None:
             return {"match_id": request.match_id, "ingested": False, "error": "ingestor not running"}
         try:
+            if hasattr(request, "model_dump"):
+                payload = request.model_dump(exclude_none=True)
+            elif hasattr(request, "dict"):
+                payload = request.dict(exclude_none=True)
+            else:
+                payload = {
+                    key: value
+                    for key, value in vars(request).items()
+                    if value is not None
+                }
+
+            match_id = payload.pop("match_id", getattr(request, "match_id", None))
+            if not match_id:
+                raise ValueError("match_id is required")
+
             self.ingestor.update_match_data(
-                request.match_id,
-                delivery_data=getattr(request, "delivery", {}),
+                str(match_id),
+                delivery_data=payload,
             )
-            return {"match_id": request.match_id, "ingested": True}
+            return {"match_id": str(match_id), "ingested": True}
         except Exception as exc:
             logger.warning("ingest_delivery_data failed: %s", exc)
-            return {"match_id": request.match_id, "ingested": False, "error": str(exc)}
+            return {
+                "match_id": str(getattr(request, "match_id", "")),
+                "ingested": False,
+                "error": str(exc),
+            }
 
     def get_live_matches(self):
         """Return live match list from ingestor."""
@@ -466,8 +496,10 @@ class PyPitchAPI:
             except Exception:
                 db_status = "unhealthy"
 
+            status = "healthy" if db_status == "healthy" else "degraded"
+
             return {
-                "status": "healthy",
+                "status": status,
                 "version": "1.0.0",
                 "uptime_seconds": 0,  # Would need to track actual uptime
                 "database_status": db_status,
@@ -551,11 +583,13 @@ class PyPitchAPI:
                     # Simple query to test DB connection
                     self.session.engine.execute_sql("SELECT 1")
                     active_connections = getattr(self.session.engine, '_active_connections', 0)
-                except (RuntimeError, OSError, AttributeError):
+                except Exception:
                     db_status = "unhealthy"
 
+                status = "healthy" if db_status == "healthy" else "degraded"
+
                 return {
-                    "status": "healthy",
+                    "status": status,
                     "version": "1.0.0",
                     "uptime_seconds": 0,  # Would need to track actual uptime
                     "database_status": db_status,
