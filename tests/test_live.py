@@ -217,6 +217,45 @@ class TestStreamIngestor:
         # Check that data was queued for processing
         assert not ingestor.update_queue.empty()
 
+    @patch('pypitch.live.ingestor.requests.get')
+    def test_api_polling_tolerates_endpoint_add_during_iteration(
+        self,
+        mock_get,
+        ingestor,
+        monkeypatch,
+    ):
+        """Polling should not fail when endpoints are added while polling runs."""
+        import pypitch.live.ingestor as ingestor_mod
+
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {}
+
+        added = {"done": False}
+
+        def _fake_get(url, headers, timeout):
+            if not added["done"]:
+                added["done"] = True
+                ingestor.add_api_endpoint("late_api", "https://api.example.com/late")
+            return mock_response
+
+        mock_get.side_effect = _fake_get
+
+        ingestor.add_api_endpoint("primary_api", "https://api.example.com/live")
+        ingestor.stop_event.is_set = Mock(side_effect=[False, True])
+        ingestor.poll_interval = 0
+
+        sleep_calls: list[float] = []
+
+        def _fake_sleep(seconds):
+            sleep_calls.append(seconds)
+
+        monkeypatch.setattr(ingestor_mod.time, "sleep", _fake_sleep)
+
+        ingestor._poll_apis()
+
+        assert 5 not in sleep_calls
+
     def test_ingest_delivery_data_valid(self, thread_safe_engine):
         """Test ingesting valid delivery data."""
         # Create ingestor

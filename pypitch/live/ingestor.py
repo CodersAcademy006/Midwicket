@@ -83,6 +83,7 @@ class StreamIngestor:
         # Polling configuration
         self.poll_interval = 30  # seconds
         self.api_endpoints: Dict[str, str] = {}
+        self._api_endpoints_lock = threading.Lock()
         self._api_backoff_state: Dict[str, Dict[str, float]] = {}
 
         # Callbacks
@@ -216,10 +217,11 @@ class StreamIngestor:
             url: API URL
             headers: Optional HTTP headers
         """
-        self.api_endpoints[name] = {
-            'url': url,
-            'headers': headers or {}
-        }
+        with self._api_endpoints_lock:
+            self.api_endpoints[name] = {
+                'url': url,
+                'headers': headers or {}
+            }
         logger.info(f"Added API endpoint: {name} -> {url}")
 
     def set_webhook_port(self, port: int):
@@ -436,7 +438,10 @@ class StreamIngestor:
         """Poll configured API endpoints for updates."""
         while not self.stop_event.is_set():
             try:
-                for name, config in self.api_endpoints.items():
+                with self._api_endpoints_lock:
+                    endpoints_snapshot = list(self.api_endpoints.items())
+
+                for name, config in endpoints_snapshot:
                     backoff = self._api_backoff_state.get(name)
                     now = time.time()
                     if backoff and now < backoff.get('next_retry', 0.0):
