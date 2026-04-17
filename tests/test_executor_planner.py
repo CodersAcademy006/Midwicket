@@ -183,6 +183,33 @@ class TestRuntimeExecutorCacheHit:
         assert sorted(r.meta.source for r in results) == ["cache", "compute"]
         assert engine.execute_sql.call_count == baseline_calls + 1
 
+    def test_execute_forwards_query_timeout_to_engine(self):
+        cache = _FakeCache()
+        engine = _make_engine()
+        executor = RuntimeExecutor(cache, engine)
+        query = _matchup_query(snapshot_id="timeout-forward", execution_opts={"timeout": 7})
+
+        executor.execute(query)
+
+        kwargs = engine.execute_sql.call_args.kwargs
+        assert kwargs.get("timeout") == pytest.approx(7.0)
+
+    def test_execute_times_out_while_waiting_for_inflight_leader(self):
+        cache = _FakeCache()
+        engine = _make_engine()
+        executor = RuntimeExecutor(cache, engine)
+        baseline_calls = engine.execute_sql.call_count
+        query = _matchup_query(snapshot_id="wait-timeout", execution_opts={"timeout": 0.01})
+
+        def _force_follower(_key: str):
+            return False, threading.Event()
+
+        with patch.object(executor, "_enter_inflight", side_effect=_force_follower):
+            with pytest.raises(TimeoutError, match="Timed out waiting"):
+                executor.execute(query)
+
+        assert engine.execute_sql.call_count == baseline_calls
+
 
 class TestRuntimeExecutorMetricCaching:
     def test_execute_metric_caches_falsy_value(self):
@@ -229,6 +256,39 @@ class TestRuntimeExecutorMetricCaching:
         assert first.data == 1.0
         assert second.data == 2.0
         assert second.meta.source == "compute"
+
+    def test_execute_metric_forwards_query_timeout_to_engine(self):
+        cache = _FakeCache()
+        engine = _make_engine()
+        executor = RuntimeExecutor(cache, engine)
+        query = _matchup_query(snapshot_id="metric-timeout", execution_opts={"timeout": 3})
+
+        def metric_alpha(_events):
+            return 1.0
+
+        executor.execute_metric(query, metric_alpha)
+
+        kwargs = engine.execute_sql.call_args.kwargs
+        assert kwargs.get("timeout") == pytest.approx(3.0)
+
+    def test_execute_metric_times_out_while_waiting_for_inflight_leader(self):
+        cache = _FakeCache()
+        engine = _make_engine()
+        executor = RuntimeExecutor(cache, engine)
+        baseline_calls = engine.execute_sql.call_count
+        query = _matchup_query(snapshot_id="metric-wait-timeout", execution_opts={"timeout": 0.01})
+
+        def metric_alpha(_events):
+            return 1.0
+
+        def _force_follower(_key: str):
+            return False, threading.Event()
+
+        with patch.object(executor, "_enter_inflight", side_effect=_force_follower):
+            with pytest.raises(TimeoutError, match="Timed out waiting"):
+                executor.execute_metric(query, metric_alpha)
+
+        assert engine.execute_sql.call_count == baseline_calls
 
 
 # ---------------------------------------------------------------------------
