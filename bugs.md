@@ -2,8 +2,8 @@
 
 ## 1) Architecture bugs/smells
 
-- **Compute layer owns storage I/O (violates agent contract):** `DerivedStore` in `pypitch/compute/derived/store.py` executes SQL and manages materialization state through `engine`. This conflicts with `Agents.md` guidance that the Analyst/compute logic should remain pure and avoid direct database/cache I/O.
-- **Planner does runtime table-existence I/O checks (violates planner contract):** `pypitch/runtime/planner.py` checks `engine.table_exists(...)` during planning. This conflicts with the planner role described in `Agents.md` (intent/dependency planning vs direct storage probing).
+- **Compute layer owns storage I/O (violates agent contract):** `DerivedStore` in `pypitch/compute/derived/store.py` executes SQL and manages materialization state through `engine`. This conflicts with `Agents.md` guidance and the "Pure Functions Only" compute rule; materialization ownership should be moved to runtime/storage.
+- **Planner does runtime table-existence I/O checks (violates planner contract):** `pypitch/runtime/planner.py` checks `engine.table_exists(...)` during planning. This conflicts with the planner role described in `Agents.md`; planner should consume dependency/snapshot metadata and fail fast when requirements are unavailable, instead of probing storage directly.
 - **Duplicated storage execution paths:** `pypitch/storage/engine.py` and `pypitch/storage/thread_safe_engine.py` both implement SQL execution and connection behavior, increasing drift risk.
 
 ## 2) High-risk correctness bugs
