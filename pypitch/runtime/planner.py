@@ -171,10 +171,10 @@ class QueryPlanner:
         clauses: List[str] = []
         params: List[Any] = []
 
-        if hasattr(query, "batter_id"):
+        if hasattr(query, "batter_id") and query.batter_id is not None:
             clauses.append("batter_id = ?")
             params.append(query.batter_id)
-        if hasattr(query, "bowler_id"):
+        if hasattr(query, "bowler_id") and query.bowler_id is not None:
             clauses.append("bowler_id = ?")
             params.append(query.bowler_id)
         if hasattr(query, "venue_id") and query.venue_id is not None:

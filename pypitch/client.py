@@ -6,7 +6,7 @@ import contextlib
 import requests
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote, urljoin
-from requests.exceptions import ConnectionError
+from requests.exceptions import ConnectionError as RequestsConnectionError
 
 
 class PyPitchClient:
@@ -334,7 +334,7 @@ def quick_health_check(
     try:
         health = client.health_check()
         return health.get("status") == "healthy"
-    except (requests.RequestException, ValueError, ConnectionError):
+    except (requests.RequestException, ValueError, RequestsConnectionError):
         return False
     finally:
         try:
