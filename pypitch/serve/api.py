@@ -683,7 +683,7 @@ class PyPitchAPI:
                         SELECT match_id FROM ball_events
                         GROUP BY match_id {having_clause}
                     ) t
-                """
+                """  # nosec B608 - having_clause built from fixed column allowlist; values parameterized
                 total_row = self.session.engine.execute_sql(count_sql, params).to_pydict()
                 total = list(total_row.values())[0][0] if total_row else 0
 
@@ -693,7 +693,7 @@ class PyPitchAPI:
                     GROUP BY match_id {having_clause}
                     ORDER BY {sort_col} {sort_dir}
                     LIMIT ? OFFSET ?
-                """
+                """  # nosec B608 - having_clause/sort built from fixed column allowlist; values parameterized
                 result = self.session.engine.execute_sql(data_sql, params + [page_size, offset])
                 rows = result.to_pydict()
                 items = [
