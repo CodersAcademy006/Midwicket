@@ -95,7 +95,11 @@ class OverlayServer:
                         "current_score": overlay_server.current_stats.current_score,
                         "wickets": overlay_server.current_stats.wickets_fallen,
                         "run_rate": f"{overlay_server.current_stats.run_rate:.2f}",
-                        "required_rr": f"{overlay_server.current_stats.required_rr:.2f}" if overlay_server.current_stats.required_rr else None,
+                        "required_rr": (
+                            f"{overlay_server.current_stats.required_rr:.2f}"
+                            if overlay_server.current_stats.required_rr is not None
+                            else None
+                        ),
                         "batsman": overlay_server.current_stats.batsman_on_strike,
                         "bowler": overlay_server.current_stats.bowler,
                         "last_ball": overlay_server.current_stats.last_ball,
@@ -147,7 +151,11 @@ class OverlayServer:
             "current_score": self.current_stats.current_score,
             "wickets": self.current_stats.wickets_fallen,
             "run_rate": f"{self.current_stats.run_rate:.2f}",
-            "required_rr": f"{self.current_stats.required_rr:.2f}" if self.current_stats.required_rr else None,
+            "required_rr": (
+                f"{self.current_stats.required_rr:.2f}"
+                if self.current_stats.required_rr is not None
+                else None
+            ),
             "batsman": self.current_stats.batsman_on_strike,
             "bowler": self.current_stats.bowler,
             "last_ball": self.current_stats.last_ball,
