@@ -55,7 +55,7 @@ class WinPredictor:
             "wankhede": 0.15,      # Mumbai Indians home advantage
             "eden_gardens": 0.12,  # Kolkata Knight Riders
             "chinnaswamy": 0.10,   # Royal Challengers Bangalore
-            "dyanmond park": 0.08, # Chennai Super Kings
+            "chepauk": 0.08,       # Chennai Super Kings (MA Chidambaram Stadium)
             "punjab cricket": 0.05, # Punjab Kings
             "brabourne": 0.06,     # Home advantage
         }
