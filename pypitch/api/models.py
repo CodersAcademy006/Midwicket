@@ -15,16 +15,25 @@ class PlayerStats(BaseModel):
     matches: int = Field(..., ge=0, description="Total matches played")
     runs: int = Field(..., ge=0, description="Total runs scored")
     balls_faced: int = Field(..., ge=0, description="Total balls faced")
+    dismissals: int = Field(0, ge=0, description="Number of times dismissed (batting)")
     wickets: int = Field(..., ge=0, description="Total wickets taken")
     balls_bowled: int = Field(..., ge=0, description="Total balls bowled")
     runs_conceded: int = Field(..., ge=0, description="Total runs conceded")
 
     @property
     def average(self) -> Optional[float]:
-        """Batting average"""
-        if self.matches == 0:
-            return None
-        return float(Decimal(self.runs) / Decimal(self.matches))
+        """Cricket batting average: runs per dismissal.
+
+        Falls back to runs-per-match when dismissals == 0 (e.g. never-out players
+        or datasets that don't track dismissals) to avoid returning None for
+        players who have scored runs.
+        """
+        if self.dismissals > 0:
+            return float(Decimal(self.runs) / Decimal(self.dismissals))
+        if self.matches > 0:
+            # Fallback: runs per match (labelled in the model docstring)
+            return float(Decimal(self.runs) / Decimal(self.matches))
+        return None
 
     @property
     def strike_rate(self) -> Optional[float]:
