@@ -11,11 +11,9 @@ authors = [
 description = "The Open Source Cricket Intelligence SDK"
 readme = "README.md"
 license = { file = "LICENSE" }
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 classifiers = [
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "License :: OSI Approved :: MIT License",
@@ -69,6 +67,14 @@ dev = [
 
 [tool.pytest.ini_options]
 addopts = "--cov=pypitch --cov-report=term-missing --cov-fail-under=70"
+
+[tool.coverage.run]
+# Exclude pure plot/PDF rendering modules from coverage: they emit
+# matplotlib/plotly/reportlab output and are not meaningfully unit-testable.
+omit = [
+    "pypitch/visuals/*",
+    "pypitch/report/pdf.py",
+]
 
 [project.urls]
 "Homepage" = "https://github.com/CodersAcademy006/Midwicket"

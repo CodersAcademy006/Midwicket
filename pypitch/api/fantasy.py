@@ -96,7 +96,7 @@ def fantasy_score(
         # --- Batting stats ---
         # Aggregate to per-match totals first so 50s/100s are counted on
         # match-level scores, not individual delivery values (which top out at 6).
-        bat_sql = f"""  -- nosec B608
+        bat_sql = f"""
             WITH per_match AS (
                 SELECT
                     match_id,
@@ -115,7 +115,7 @@ def fantasy_score(
                 COUNT(CASE WHEN match_runs >= 50 AND match_runs < 100 THEN 1 END) AS fifties,
                 COUNT(CASE WHEN match_runs >= 100 THEN 1 END)               AS hundreds
             FROM per_match
-        """
+        """  # nosec B608 - season_clause is an internal constant; user values are parameterized
         bat_res = session.engine.execute_sql(bat_sql, params=params_bat).to_pydict()
         matches = int((bat_res.get("matches") or [0])[0] or 0)
         runs = int((bat_res.get("runs") or [0])[0] or 0)
@@ -133,7 +133,7 @@ def fantasy_score(
         )
 
         # --- Bowling stats ---
-        bowl_sql = f"""  -- nosec B608
+        bowl_sql = f"""
             SELECT
                 COUNT(DISTINCT match_id)                                  AS matches,
                 COUNT(*)                                                  AS balls,
@@ -141,7 +141,7 @@ def fantasy_score(
                 SUM(runs_batter + runs_extras)                            AS runs_conceded
             FROM ball_events
             WHERE bowler = ? {season_clause}
-        """
+        """  # nosec B608 - season_clause is an internal constant; user values are parameterized
         bowl_res = session.engine.execute_sql(bowl_sql, params=params_bowl).to_pydict()
         bowl_balls = int((bowl_res.get("balls") or [0])[0] or 0)
         wickets = int((bowl_res.get("wickets") or [0])[0] or 0)
