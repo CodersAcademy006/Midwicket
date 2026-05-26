@@ -39,8 +39,8 @@ class PlayerLookupRequest(BaseModel):
     @field_validator('name')
     @classmethod
     def validate_name(cls, v):
-        # Basic name validation - allow letters, spaces, hyphens, apostrophes
-        if not re.match(r"^[a-zA-Z\s\-']+$", v):
+        # Basic name validation - allow letters, spaces, hyphens, apostrophes, and dots
+        if not re.match(r"^[a-zA-Z .\-']+$", v):
             raise ValueError('Name contains invalid characters')
         return v.strip()
 
