@@ -2,21 +2,21 @@
 
 ## 1) Architecture bugs/smells
 
-- **Compute layer owns storage I/O:** `DerivedStore` in `pypitch/compute/derived/store.py` executes SQL and manages materialization state through `engine`, which blurs the compute/storage boundary.
-- **Planner does runtime table-existence I/O checks:** `pypitch/runtime/planner.py` checks `engine.table_exists(...)` during planning, increasing coupling between planning and storage internals.
+- **Compute layer owns storage I/O (violates agent contract):** `DerivedStore` in `pypitch/compute/derived/store.py` executes SQL and manages materialization state through `engine`. This conflicts with `Agents.md` guidance that the Analyst/compute logic should remain pure and avoid direct database/cache I/O.
+- **Planner does runtime table-existence I/O checks (violates planner contract):** `pypitch/runtime/planner.py` checks `engine.table_exists(...)` during planning. This conflicts with the planner role described in `Agents.md` (intent/dependency planning vs direct storage probing).
 - **Duplicated storage execution paths:** `pypitch/storage/engine.py` and `pypitch/storage/thread_safe_engine.py` both implement SQL execution and connection behavior, increasing drift risk.
 
 ## 2) High-risk correctness bugs
 
-- **Read pool connections are writable:** `ConnectionPool._create_connection(read_only=...)` always calls `duckdb.connect(..., read_only=False)` (`pypitch/storage/thread_safe_engine.py:82-87`).
-- **Potential feature/target/group misalignment in training prep:** `prepare_training_data()` may skip feature rows on exceptions, while target/group derivation is based on full second-innings iteration (`pypitch/models/train.py:64-107`, `pypitch/models/train.py:166-172`).
-- **Query/schema type mismatch risk for IDs:** `MatchupQuery` models IDs as strings (`pypitch/query/base.py:52-56`) while Schema V1 stores actor IDs as integers (`pypitch/schema/v1.py:92-97`).
+- **Read pool connections are writable:** `ConnectionPool._create_connection(read_only=...)` currently opens DuckDB with `read_only=False` in `pypitch/storage/thread_safe_engine.py`, even when called for read-pool creation.
+- **Feature/target/group misalignment in training prep:** in `pypitch/models/train.py`, feature rows are appended inside a `try` block and skipped on any exception from feature construction (e.g., invalid numeric values passed into `compute_chase_features`). Targets and groups are then built by iterating full second-innings rows, so skipped feature rows can desynchronize feature/target/group row mapping.
+- **Query/schema type mismatch risk for IDs:** `MatchupQuery` models IDs as strings in `pypitch/query/base.py`, while Schema V1 stores actor IDs as integers in `pypitch/schema/v1.py`.
 
 ## 3) Security/risk concerns
 
-- **Read-only enforcement bypass risk:** writable connections in the read pool weaken guardrails for read-only code paths (`pypitch/storage/thread_safe_engine.py:82-87`).
-- **`/analyze` hardening is still listed as an open production risk:** tracked in `PRODUCTION_READINESS_GAPS.md` (`PRODUCTION_READINESS_GAPS.md:21-22`, `PRODUCTION_READINESS_GAPS.md:246-251`).
-- **Rate-limiting scalability hardening remains pending:** tracked in `PRODUCTION_READINESS_GAPS.md` (`PRODUCTION_READINESS_GAPS.md:22-23`, `PRODUCTION_READINESS_GAPS.md:227-234`).
+- **Read-only enforcement bypass risk:** writable connections in the read pool weaken guardrails for read-only code paths in `pypitch/storage/thread_safe_engine.py`.
+- **`/analyze` hardening is still listed as an open production risk:** tracked in `PRODUCTION_READINESS_GAPS.md` (security/readiness sections).
+- **Rate-limiting scalability hardening remains pending:** tracked in `PRODUCTION_READINESS_GAPS.md` (rate-limit backend and scale validation sections).
 
 ## 4) Suggested fix priority
 
