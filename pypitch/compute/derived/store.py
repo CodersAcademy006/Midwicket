@@ -15,8 +15,8 @@ class DerivedStore:
 
     def ensure_materialized(self, table_name: str, snapshot_id: str) -> None:
         """
-        Ensures the requested derived table exists in the 'derived' schema.
-        If not, it computes it and persists it for the session.
+        Ensures the requested derived table exists and is fresh for snapshot_id.
+        Rebuilds when the table exists but was built for a different snapshot.
         """
         sql = (
             "SELECT count(*) as count "
@@ -26,12 +26,11 @@ class DerivedStore:
         table = self.engine.execute_sql(sql, params=[table_name], read_only=True)
         exists = table["count"][0].as_py() > 0
 
-        if exists:
-            # Keep planner-visible materialization versions in sync with actual tables.
-            self.engine.derived_versions[table_name] = snapshot_id
+        # Return early only when the table exists AND was built for this exact snapshot.
+        if exists and self.engine.derived_versions.get(table_name) == snapshot_id:
             return
 
-        # Dispatch to specific builder
+        # Build (or rebuild for a new snapshot).
         if table_name == "venue_baselines":
             self._build_venue_baselines(snapshot_id)
             self.engine.derived_versions[table_name] = snapshot_id
@@ -50,8 +49,8 @@ class DerivedStore:
         """
         self.engine.execute_sql(query, read_only=False)
 
-    def get_venue_baselines(self, snapshot_id: str) -> pa.Table:
-        """Returns (venue_id, avg_runs_per_over)."""
+    def get_venue_baselines(self) -> pa.Table:
+        """Returns venue-level average runs per over from ball_events."""
         query = """
         SELECT
             venue_id,
