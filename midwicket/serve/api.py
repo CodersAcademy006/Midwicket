@@ -202,6 +202,34 @@ class MidwicketAPI:
 
             return response
 
+        # Add API Key Audit Middleware
+        @self.app.middleware("http")
+        async def audit_api_key_usage(request: Request, call_next):
+            start_time = time.time()
+            response = await call_next(request)
+            duration_ms = (time.time() - start_time) * 1000
+            
+            path = request.url.path
+            
+            sensitive_prefixes = ("/v1/players", "/v1/teams", "/matches", "/v1/venues")
+            
+            if response.status_code < 400 and path.startswith(sensitive_prefixes):
+                auth_identity = request.headers.get("Authorization") or request.headers.get("X-API-Key")
+                if auth_identity:
+                    user_id = hashlib.sha256(auth_identity.encode("utf-8")).hexdigest()[:16]
+                    client_ip = request.client.host if request.client else "unknown"
+                    try:
+                        self.session.engine.execute_sql(
+                            "INSERT INTO audit_log (ts, user_id, query_text, row_count, duration_ms, endpoint, action, ip_address) "
+                            "VALUES (current_timestamp, ?, ?, ?, ?, ?, ?, ?)",
+                            [user_id, f"API key usage on {path}", 0, round(duration_ms, 2), path, "api_key_usage", client_ip],
+                            read_only=False,
+                        )
+                    except Exception as e:
+                        logger.warning("Failed to log API key usage: %s", e)
+                        
+            return response
+
         # Add request logging
         @self.app.middleware("http")
         async def log_requests(request: Request, call_next):
@@ -243,9 +271,18 @@ class MidwicketAPI:
                     user_id VARCHAR,
                     query_text VARCHAR,
                     row_count INTEGER,
-                    duration_ms DOUBLE
+                    duration_ms DOUBLE,
+                    endpoint VARCHAR DEFAULT 'unknown',
+                    action VARCHAR DEFAULT 'unknown',
+                    ip_address VARCHAR DEFAULT 'unknown'
                 )
             """, read_only=False)
+            try:
+                self.session.engine.execute_sql("ALTER TABLE audit_log ADD COLUMN endpoint VARCHAR DEFAULT 'unknown'", read_only=False)
+                self.session.engine.execute_sql("ALTER TABLE audit_log ADD COLUMN action VARCHAR DEFAULT 'unknown'", read_only=False)
+                self.session.engine.execute_sql("ALTER TABLE audit_log ADD COLUMN ip_address VARCHAR DEFAULT 'unknown'", read_only=False)
+            except Exception:
+                pass
         except Exception:
             pass  # Non-fatal: audit table creation may fail in read-only engines
 
@@ -803,7 +840,7 @@ class MidwicketAPI:
             """Recent /analyze queries — admin endpoint for operator review."""
             try:
                 result = self.session.engine.execute_sql(
-                    "SELECT ts, user_id, query_text, row_count, duration_ms "
+                    "SELECT ts, user_id, query_text, row_count, duration_ms, endpoint, action, ip_address "
                     "FROM audit_log ORDER BY ts DESC LIMIT ?",
                     [limit],
                 )
@@ -815,6 +852,9 @@ class MidwicketAPI:
                         "query": rows["query_text"][i],
                         "row_count": rows["row_count"][i],
                         "duration_ms": rows["duration_ms"][i],
+                        "endpoint": rows["endpoint"][i] if "endpoint" in rows else "unknown",
+                        "action": rows["action"][i] if "action" in rows else "unknown",
+                        "ip_address": rows["ip_address"][i] if "ip_address" in rows else "unknown",
                     }
                     for i in range(len(rows.get("ts", [])))
                 ]
@@ -874,6 +914,47 @@ class MidwicketAPI:
         _MAX_ANALYZE_ROWS = 100
         _ANALYZE_ROW_LIMIT = 500  # enforced at SQL level to prevent full-scan materialisation
         _ANALYZE_TIMEOUT_DEFAULT_S = 8.0
+
+
+        @self.app.get("/v1/export")
+        async def bulk_export(
+            request: Request,
+            table: str = Query("ball_events", description="Table to export"),
+            limit: int = Query(10000, le=100000, description="Max rows to export"),
+            authenticated: bool = Depends(verify_api_key)
+        ):
+            """Bulk export data."""
+            if table not in ["ball_events", "matches", "players", "venues"]:
+                raise HTTPException(status_code=400, detail="Invalid table for export")
+                
+            try:
+                t0 = time.time()
+                result = self.session.engine.execute_sql(f"SELECT * FROM {table} LIMIT ?", [limit], read_only=True)
+                duration_ms = (time.time() - t0) * 1000
+                rows = result.to_pydict()
+                
+                keys = list(rows.keys())
+                n = min(len(rows[keys[0]]) if keys else 0, limit)
+                records = [{k: rows[k][i] for k in keys} for i in range(n)]
+                
+                # Audit log
+                auth_identity = request.headers.get("Authorization") or request.headers.get("X-API-Key") or "anonymous"
+                user_id = hashlib.sha256(auth_identity.encode("utf-8")).hexdigest()[:16]
+                client_ip = request.client.host if request.client else "unknown"
+                try:
+                    self.session.engine.execute_sql(
+                        "INSERT INTO audit_log (ts, user_id, query_text, row_count, duration_ms, endpoint, action, ip_address) "
+                        "VALUES (current_timestamp, ?, ?, ?, ?, ?, ?, ?)",
+                        [user_id, f"Export {table}", n, round(duration_ms, 2), "/v1/export", "bulk_export", client_ip],
+                        read_only=False,
+                    )
+                except Exception as e:
+                    logger.warning("audit_log write failed for bulk_export: %s", e)
+                
+                return {"table": table, "exported_rows": n, "data": records}
+            except Exception as e:
+                logger.warning("Bulk export failed: %s", e)
+                raise HTTPException(status_code=500, detail="Export failed")
 
         @self.app.post("/analyze")
         async def custom_analysis(request: Request, query: Dict[str, Any], authenticated: bool = Depends(verify_api_key)):
@@ -956,11 +1037,11 @@ class MidwicketAPI:
                         or "anonymous"
                     )
                     user_id = hashlib.sha256(auth_identity.encode("utf-8")).hexdigest()[:16]
-                    query_fingerprint = hashlib.sha256(sql.encode("utf-8")).hexdigest()
+                    client_ip = request.client.host if request.client else "unknown"
                     self.session.engine.execute_sql(
-                        "INSERT INTO audit_log (ts, user_id, query_text, row_count, duration_ms) "
-                        "VALUES (current_timestamp, ?, ?, ?, ?)",
-                        [user_id, f"sha256:{query_fingerprint}", n, round(duration_ms, 2)],
+                        "INSERT INTO audit_log (ts, user_id, query_text, row_count, duration_ms, endpoint, action, ip_address) "
+                        "VALUES (current_timestamp, ?, ?, ?, ?, ?, ?, ?)",
+                        [user_id, sql, n, round(duration_ms, 2), "/analyze", "custom_query", client_ip],
                         read_only=False,
                     )
                 except Exception as audit_exc:

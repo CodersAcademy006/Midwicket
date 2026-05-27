@@ -21,6 +21,24 @@ from pathlib import Path
 
 from ..storage.engine import QueryEngine
 from ..exceptions import DataIngestionError, ConnectionError
+from pydantic import BaseModel, ValidationError, Field
+
+# Schema for live delivery validation
+class LiveDeliverySchema(BaseModel):
+    match_id: Optional[str] = None
+    inning: int = Field(..., ge=1, le=4)
+    over: int = Field(..., ge=0)
+    ball: int = Field(..., ge=1, le=10)
+    runs_total: int = Field(..., ge=0)
+    wickets_fallen: int = Field(..., ge=0, le=10)
+    timestamp: Optional[float] = None
+    batter: Optional[str] = None
+    bowler: Optional[str] = None
+    runs_batter: Optional[int] = Field(0, ge=0)
+    runs_extras: Optional[int] = Field(0, ge=0)
+    is_wicket: Optional[bool] = False
+    wicket_type: Optional[str] = None
+    player_out: Optional[str] = None
 
 logger = logging.getLogger(__name__)
 
@@ -500,16 +518,21 @@ class StreamIngestor:
 
     def _ingest_delivery_data(self, match_id: str, delivery_data: Dict[str, Any]):
         """Ingest a single delivery into the database (raises on failure)."""
-        required_fields = ['inning', 'over', 'ball', 'runs_total', 'wickets_fallen']
-        missing = [f for f in required_fields if f not in delivery_data]
-        if missing:
-            raise DataIngestionError(f"Missing required fields: {missing}")
-
         delivery_data['match_id'] = match_id
-        delivery_data['timestamp'] = time.time()
+        if 'timestamp' not in delivery_data:
+            delivery_data['timestamp'] = time.time()
+        
+        try:
+            validated = LiveDeliverySchema(**delivery_data)
+        except ValidationError as e:
+            raise DataIngestionError(f"Schema validation failed: {e}")
 
-        self.query_engine.insert_live_delivery(delivery_data)
-        logger.debug("ingestor: ingested delivery for match %s: %s", match_id, delivery_data)
+        # ensure it's still a dict when passing to engine
+        valid_data = validated.model_dump(exclude_none=True) if hasattr(validated, 'model_dump') else validated.dict(exclude_none=True)
+        self.query_engine.insert_live_delivery(valid_data)
+        logger.debug("ingestor: ingested delivery for match %s: %s", match_id, valid_data)
+
+
 
     def _poll_apis(self):
         """Poll configured API endpoints for updates."""

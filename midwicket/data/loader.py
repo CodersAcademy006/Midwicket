@@ -5,9 +5,20 @@ import requests
 import zipfile
 import json
 from pathlib import Path
-from typing import Iterator, Dict, Any, Optional
+from pydantic import BaseModel, ValidationError, Field
+from typing import Iterator, Dict, Any, Optional, List
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, before_sleep_log
 from tqdm import tqdm
+
+class CricsheetInfoSchema(BaseModel):
+    match_type: str
+    city: Optional[str] = None
+    dates: List[str]
+    teams: List[str]
+
+class CricsheetMatchSchema(BaseModel):
+    info: CricsheetInfoSchema
+    innings: List[Dict[str, Any]]
 # Constants
 from midwicket.config import CRICSHEET_URL, DEFAULT_DATA_DIR
 
@@ -193,8 +204,12 @@ class DataLoader:
             try:
                 with open(file_path, 'r') as f:
                     data = json.load(f)
-                    # Basic validation: ensure it looks like a match file
-                    if 'info' in data and 'innings' in data:
+                    
+                    try:
+                        CricsheetMatchSchema(**data)
                         yield data
+                    except ValidationError as e:
+                        logger.warning(f"Schema validation failed for {file_path}: {e}")
+                        continue
             except json.JSONDecodeError:
                 continue # Skip corrupt files
