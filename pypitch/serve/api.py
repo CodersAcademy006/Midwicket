@@ -226,11 +226,19 @@ class PyPitchAPI:
         else:
             self.session = session
 
-        # Ensure audit_log table exists for /analyze audit trail (FEAT-04)
+        # Record app start time for real uptime reporting (FIX 2).
+        self._start_monotonic = time.monotonic()
+
+        # Ensure audit_log table exists for /analyze audit trail (FEAT-04).
+        # Back the id column with a DuckDB sequence so rows are identifiable.
         try:
+            self.session.engine.execute_sql(
+                "CREATE SEQUENCE IF NOT EXISTS audit_log_id_seq",
+                read_only=False,
+            )
             self.session.engine.execute_sql("""
                 CREATE TABLE IF NOT EXISTS audit_log (
-                    id INTEGER,
+                    id BIGINT DEFAULT nextval('audit_log_id_seq'),
                     ts TIMESTAMP DEFAULT current_timestamp,
                     user_id VARCHAR,
                     query_text VARCHAR,
@@ -496,16 +504,40 @@ class PyPitchAPI:
             logger.warning("get_live_matches failed: %s", exc)
             return {"matches": []}
 
+    def _uptime_seconds(self) -> float:
+        """Real process/app uptime in seconds since __init__."""
+        start = getattr(self, "_start_monotonic", None)
+        if start is None:
+            return 0.0
+        return max(0.0, time.monotonic() - start)
+
+    def _active_connections(self) -> int:
+        """Real connection-pool usage via the engine's get_connection_stats().
+
+        Degrades gracefully to 0 when the engine lacks the method (e.g. the
+        plain QueryEngine) or stats are unavailable.
+        """
+        get_stats = getattr(self.session.engine, "get_connection_stats", None)
+        if not callable(get_stats):
+            return 0
+        try:
+            stats = get_stats() or {}
+            if not isinstance(stats, dict):
+                return 0
+            created = int(stats.get("total_created", 0) or 0)
+            idle = int(stats.get("read_pool_size", 0) or 0) + int(stats.get("write_pool_size", 0) or 0)
+            return max(0, created - idle)
+        except Exception:
+            return 0
+
     def get_health_status(self):
         """Get health status of the API."""
         try:
             # Check database connectivity
             db_status = "healthy"
-            active_connections = 0
             try:
                 # Simple query to test DB connection
                 self.session.engine.execute_sql("SELECT 1")
-                active_connections = getattr(self.session.engine, '_active_connections', 0)
             except Exception:
                 db_status = "unhealthy"
 
@@ -514,9 +546,9 @@ class PyPitchAPI:
             return {
                 "status": status,
                 "version": "1.0.0",
-                "uptime_seconds": 0,  # Would need to track actual uptime
+                "uptime_seconds": self._uptime_seconds(),
                 "database_status": db_status,
-                "active_connections": active_connections
+                "active_connections": self._active_connections(),
             }
         except Exception as e:
             raise Exception(f"Health check failed: {str(e)}")
@@ -591,11 +623,9 @@ class PyPitchAPI:
             try:
                 # Check database connectivity
                 db_status = "healthy"
-                active_connections = 0
                 try:
                     # Simple query to test DB connection
                     self.session.engine.execute_sql("SELECT 1")
-                    active_connections = getattr(self.session.engine, '_active_connections', 0)
                 except Exception:
                     db_status = "unhealthy"
 
@@ -604,9 +634,9 @@ class PyPitchAPI:
                 return {
                     "status": status,
                     "version": "1.0.0",
-                    "uptime_seconds": 0,  # Would need to track actual uptime
+                    "uptime_seconds": self._uptime_seconds(),
                     "database_status": db_status,
-                    "active_connections": active_connections
+                    "active_connections": self._active_connections(),
                 }
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Health check failed: {str(e)}")
@@ -701,8 +731,15 @@ class PyPitchAPI:
                     for mid, d in zip(rows.get("match_id", []), rows.get("date", []))
                 ]
                 return {"items": items, "total": total, "page": page, "page_size": page_size}
-            except (RuntimeError, AttributeError, TypeError):
-                return {"items": [], "total": 0, "page": page, "page_size": page_size}
+            except HTTPException:
+                raise
+            except Exception as e:
+                # A real failure (DB outage, query error) must surface as 5xx
+                # rather than masquerading as an empty result set. A genuinely
+                # empty dataset returns [] via the successful query path above.
+                logger.warning("list_matches failed: %s", e)
+                record_error_metrics("ListMatchesError", str(e))
+                raise HTTPException(status_code=500, detail="Internal server error")
 
         @self.app.get("/matches/{match_id}")
         async def get_match(match_id: str, authenticated: bool = Depends(verify_api_key)):
@@ -910,8 +947,11 @@ class PyPitchAPI:
                         [user_id, f"sha256:{query_fingerprint}", n, round(duration_ms, 2)],
                         read_only=False,
                     )
-                except Exception:
-                    pass
+                except Exception as audit_exc:
+                    # The /analyze response must still succeed, but a failed audit
+                    # write must be observable — never silently swallowed.
+                    logger.warning("audit_log write failed: %s", audit_exc)
+                    record_error_metrics("AuditWriteError", str(audit_exc))
 
                 return {"rows": n, "data": records}
 

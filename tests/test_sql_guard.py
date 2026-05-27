@@ -115,3 +115,94 @@ def test_sql_guard_allows_semicolon_inside_string_literal():
     # Valid single statement: semicolon appears inside a quoted literal.
     sql = validate_read_only_query("SELECT 'a;b' AS x")
     assert "a;b" in sql
+
+
+# ── Fuzz / bypass regression tests (table allowlist) ──────────────────────────
+# Each of these previously slipped past the sqlparse-only collector. They must
+# all be REJECTED because they read the internal, non-public audit_log (or
+# another non-allowlisted table) through a parser bypass.
+
+def test_sql_guard_rejects_comma_join_after_subquery():
+    # FROM (SELECT...) x, audit_log — comma-join after a parenthesized subquery.
+    with pytest.raises(SQLValidationError):
+        validate_read_only_query("SELECT * FROM (SELECT 1) x, audit_log")
+
+
+def test_sql_guard_rejects_join_to_non_public_table():
+    # JOIN target is audit_log (not in the public allowlist).
+    with pytest.raises(SQLValidationError):
+        validate_read_only_query("SELECT * FROM ball_events JOIN audit_log USING (x)")
+
+
+def test_sql_guard_rejects_quoted_audit_log():
+    # Double-quoted identifier must be stripped before allowlist check.
+    with pytest.raises(SQLValidationError):
+        validate_read_only_query('SELECT * FROM "audit_log"')
+
+
+def test_sql_guard_rejects_backtick_audit_log():
+    # Backtick quoting is invalid DuckDB syntax — must be rejected, not run.
+    with pytest.raises(SQLValidationError):
+        validate_read_only_query("SELECT * FROM `audit_log`")
+
+
+def test_sql_guard_rejects_bracket_audit_log():
+    # Bracket quoting is invalid DuckDB syntax — must be rejected, not run.
+    with pytest.raises(SQLValidationError):
+        validate_read_only_query("SELECT * FROM [audit_log]")
+
+
+def test_sql_guard_rejects_schema_qualified_audit_log():
+    # main.audit_log — schema-qualified reference to a non-public table.
+    with pytest.raises(SQLValidationError):
+        validate_read_only_query("SELECT * FROM main.audit_log")
+
+
+def test_sql_guard_rejects_schema_qualified_information_schema():
+    with pytest.raises(SQLValidationError):
+        validate_read_only_query("SELECT * FROM information_schema.tables")
+
+
+def test_sql_guard_rejects_comma_list_with_audit_log():
+    # Plain comma list mixing a public table with audit_log.
+    with pytest.raises(SQLValidationError):
+        validate_read_only_query("SELECT * FROM ball_events, audit_log")
+
+
+def test_sql_guard_rejects_audit_log_inside_subquery():
+    # audit_log hidden inside a parenthesized derived table.
+    with pytest.raises(SQLValidationError):
+        validate_read_only_query("SELECT * FROM (SELECT * FROM audit_log) z")
+
+
+def test_sql_guard_rejects_audit_log_via_union():
+    with pytest.raises(SQLValidationError):
+        validate_read_only_query(
+            "SELECT * FROM ball_events UNION SELECT * FROM audit_log"
+        )
+
+
+def test_sql_guard_rejects_table_function_catalog_read():
+    # duckdb_tables() is a table-valued function, never an allowlisted table.
+    with pytest.raises(SQLValidationError):
+        validate_read_only_query("SELECT * FROM duckdb_tables() t")
+
+
+# ── Fuzz: legitimate queries must still PASS ──────────────────────────────────
+
+def test_sql_guard_allows_two_table_join_of_public_tables():
+    sql = validate_read_only_query(
+        "SELECT * FROM ball_events b JOIN matchup_stats m ON b.batter_id = m.batter_id"
+    )
+    assert "ball_events" in sql
+
+
+def test_sql_guard_allows_subquery_over_public_table():
+    sql = validate_read_only_query(
+        "SELECT x FROM (SELECT batter_id AS x FROM ball_events LIMIT 5) q"
+    )
+    assert "ball_events" in sql
+
+
+def test_sql_guard_allows_comma_list_of_public_tables():
+    validate_read_only_query("SELECT * FROM ball_events, matchup_stats LIMIT 1")

@@ -1,3 +1,5 @@
+import threading
+
 import pytest
 from datetime import date
 from pypitch.storage.registry import IdentityRegistry, EntityNotFoundError
@@ -99,4 +101,101 @@ class TestRegistryDateContract:
             registry.resolve_player("Unknown XYZ Player", date(2023, 1, 1))
         # Must NOT be a ValueError from the date-guard
         assert not isinstance(exc_info.value, ValueError) or "match_date" not in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
+# Thread-safety: read methods share a single DuckDB connection (not thread-safe)
+# and must serialise access via self._lock. This stresses concurrent reads to
+# guard against segfaults / corrupted rows under FastAPI worker threads.
+# ---------------------------------------------------------------------------
+
+class TestRegistryConcurrentReads:
+    def test_concurrent_reads_are_consistent_and_exception_free(self, registry):
+        # Populate deterministic stats for a set of player/venue ids.
+        player_stats = {
+            pid: {
+                "matches": pid,
+                "runs": pid * 100,
+                "balls_faced": pid * 80,
+                "wickets": pid * 2,
+                "balls_bowled": pid * 10,
+                "runs_conceded": pid * 50,
+            }
+            for pid in range(1, 21)
+        }
+        venue_stats = {
+            vid: {
+                "matches": vid,
+                "total_runs": vid * 200,
+                "first_innings_runs": vid * 120,
+                "first_innings_count": vid,
+            }
+            for vid in range(1, 21)
+        }
+        registry.upsert_player_stats(player_stats)
+        registry.upsert_venue_stats(venue_stats)
+
+        errors: list[BaseException] = []
+        mismatches: list[str] = []
+        barrier = threading.Barrier(8)
+
+        def hammer_players() -> None:
+            try:
+                barrier.wait()
+                for _ in range(200):
+                    for pid in range(1, 21):
+                        res = registry.get_player_stats(pid)
+                        if res is None or res["runs"] != pid * 100:
+                            mismatches.append(f"player {pid}: {res}")
+            except BaseException as exc:  # noqa: BLE001
+                errors.append(exc)
+
+        def hammer_venues() -> None:
+            try:
+                barrier.wait()
+                for _ in range(200):
+                    for vid in range(1, 21):
+                        res = registry.get_venue_stats(vid)
+                        if res is None or res["total_runs"] != vid * 200:
+                            mismatches.append(f"venue {vid}: {res}")
+            except BaseException as exc:  # noqa: BLE001
+                errors.append(exc)
+
+        threads = [threading.Thread(target=hammer_players) for _ in range(4)]
+        threads += [threading.Thread(target=hammer_venues) for _ in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert errors == [], f"concurrent reads raised: {errors!r}"
+        assert mismatches == [], f"inconsistent reads: {mismatches[:5]!r}"
+
+    def test_concurrent_resolve_does_not_deadlock(self, registry):
+        """resolve_* -> _resolve_generic acquires the lock once; concurrent
+        resolves must not deadlock and must return a stable id per name."""
+        d1 = date(2020, 1, 1)
+        registry.resolve_player("Concurrent Player", d1, auto_ingest=True)
+
+        results: list[int] = []
+        errors: list[BaseException] = []
+        barrier = threading.Barrier(8)
+
+        def resolve() -> None:
+            try:
+                barrier.wait()
+                for _ in range(100):
+                    results.append(registry.resolve_player("Concurrent Player", d1))
+            except BaseException as exc:  # noqa: BLE001
+                errors.append(exc)
+
+        threads = [threading.Thread(target=resolve) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=30)
+
+        assert not any(t.is_alive() for t in threads), "resolve threads deadlocked"
+        assert errors == [], f"concurrent resolve raised: {errors!r}"
+        assert len(set(results)) == 1, f"unstable ids: {set(results)!r}"
 

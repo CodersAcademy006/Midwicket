@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import unicodedata
 from typing import Iterable
@@ -182,6 +183,71 @@ def _collect_table_refs(parsed: TokenList) -> set[str]:
     return refs
 
 
+def _walk_serialized_refs(node, base: set[str], funcs: set[str]) -> None:
+    """Recursively collect BASE_TABLE / TABLE_FUNCTION refs from DuckDB's
+    json_serialize_sql output. This reflects the query as DuckDB actually
+    parses it, so it cannot be fooled by comma-joins, parenthesized/nested
+    expressions, schema qualification, or quoted identifiers."""
+    if isinstance(node, dict):
+        node_type = node.get("type")
+        if node_type == "BASE_TABLE":
+            schema = (node.get("schema_name") or "").strip()
+            table = (node.get("table_name") or "").strip()
+            if table:
+                ref = f"{schema}.{table}" if schema else table
+                base.add(_normalize_ref_name(ref))
+        elif node_type == "TABLE_FUNCTION":
+            fn = node.get("function")
+            if isinstance(fn, dict):
+                fn_name = fn.get("function_name") or fn.get("schema") or ""
+                if fn_name:
+                    funcs.add(_normalize_ref_name(str(fn_name)))
+        for value in node.values():
+            _walk_serialized_refs(value, base, funcs)
+    elif isinstance(node, list):
+        for value in node:
+            _walk_serialized_refs(value, base, funcs)
+
+
+def _duckdb_table_refs(statement: str) -> tuple[set[str], set[str]] | None:
+    """Resolve table and table-function references using DuckDB's own parser.
+
+    Returns (base_table_refs, table_function_names) on success, or ``None`` if
+    DuckDB is unavailable (so the caller can fall back to the sqlparse path).
+    Raises SQLValidationError if DuckDB cannot parse the statement — a query
+    DuckDB cannot parse cannot be executed and must not be trusted.
+    """
+    try:
+        import duckdb
+    except Exception:  # pragma: no cover - duckdb is a hard dependency in prod
+        return None
+
+    try:
+        con = duckdb.connect()
+        try:
+            serialized = con.execute(
+                "SELECT json_serialize_sql(?)", [statement]
+            ).fetchone()[0]
+        finally:
+            con.close()
+    except Exception:
+        # Could not even serialize — treat as unparseable and reject.
+        raise SQLValidationError("Query could not be parsed and is not permitted")
+
+    try:
+        parsed = json.loads(serialized)
+    except (ValueError, TypeError):
+        raise SQLValidationError("Query could not be parsed and is not permitted")
+
+    if isinstance(parsed, dict) and parsed.get("error"):
+        raise SQLValidationError("Query could not be parsed and is not permitted")
+
+    base: set[str] = set()
+    funcs: set[str] = set()
+    _walk_serialized_refs(parsed, base, funcs)
+    return base, funcs
+
+
 def validate_read_only_query(
     sql: str,
     *,
@@ -236,10 +302,32 @@ def validate_read_only_query(
             raise SQLValidationError(f"Forbidden SQL function detected: {func}")
 
     # ── Table allowlist check ────────────────────────────────────────────────
-    # Collect parsed table names, subtract CTE names, and ensure every external
-    # reference is from the public allowlist.
-    table_refs = _collect_table_refs(parsed_statement)
+    # Resolve every referenced table the way DuckDB actually parses the query.
+    # This is the authoritative source of truth: it cannot be bypassed by
+    # comma-joins after a subquery, parenthesized/nested table expressions,
+    # schema-qualified names, or quoted identifiers. The legacy sqlparse-based
+    # collector is retained only as a fallback for the (unexpected) case where
+    # DuckDB is unavailable to import.
     cte_names = _extract_cte_names(parsed_statement)
+
+    duck = _duckdb_table_refs(statement)
+    if duck is not None:
+        # DuckDB's parser is authoritative: its BASE_TABLE list is exactly the
+        # set of real tables the query reads (derived-table/subquery aliases are
+        # NOT base tables, so they are correctly excluded). Use it directly.
+        duck_tables, duck_functions = duck
+        # Any table-valued function (e.g. duckdb_tables(), read_csv) resolved by
+        # DuckDB is never an allowlisted table — reject outright.
+        for fn in duck_functions:
+            if fn not in _PUBLIC_TABLES:
+                raise SQLValidationError(
+                    f"Table function {fn!r} is not permitted for /analyze queries"
+                )
+        table_refs = duck_tables
+    else:
+        # Fallback only when DuckDB is unavailable: hand-rolled sqlparse scan.
+        table_refs = _collect_table_refs(parsed_statement)
+
     external_refs = table_refs - cte_names
 
     for ref in external_refs:
