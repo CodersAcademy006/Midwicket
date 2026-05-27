@@ -16,20 +16,6 @@ CRICSHEET_URL = os.getenv("CRICSHEET_URL", "https://cricsheet.org/downloads/ipl_
 # Database settings
 data_dir_env = os.getenv("PYPITCH_DATA_DIR")
 DEFAULT_DATA_DIR = Path(data_dir_env) if data_dir_env else Path.home() / ".pypitch_data"
-_raw_threads = os.getenv("PYPITCH_DB_THREADS", "4")
-try:
-    DATABASE_THREADS = int(_raw_threads)
-except ValueError:
-    raise ValueError(
-        f"PYPITCH_DB_THREADS must be an integer, got {_raw_threads!r}"
-    )
-if not (1 <= DATABASE_THREADS <= 16):
-    raise ValueError(
-        f"PYPITCH_DB_THREADS must be between 1 and 16, got {DATABASE_THREADS}"
-    )
-DATABASE_MEMORY_LIMIT = os.getenv("PYPITCH_DB_MEMORY", "2GB")
-
-
 def _safe_int_env(
     name: str,
     default: int,
@@ -67,6 +53,10 @@ def _safe_int_env(
         return default
 
     return value
+
+
+DATABASE_THREADS = _safe_int_env("PYPITCH_DB_THREADS", 4, minimum=1, maximum=16)
+DATABASE_MEMORY_LIMIT = os.getenv("PYPITCH_DB_MEMORY", "2GB")
 
 # API settings
 API_HOST = os.getenv("PYPITCH_API_HOST", "0.0.0.0")  # nosec B104 – container default, operator configures via env

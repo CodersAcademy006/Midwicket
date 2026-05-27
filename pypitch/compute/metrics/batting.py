@@ -68,11 +68,13 @@ def relative_strike_rate(events: pa.Table) -> Optional[float]:
         # For now, return None to indicate missing dependency.
         return None
         
-    expected_sr = cast(float, pc.mean(events['venue_avg_sr']).as_py())
-    
-    if expected_sr == 0:
+    expected_sr = pc.mean(events['venue_avg_sr']).as_py()
+
+    # pc.mean() returns None when every venue_avg_sr value is null.
+    # Guard for None, NaN, and zero before dividing to avoid TypeError/Inf.
+    if expected_sr is None or np.isnan(expected_sr) or expected_sr == 0:
         return 0.0
-        
+
     return player_sr / expected_sr
 
 def calculate_impact_score(

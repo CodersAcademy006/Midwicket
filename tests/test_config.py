@@ -34,7 +34,17 @@ def test_invalid_cache_ttl_falls_back_to_default(
     assert cfg.CACHE_TTL == 3600
 
 
-def test_db_threads_validation_remains_strict(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_invalid_db_threads_falls_back_to_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PYPITCH_DB_THREADS", "invalid")
-    with pytest.raises(ValueError, match="PYPITCH_DB_THREADS must be an integer"):
-        _reload_config_module()
+    cfg = _reload_config_module()
+    assert cfg.DATABASE_THREADS == 4
+
+
+@pytest.mark.parametrize("bad_threads", ["0", "17", "-3"])
+def test_out_of_range_db_threads_falls_back_to_default(
+    monkeypatch: pytest.MonkeyPatch,
+    bad_threads: str,
+) -> None:
+    monkeypatch.setenv("PYPITCH_DB_THREADS", bad_threads)
+    cfg = _reload_config_module()
+    assert cfg.DATABASE_THREADS == 4
