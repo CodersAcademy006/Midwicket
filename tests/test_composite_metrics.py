@@ -38,6 +38,17 @@ def metric_rsr(events: pa.Table):
         
     return player_sr / venue_avg_sr
 
+class TestRelativeStrikeRateGuards(unittest.TestCase):
+    def test_all_null_venue_avg_sr_returns_zero(self):
+        """pc.mean() returns None when every venue_avg_sr is null;
+        the function must return 0.0 rather than raising TypeError."""
+        events = pa.table({
+            "runs_batter": pa.array([4, 6, 1], type=pa.int64()),
+            "venue_avg_sr": pa.array([None, None, None], type=pa.float64()),
+        })
+        result = relative_strike_rate(events)
+        self.assertEqual(result, 0.0)
+
 class TestCompositeMetrics(unittest.TestCase):
     
     def setUp(self):

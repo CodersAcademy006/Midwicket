@@ -59,6 +59,12 @@ class TestPressureIndex:
         pi = calculate_pressure_index(pa.array([12]), pa.array([24]))
         assert pi[0].as_py() == pytest.approx(50.0)
 
+    def test_zero_balls_returns_zero(self):
+        """balls == 0 must return 0.0, not Inf/NaN."""
+        pi = calculate_pressure_index(pa.array([0]), pa.array([0]))
+        result = pi[0].as_py()
+        assert result == pytest.approx(0.0), f"Expected 0.0, got {result}"
+
 
 # ---------------------------------------------------------------------------
 # Partnership  — zero-guard verification (PR #12 fixes)
