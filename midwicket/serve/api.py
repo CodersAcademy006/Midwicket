@@ -879,7 +879,7 @@ class MidwicketAPI:
         async def custom_analysis(request: Request, query: Dict[str, Any], authenticated: bool = Depends(verify_api_key)):
             """Run a read-only SELECT query against ball_events."""
             import os as _os
-            from midwicket.serve.sql_guard import validate_read_only_query, SQLValidationError
+            from midwicket.serve.sql_guard import validate_read_only_query, check_query_plan, SQLValidationError
             if not _os.getenv("MIDWICKET_ANALYZE_ENABLED", "false").lower() == "true":
                 raise HTTPException(
                     status_code=403,
@@ -910,6 +910,22 @@ class MidwicketAPI:
 
                 # Inject a hard row-limit to prevent full-scan memory exhaustion.
                 safe_sql = f"SELECT * FROM ({sql}) AS _q LIMIT {_ANALYZE_ROW_LIMIT}"  # nosec B608 – sql_guard validated above
+
+                # Cost estimation via EXPLAIN JSON
+                try:
+                    explain_res = self.session.engine.execute_sql(
+                        f"EXPLAIN (FORMAT JSON) {safe_sql}",
+                        params=params,
+                        read_only=True
+                    ).to_pandas()
+                    plan_json = explain_res.iloc[0]['physical_plan'] if 'physical_plan' in explain_res.columns else explain_res.iloc[0][1]
+                    check_query_plan(plan_json)
+                except SQLValidationError as exc:
+                    raise HTTPException(status_code=403, detail=str(exc))
+                except Exception as exc:
+                    logger.warning(f"Cost estimation failed: {exc}")
+                    # Allow to proceed if EXPLAIN fails for other reasons, or reject?
+                    pass
 
                 # Explicit query timeout to reduce long-running query DoS risk.
                 raw_timeout = _os.getenv("MIDWICKET_ANALYZE_TIMEOUT_SECONDS", str(_ANALYZE_TIMEOUT_DEFAULT_S)).strip()
