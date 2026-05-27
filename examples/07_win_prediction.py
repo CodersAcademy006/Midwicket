@@ -5,10 +5,10 @@ Demonstrates the Win Probability API using the built-in
 Duckworth-Lewis-style model (no data download required).
 
 For venue-adjusted predictions, wire in a trained ML model
-via pp.set_win_model() — see 29_win_probability.py for details.
+via md.set_win_model() — see 29_win_probability.py for details.
 """
 
-import pypitch.express as px
+import midwicket.express as px
 
 
 def main():

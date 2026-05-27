@@ -13,13 +13,13 @@ Usage:
 
 import pyarrow as pa
 from datetime import date
-from pypitch.schema.v1 import BALL_EVENT_SCHEMA
-from pypitch.storage.engine import QueryEngine
-from pypitch.runtime.executor import RuntimeExecutor
-from pypitch.runtime.cache import CacheInterface
-from pypitch.runtime.planner import QueryPlanner
-from pypitch.compute.derived import DerivedStore
-from pypitch.query.base import MatchupQuery
+from midwicket.schema.v1 import BALL_EVENT_SCHEMA
+from midwicket.storage.engine import QueryEngine
+from midwicket.runtime.executor import RuntimeExecutor
+from midwicket.runtime.cache import CacheInterface
+from midwicket.runtime.planner import QueryPlanner
+from midwicket.compute.derived import DerivedStore
+from midwicket.query.base import MatchupQuery
 
 
 # ---------------------------------------------------------------------------
@@ -72,7 +72,7 @@ def make_sample_table() -> pa.Table:
 
 
 def main() -> None:
-    print("PyPitch Query Engine Demo — in-memory")
+    print("Midwicket Query Engine Demo — in-memory")
     print("=" * 50)
 
     # ------------------------------------------------------------------

@@ -83,7 +83,7 @@ print(mw.__version__)  # Should print: 0.1.0
 Legacy compatibility is preserved:
 
 ```python
-import pypitch as pp  # still supported
+import midwicket as md  # still supported
 ```
 
 ## Deployment
@@ -150,12 +150,12 @@ For custom deployment scenarios:
 pip install -r requirements.txt
 pip install 'midwicket[serve]'
 
-# Set environment variables (all use PYPITCH_ prefix)
-export PYPITCH_SECRET_KEY="your-secret-key-at-least-32-chars"
-export PYPITCH_API_KEY_REQUIRED="true"
-export PYPITCH_API_KEYS="your-api-key-here"
-export PYPITCH_CORS_ORIGINS="https://your-frontend.example.com"
-export PYPITCH_ALLOWED_HOSTS="your-domain.example.com,localhost"
+# Set environment variables (all use MIDWICKET_ prefix)
+export MIDWICKET_SECRET_KEY="your-secret-key-at-least-32-chars"
+export MIDWICKET_API_KEY_REQUIRED="true"
+export MIDWICKET_API_KEYS="your-api-key-here"
+export MIDWICKET_CORS_ORIGINS="https://your-frontend.example.com"
+export MIDWICKET_ALLOWED_HOSTS="your-domain.example.com,localhost"
 
 # Run the API
 python -c "from midwicket import serve; serve()"
@@ -199,10 +199,10 @@ pip install midwicket
 ```
 
 ```python
-import midwicket as pp
+import midwicket as md
 
 # Initialize session with data directory
-session = pp.api.session.PyPitchSession("./data")
+session = md.api.session.MidwicketSession("./data")
 
 # Download sample data (IPL 2023)
 from midwicket.data.loader import DataLoader
@@ -226,12 +226,12 @@ Midwicket provides multiple API levels for different use cases:
 - **Features**: One-liner functions, automatic setup, sensible defaults
 - **Example**: `px.get_player_stats("V Kohli")`
 
-### Core API (`pypitch.api`)
+### Core API (`midwicket.api`)
 - **Best for**: Production applications, custom workflows
 - **Features**: Full control, session management, advanced features
-- **Example**: `PyPitchSession("./data").get_player_stats("V Kohli")`
+- **Example**: `MidwicketSession("./data").get_player_stats("V Kohli")`
 
-### Direct Engine Access (`pypitch.storage`, `pypitch.compute`)
+### Direct Engine Access (`midwicket.storage`, `midwicket.compute`)
 - **Best for**: Custom analytics, high-performance computing
 - **Features**: Raw data access, custom queries, plugin system
 
@@ -246,7 +246,7 @@ stats = px.get_player_stats("Steve Smith")
 matchup = px.get_matchup("V Kohli", "JJ Bumrah")
 
 # Fantasy cheat sheet for a venue
-cheat = pp.fantasy.cheat_sheet("Wankhede Stadium")
+cheat = md.fantasy.cheat_sheet("Wankhede Stadium")
 print(cheat.head())
 ```
 
@@ -256,7 +256,7 @@ print(cheat.head())
 session.load_match("980959")
 
 # Win probability at a point in the match
-from pypitch.compute.winprob import win_probability
+from midwicket.compute.winprob import win_probability
 prob = win_probability(target=180, current_runs=120,
                        wickets_down=5, overs_done=15.0, venue=None)
 print(f"Chase win probability: {prob['win_prob']:.1%}")
@@ -269,30 +269,30 @@ result = px.predict_win("Eden Gardens", 180, 120, 5, 15.0)
 print(f"Win chance: {result['win_prob']:.1%}")
 
 # Venue batting/bowling bias
-bias = pp.fantasy.venue_bias("Wankhede Stadium")
+bias = md.fantasy.venue_bias("Wankhede Stadium")
 print(f"Verdict: {bias['verdict']}")
 ```
 
 ### Data Management
 ```python
 # Download IPL data (~50 MB)
-from pypitch.data.loader import DataLoader
+from midwicket.data.loader import DataLoader
 loader = DataLoader("./data")
 loader.download()
 
 # Build the identity registry from raw files
-from pypitch.data.pipeline import build_registry_stats
+from midwicket.data.pipeline import build_registry_stats
 build_registry_stats(loader, session.registry)
 
 # Raw SQL via the query engine
-from pypitch.storage.engine import QueryEngine
-engine = QueryEngine("./data/pypitch.duckdb")
+from midwicket.storage.engine import QueryEngine
+engine = QueryEngine("./data/midwicket.duckdb")
 results = engine.execute_sql("SELECT * FROM ball_events LIMIT 10")
 ```
 
 ## Architecture Overview
 
-PyPitch uses a modular, agent-based architecture with clear separation of concerns:
+Midwicket uses a modular, agent-based architecture with clear separation of concerns:
 
 ```
 Data Flow: Cricsheet JSON → Ingestion → DuckDB Cache → PyArrow Table → Pandas
@@ -301,7 +301,7 @@ Data Flow: Cricsheet JSON → Ingestion → DuckDB Cache → PyArrow Table → P
 ### Module Structure
 
 ```
-pypitch/
+midwicket/
 ├── api/             # User-Facing APIs (Express, Core, Plugins)
 ├── schema/          # Immutable Data Definitions (Schema V1)
 ├── query/           # Explicit Query Objects with Hashing
@@ -322,7 +322,7 @@ For detailed architecture information, see [Agents.md](Agents.md).
 
 ## Data Sources
 
-PyPitch uses [Cricsheet](https://cricsheet.org/) as its primary data source, providing comprehensive ball-by-ball data for international and domestic cricket matches. The library also supports:
+Midwicket uses [Cricsheet](https://cricsheet.org/) as its primary data source, providing comprehensive ball-by-ball data for international and domestic cricket matches. The library also supports:
 
 - **Custom Data Ingestion**: Import your own cricket data in JSON format
 - **Cricsheet Data Download**: Fetch IPL/international data via `loader.download()` (~50 MB, one-time)
@@ -332,27 +332,27 @@ PyPitch uses [Cricsheet](https://cricsheet.org/) as its primary data source, pro
 
 ### Core Documentation
 
-- **[Complete API Reference](pypitch/docs/api.md)**: Detailed function documentation with examples
+- **[Complete API Reference](midwicket/docs/api.md)**: Detailed function documentation with examples
 - **[Architecture Guide](Agents.md)**: Agent-based system design and philosophy
-- **[Win Probability Model](pypitch/docs/winprob_model.md)**: ML model implementation details
-- **[Debug Mode](pypitch/docs/debug_mode.md)**: Troubleshooting and debugging guide
+- **[Win Probability Model](midwicket/docs/winprob_model.md)**: ML model implementation details
+- **[Debug Mode](midwicket/docs/debug_mode.md)**: Troubleshooting and debugging guide
 
 ### Additional Resources
 
 - **[Examples](examples/)**: Jupyter notebooks and sample scripts (25+ examples)
-- **[Adapters](pypitch/docs/adapters.md)**: Custom data source integration guide
-- **[Impact Player](pypitch/docs/impact_player.md)**: Player impact analysis documentation
+- **[Adapters](midwicket/docs/adapters.md)**: Custom data source integration guide
+- **[Impact Player](midwicket/docs/impact_player.md)**: Player impact analysis documentation
 
 ## Examples
 
-PyPitch includes a comprehensive collection of examples to help you get started. All examples are located in the [examples/](examples/) directory.
+Midwicket includes a comprehensive collection of examples to help you get started. All examples are located in the [examples/](examples/) directory.
 
 ### Basic Analysis
 
 Analyze player statistics across multiple players:
 
 ```python
-import pypitch.express as px
+import midwicket.express as px
 
 # Load data first (one-time download from cricsheet.org, ~50 MB)
 session = px.quick_load()
@@ -371,7 +371,7 @@ for player in players:
 Predict match outcomes using real-time data:
 
 ```python
-import pypitch.express as px
+import midwicket.express as px
 
 # Real-time win probability calculation
 venue = "Wankhede Stadium"
@@ -390,7 +390,7 @@ print(f"Model confidence: {prob['confidence']:.1%}")
 Generate a fantasy selection cheat sheet ranked by projected points at a venue:
 
 ```python
-from pypitch.api.fantasy import cheat_sheet, venue_bias
+from midwicket.api.fantasy import cheat_sheet, venue_bias
 
 # Top 20 players by avg fantasy points at this venue
 df = cheat_sheet("Wankhede Stadium")
@@ -408,10 +408,10 @@ print(f"Verdict: {bias['verdict']} "
 Perform custom analytics using direct SQL queries:
 
 ```python
-from pypitch.storage.engine import QueryEngine
+from midwicket.storage.engine import QueryEngine
 
 # Initialize query engine
-engine = QueryEngine("./data/pypitch.duckdb")
+engine = QueryEngine("./data/midwicket.duckdb")
 
 # Custom SQL query for detailed analysis
 query = """
@@ -432,7 +432,7 @@ For more examples, see the [examples/](examples/) directory which contains 25+ s
 
 ## Performance
 
-PyPitch is engineered for high performance with modern data processing technologies:
+Midwicket is engineered for high performance with modern data processing technologies:
 
 ### Performance Features
 
@@ -458,7 +458,7 @@ Performance metrics on sample IPL 2023 dataset:
 ## Stability & Compatibility
 
 ### Versioning
-PyPitch follows [Semantic Versioning](https://semver.org/):
+Midwicket follows [Semantic Versioning](https://semver.org/):
 
 - **Major (1.x → 2.x)**: Breaking architecture changes
 - **Minor (0.1 → 0.2)**: New features (backward compatible)
@@ -472,7 +472,7 @@ PyPitch follows [Semantic Versioning](https://semver.org/):
 
 ## Contributing
 
-We welcome contributions from the community! PyPitch is an open-source project and we appreciate help in the following areas:
+We welcome contributions from the community! Midwicket is an open-source project and we appreciate help in the following areas:
 
 - Bug fixes and issue reporting
 - Feature development and enhancements
@@ -482,7 +482,7 @@ We welcome contributions from the community! PyPitch is an open-source project a
 
 ### How to Contribute
 
-1. **Fork the Repository**: Create your own fork of the PyPitch repository
+1. **Fork the Repository**: Create your own fork of the Midwicket repository
 2. **Create a Branch**: Make a feature branch for your changes
    ```bash
    git checkout -b feature/your-feature-name
@@ -512,7 +512,7 @@ pip install -e .
 pytest
 
 # Run with coverage
-pytest --cov=pypitch
+pytest --cov=midwicket
 ```
 
 ### Code Style Guidelines
@@ -527,14 +527,14 @@ pytest --cov=pypitch
 
 When reporting issues, please include:
 - Python version and operating system
-- PyPitch version
+- Midwicket version
 - Minimal code example to reproduce the issue
 - Expected vs. actual behavior
 - Error messages and stack traces
 
 ## License
 
-PyPitch is released under the **MIT License**. This means you are free to use, modify, and distribute the software, subject to the terms and conditions of the MIT License.
+Midwicket is released under the **MIT License**. This means you are free to use, modify, and distribute the software, subject to the terms and conditions of the MIT License.
 
 For full license details, see the [LICENSE](LICENSE) file in the repository.
 
@@ -542,16 +542,16 @@ For full license details, see the [LICENSE](LICENSE) file in the repository.
 
 ### Getting Help
 
-If you need assistance or have questions about PyPitch:
+If you need assistance or have questions about Midwicket:
 
-- **Documentation**: Comprehensive guides available in the [docs](pypitch/docs/) directory
+- **Documentation**: Comprehensive guides available in the [docs](midwicket/docs/) directory
 - **GitHub Issues**: [Report bugs or request features](https://github.com/CodersAcademy006/Midwicket/issues)
 - **GitHub Discussions**: [Ask questions and share ideas](https://github.com/CodersAcademy006/Midwicket/discussions)
 - **Examples**: Browse [25+ example scripts](examples/) for common use cases
 
 ### Community
 
-Join the PyPitch community to connect with other users and contributors:
+Join the Midwicket community to connect with other users and contributors:
 
 - Share your cricket analytics projects
 - Get help from experienced users
@@ -560,7 +560,7 @@ Join the PyPitch community to connect with other users and contributors:
 
 ## Roadmap
 
-PyPitch is under active development with a clear roadmap for future enhancements.
+Midwicket is under active development with a clear roadmap for future enhancements.
 
 ### Current Version: v0.1.0
 

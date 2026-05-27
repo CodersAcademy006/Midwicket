@@ -5,10 +5,10 @@ This script demonstrates how to execute raw SQL queries against the underlying D
 This is useful for ad-hoc analysis not covered by the standard Query objects.
 """
 
-from pypitch.api.session import PyPitchSession
+from midwicket.api.session import MidwicketSession
 
 def main():
-    session = PyPitchSession.get()
+    session = MidwicketSession.get()
     
     # The main table is registered as 'ball_events'
     sql = """

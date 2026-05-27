@@ -4,10 +4,10 @@
 This script aggregates stats by Team.
 """
 
-from pypitch.api.session import PyPitchSession
+from midwicket.api.session import MidwicketSession
 
 def main():
-    session = PyPitchSession.get()
+    session = MidwicketSession.get()
     session.registry.close()
     
     registry_path = session.registry_path.replace("\\", "/")

@@ -1,5 +1,5 @@
 """
-Tests for PyPitch Plugin System and Input Validation
+Tests for Midwicket Plugin System and Input Validation
 
 Tests the plugin management system and Pydantic validation models.
 """
@@ -7,8 +7,8 @@ Tests the plugin management system and Pydantic validation models.
 import pytest
 from unittest.mock import Mock, patch
 
-from pypitch.api.plugins import PluginManager, PluginSpec, get_plugin_manager, register_plugin
-from pypitch.api.validation import (
+from midwicket.api.plugins import PluginManager, PluginSpec, get_plugin_manager, register_plugin
+from midwicket.api.validation import (
     WinPredictionRequest, PlayerLookupRequest, VenueLookupRequest,
     MatchupRequest, FantasyPointsRequest, StatsFilterRequest,
     LiveMatchRegistrationRequest, DeliveryDataRequest,
@@ -38,7 +38,7 @@ class TestPluginManager:
         plugins = plugin_manager.discover_plugins()
         assert plugins == []
 
-    @patch.dict('os.environ', {'PYPITCH_PLUGINS': 'test_plugin:test_module', 'PYPITCH_PLUGIN_ALLOWLIST': 'test_module'})
+    @patch.dict('os.environ', {'MIDWICKET_PLUGINS': 'test_plugin:test_module', 'MIDWICKET_PLUGIN_ALLOWLIST': 'test_module'})
     def test_discover_plugins_with_env(self, plugin_manager):
         """Test plugin discovery with environment variable and matching allowlist."""
         plugins = plugin_manager.discover_plugins()
@@ -46,7 +46,7 @@ class TestPluginManager:
         assert plugins[0].name == "test_plugin"
         assert plugins[0].entry_point == "test_module"
 
-    @patch.dict('os.environ', {'PYPITCH_PLUGIN_ALLOWLIST': 'test_module'})
+    @patch.dict('os.environ', {'MIDWICKET_PLUGIN_ALLOWLIST': 'test_module'})
     @patch('importlib.import_module')
     def test_load_plugin_success(self, mock_import, plugin_manager):
         """Test successful plugin loading with allowlist set."""

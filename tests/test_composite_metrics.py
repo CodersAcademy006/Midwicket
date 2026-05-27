@@ -1,14 +1,14 @@
 import unittest
 import pyarrow as pa
 from datetime import date
-from pypitch.storage.engine import QueryEngine
-from pypitch.storage.registry import IdentityRegistry
-from pypitch.runtime.executor import RuntimeExecutor
-from pypitch.runtime.cache_duckdb import DuckDBCache
-from pypitch.query.defs import MatchupQuery
-from pypitch.core.canonicalize import canonicalize_match
-from pypitch.compute.decorators import requires
-from pypitch.compute.metrics.batting import relative_strike_rate
+from midwicket.storage.engine import QueryEngine
+from midwicket.storage.registry import IdentityRegistry
+from midwicket.runtime.executor import RuntimeExecutor
+from midwicket.runtime.cache_duckdb import DuckDBCache
+from midwicket.query.defs import MatchupQuery
+from midwicket.core.canonicalize import canonicalize_match
+from midwicket.compute.decorators import requires
+from midwicket.compute.metrics.batting import relative_strike_rate
 import pyarrow.compute as pc
 
 # Define a test metric with dependencies

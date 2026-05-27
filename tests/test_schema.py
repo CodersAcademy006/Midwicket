@@ -1,7 +1,7 @@
 import unittest
 import pyarrow as pa
-from pypitch.schema.v1 import BALL_EVENT_SCHEMA, SCHEMA_META
-from pypitch.core.match_config import MatchConfig
+from midwicket.schema.v1 import BALL_EVENT_SCHEMA, SCHEMA_META
+from midwicket.core.match_config import MatchConfig
 
 class TestSchemaContract(unittest.TestCase):
     

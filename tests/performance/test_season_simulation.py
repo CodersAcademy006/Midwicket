@@ -1,5 +1,5 @@
 """
-Integration Tests for PyPitch
+Integration Tests for Midwicket
 
 Tests that simulate real-world usage scenarios, particularly long-running
 operations like full season data ingestion and analysis.
@@ -14,9 +14,9 @@ import tempfile
 import time
 from typing import Dict, Any
 
-from pypitch.api.session import PyPitchSession
-from pypitch.storage.thread_safe_engine import create_thread_safe_engine
-from pypitch.exceptions import DataIngestionError, QueryExecutionError
+from midwicket.api.session import MidwicketSession
+from midwicket.storage.thread_safe_engine import create_thread_safe_engine
+from midwicket.exceptions import DataIngestionError, QueryExecutionError
 
 class TestSeasonSimulation:
     """
@@ -48,7 +48,7 @@ class TestSeasonSimulation:
                 f.write("{}")
 
             engine = create_thread_safe_engine(temp_db_path)
-            session = PyPitchSession(data_dir=str(data_dir), engine=engine, skip_registry_build=True)
+            session = MidwicketSession(data_dir=str(data_dir), engine=engine, skip_registry_build=True)
             yield session
             session.close()
 
