@@ -241,6 +241,7 @@ class TestStreamIngestor:
             )
 
         ingestor.update_match_data = _raise_queue_full
+        ingestor.webhook_enabled = True  # webhook is opt-in; enable for this test
         ingestor._start_webhook_server()
 
         conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
@@ -288,6 +289,7 @@ class TestStreamIngestor:
             raise DataIngestionError("Missing required fields: ['inning']")
 
         ingestor.update_match_data = _raise_schema_error
+        ingestor.webhook_enabled = True  # webhook is opt-in; enable for this test
         ingestor._start_webhook_server()
 
         conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)

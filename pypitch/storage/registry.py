@@ -75,7 +75,9 @@ class IdentityRegistry:
         """)
 
     def get_player_stats(self, player_id: int) -> Optional[Dict[str, Any]]:
-        res = self.con.execute("SELECT * FROM player_stats WHERE entity_id = ?", [player_id]).fetchone()
+        # DuckDB connections are not thread-safe; guard the execute + fetch.
+        with self._lock:
+            res = self.con.execute("SELECT * FROM player_stats WHERE entity_id = ?", [player_id]).fetchone()
         if res:
             return {
                 "matches": res[1],
@@ -88,7 +90,9 @@ class IdentityRegistry:
         return None
 
     def get_venue_stats(self, venue_id: int) -> Optional[Dict[str, Any]]:
-        res = self.con.execute("SELECT * FROM venue_stats WHERE entity_id = ?", [venue_id]).fetchone()
+        # DuckDB connections are not thread-safe; guard the execute + fetch.
+        with self._lock:
+            res = self.con.execute("SELECT * FROM venue_stats WHERE entity_id = ?", [venue_id]).fetchone()
         if res:
             return {
                 "matches": res[1],
@@ -145,11 +149,13 @@ class IdentityRegistry:
 
     def get_matchup_stats(self, batter_id: int, bowler_id: int) -> Optional[Dict[str, Any]]:
         """Return head-to-head stats for a batter/bowler pair, or None if unknown."""
-        res = self.con.execute(
-            "SELECT balls, runs, wickets, dot_balls, boundaries, sixes "
-            "FROM matchup_stats WHERE batter_id = ? AND bowler_id = ?",
-            [batter_id, bowler_id],
-        ).fetchone()
+        # DuckDB connections are not thread-safe; guard the execute + fetch.
+        with self._lock:
+            res = self.con.execute(
+                "SELECT balls, runs, wickets, dot_balls, boundaries, sixes "
+                "FROM matchup_stats WHERE batter_id = ? AND bowler_id = ?",
+                [batter_id, bowler_id],
+            ).fetchone()
         if res:
             return {
                 "balls": res[0], "runs": res[1], "wickets": res[2],
@@ -186,11 +192,10 @@ class IdentityRegistry:
     def _resolve_generic(self, name: str, entity_type: str, match_date: date, auto_ingest: bool = False) -> int:
         prefix = entity_type[0].upper()
         cache_key = f"{prefix}:{name}:{match_date}"
-        if cache_key in self._cache:
-            return self._cache[cache_key]
 
+        # Cache check and all self.con access happen under the lock: DuckDB
+        # connections are not thread-safe and the cache mirrors DB state.
         with self._lock:
-            # Double-check after acquiring lock
             if cache_key in self._cache:
                 return self._cache[cache_key]
 
