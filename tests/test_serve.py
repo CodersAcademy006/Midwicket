@@ -733,5 +733,60 @@ class TestFastAPIApp:
         assert response.status_code == 200
         assert response.json() == {"entries": [], "count": 0}
 
+    def test_health_reports_real_uptime(self, client):
+        """uptime_seconds must be a real, positive value after startup."""
+        response = client.get("/v1/health")
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data["uptime_seconds"], (int, float))
+        assert data["uptime_seconds"] > 0
+
+    def test_matches_empty_for_empty_dataset(self, mock_session):
+        """A genuinely-empty ball_events table returns [] (not an error)."""
+        from fastapi.testclient import TestClient
+
+        # Create the table so the query succeeds but yields zero rows.
+        mock_session.engine.execute_sql(
+            """
+            CREATE TABLE IF NOT EXISTS ball_events (
+                match_id VARCHAR, date DATE, venue_id INTEGER,
+                batting_team_id INTEGER, bowling_team_id INTEGER
+            )
+            """,
+            read_only=False,
+        )
+        app = create_app(session=mock_session, start_ingestor=False)
+        with TestClient(app) as client:
+            response = client.get("/matches")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["items"] == []
+        assert body["total"] == 0
+
+    def test_matches_returns_500_on_infra_error(self):
+        """A real DB failure in /matches surfaces as 500, not empty success."""
+        from fastapi.testclient import TestClient
+
+        session = Mock()
+        session.registry = Mock()
+        session.engine = Mock()
+
+        def _execute_sql(sql, *args, **kwargs):
+            normalized = " ".join(str(sql).split()).lower()
+            if "create" in normalized and "audit_log" in normalized:
+                return Mock()
+            if "create sequence" in normalized:
+                return Mock()
+            if "ball_events" in normalized:
+                raise RuntimeError("connection pool exhausted")
+            return Mock()
+
+        session.engine.execute_sql.side_effect = _execute_sql
+
+        app = create_app(session=session, start_ingestor=False)
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.get("/matches")
+        assert response.status_code == 500
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

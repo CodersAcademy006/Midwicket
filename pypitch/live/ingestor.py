@@ -78,8 +78,10 @@ class StreamIngestor:
         self.dead_letter: List[Dict[str, Any]] = []
         self._dead_letter_lock = threading.Lock()
 
-        # Webhook server
+        # Webhook server — opt-in only. It binds a raw, unauthenticated HTTP
+        # listener, so it stays off unless PYPITCH_WEBHOOK_ENABLED=true.
         self.webhook_server = None
+        self.webhook_enabled = os.getenv("PYPITCH_WEBHOOK_ENABLED", "false").strip().lower() == "true"
         self.webhook_host = os.getenv("PYPITCH_WEBHOOK_HOST", "localhost").strip() or "localhost"
         self.webhook_port = 8080
 
@@ -268,7 +270,15 @@ class StreamIngestor:
         self.webhook_host = host
 
     def _start_webhook_server(self):
-        """Start the webhook HTTP server."""
+        """Start the webhook HTTP server (opt-in via PYPITCH_WEBHOOK_ENABLED)."""
+        if not self.webhook_enabled:
+            logger.info(
+                "Webhook server disabled; set PYPITCH_WEBHOOK_ENABLED=true to bind %s:%s.",
+                self.webhook_host,
+                self.webhook_port,
+            )
+            return
+
         from http.server import HTTPServer, BaseHTTPRequestHandler
         import urllib.parse
 
@@ -344,9 +354,12 @@ class StreamIngestor:
 
         try:
             self.webhook_server = HTTPServer((self.webhook_host, self.webhook_port), create_handler)
-            if self.webhook_executor is None:
-                raise RuntimeError("Webhook executor is not initialized")
-            self.webhook_executor.submit(self.webhook_server.serve_forever)
+            # Daemon thread: a missed stop() can never keep the interpreter alive.
+            threading.Thread(
+                target=self.webhook_server.serve_forever,
+                name="pypitch-webhook",
+                daemon=True,
+            ).start()
             logger.info("Webhook server started on %s:%s", self.webhook_host, self.webhook_port)
         except Exception as e:
             logger.error(f"Failed to start webhook server: {e}")
