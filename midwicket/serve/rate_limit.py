@@ -200,8 +200,77 @@ class DuckDBRateLimiter:
         with self.lock:
             self.con.close()
 
+class RedisRateLimiter:
+    """Redis-backed sliding-window limiter for multi-worker production environments."""
+    
+    def __init__(self, requests_per_minute: int = 60, redis_url: str | None = None):
+        self.requests_per_minute = requests_per_minute
+        import redis
+        if redis_url:
+            self.client = redis.from_url(redis_url)
+        else:
+            try:
+                self.client = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+                self.client.ping()
+            except redis.ConnectionError:
+                logger.warning("Local Redis not available, using fakeredis for fallback.")
+                import fakeredis
+                self.client = fakeredis.FakeRedis(decode_responses=True)
+                
+    def _key(self, key: str) -> str:
+        return f"ratelimit:{key}"
 
-def _build_rate_limiter() -> RateLimiter | DuckDBRateLimiter:
+    def is_allowed(self, key: str) -> bool:
+        now = time.time()
+        window_start = now - 60
+        rkey = self._key(key)
+        
+        pipe = self.client.pipeline()
+        pipe.zremrangebyscore(rkey, '-inf', window_start)
+        pipe.zcard(rkey)
+        results = pipe.execute()
+        current_count = results[1]
+        
+        if current_count < self.requests_per_minute:
+            pipe = self.client.pipeline()
+            pipe.zadd(rkey, {str(now): now})
+            pipe.expire(rkey, 60)
+            pipe.execute()
+            return True
+        return False
+
+    def get_remaining_requests(self, key: str) -> int:
+        now = time.time()
+        window_start = now - 60
+        rkey = self._key(key)
+        
+        pipe = self.client.pipeline()
+        pipe.zremrangebyscore(rkey, '-inf', window_start)
+        pipe.zcard(rkey)
+        results = pipe.execute()
+        current_count = results[1]
+        
+        return max(0, self.requests_per_minute - current_count)
+
+    def get_reset_time(self, key: str) -> float:
+        now = time.time()
+        window_start = now - 60
+        rkey = self._key(key)
+        
+        self.client.zremrangebyscore(rkey, '-inf', window_start)
+        oldest = self.client.zrange(rkey, 0, 0, withscores=True)
+        if not oldest:
+            return 0
+        oldest_ts = oldest[0][1]
+        return max(0, (oldest_ts + 60) - now)
+
+    def cleanup_old_keys(self) -> None:
+        pass # Redis EXPIRE handles cleanup
+
+    def close(self) -> None:
+        self.client.close()
+
+def _build_rate_limiter() -> RateLimiter | DuckDBRateLimiter | RedisRateLimiter:
     raw_rpm = os.getenv("MIDWICKET_RATE_LIMIT_REQUESTS_PER_MINUTE", "60")
     try:
         requests_per_minute = int(raw_rpm)
@@ -216,10 +285,20 @@ def _build_rate_limiter() -> RateLimiter | DuckDBRateLimiter:
 
     configured_backend = os.getenv("MIDWICKET_RATE_LIMIT_BACKEND", "").strip().lower()
 
-    if configured_backend in {"duckdb", "memory"}:
+    if configured_backend in {"redis", "duckdb", "memory"}:
         backend = configured_backend
     else:
-        backend = "duckdb" if os.getenv("MIDWICKET_ENV", "development").lower() == "production" else "memory"
+        backend = "redis" if os.getenv("MIDWICKET_ENV", "development").lower() == "production" else "memory"
+
+    if backend == "redis":
+        try:
+            redis_url = os.getenv("MIDWICKET_REDIS_URL", "").strip() or None
+            limiter = RedisRateLimiter(requests_per_minute=requests_per_minute, redis_url=redis_url)
+            logger.info("Rate limiter backend: redis")
+            return limiter
+        except Exception as exc:
+            logger.warning("Failed to initialize Redis rate limiter (%s). Falling back to DuckDB.", exc)
+            backend = "duckdb"
 
     if backend == "duckdb":
         try:

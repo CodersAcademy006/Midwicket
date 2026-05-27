@@ -7,7 +7,7 @@ Supports data preparation, model training, validation, and deployment.
 
 import pandas as pd
 import numpy as np
-from sklearn.linear_model import LogisticRegression, SGDClassifier
+from sklearn.linear_model import SGDClassifier
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.metrics import accuracy_score, log_loss, roc_auc_score
 from sklearn.preprocessing import StandardScaler
@@ -21,7 +21,7 @@ import os
 from .win_predictor import WinPredictor
 from .registry import get_model_registry
 from .win_features import FEATURE_COLUMNS, compute_chase_features
-from ..exceptions import ModelTrainingError, DataValidationError
+from ..exceptions import DataValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -238,7 +238,6 @@ class WinProbabilityTrainer:
         # Grid search / hyperparameter tuning and Epochs training
         best_loss = float('inf')
         best_model = None
-        best_metrics = None
         best_epochs = 50
         
         # Test a couple of params (alphas)
@@ -261,12 +260,12 @@ class WinProbabilityTrainer:
                 
                 # Checkpoints
                 os.makedirs('checkpoints', exist_ok=True)
-                joblib.dump(model, f'checkpoints/last_checkpoint.pkl')
+                joblib.dump(model, 'checkpoints/last_checkpoint.pkl')
                 
                 if val_loss < best_loss:
                     best_loss = val_loss
                     best_model = copy.deepcopy(model)
-                    joblib.dump(best_model, f'checkpoints/best_model.pkl')
+                    joblib.dump(best_model, 'checkpoints/best_model.pkl')
                     
         # Use the best model
         model = best_model
@@ -388,7 +387,10 @@ class WinProbabilityTrainer:
         logger.info("Starting win probability model training...")
 
         # Prepare data
-        features, target = self.prepare_training_data(match_data)
+        if "runs_total" not in match_data.columns:
+            features, target, _ = self.prepare_training_dataset(match_data)
+        else:
+            features, target = self.prepare_training_data(match_data)
 
         # Train model
         model, metrics = self.train_model(features, target)

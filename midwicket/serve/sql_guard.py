@@ -355,3 +355,23 @@ def validate_read_only_query(
         raise SQLValidationError("Query too complex: too many UNION clauses")
 
     return statement
+
+
+def check_query_plan(plan_json_str: str) -> None:
+    """Analyze a DuckDB physical query plan (JSON) and reject unbounded operations."""
+    try:
+        plan = json.loads(plan_json_str)
+    except Exception:
+        raise SQLValidationError("Invalid query plan format")
+
+    def _walk(node):
+        if isinstance(node, dict):
+            if node.get("name") == "CROSS_PRODUCT":
+                raise SQLValidationError("Query rejected: unbounded CROSS JOIN detected, which exceeds cost limits.")
+            for v in node.values():
+                _walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                _walk(v)
+
+    _walk(plan)
