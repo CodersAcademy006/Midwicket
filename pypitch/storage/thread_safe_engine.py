@@ -50,61 +50,124 @@ class ConnectionPool:
         self._initialize_pools()
 
     def _initialize_pools(self):
-        """Initialize connection pools."""
-        # For file-based databases, we need to create the database first with a write connection
+        """Initialize connection pools.
+
+        Ordering matters: the write pool (and therefore the database file and
+        its schema) must be created BEFORE any read connection is opened. On a
+        file-based database an empty/non-existent file cannot be opened, and a
+        read connection that opens before the writer has materialized state may
+        not observe it. Create the write pool first, then the read pool.
+        """
+        # For file-based databases, ensure the database file exists and is a
+        # valid DuckDB file before any pooled connection is opened.
         if self.db_path != ":memory:":
-            # Create the database file if it doesn't exist or is invalid
             import os
             if not os.path.exists(self.db_path):
                 temp_conn = duckdb.connect(self.db_path)
                 temp_conn.close()
             else:
-                # Try to connect and create if invalid
+                # Validate the existing file; recreate it if it is not a usable
+                # DuckDB database.
                 try:
                     temp_conn = duckdb.connect(self.db_path, read_only=True)
                     temp_conn.close()
                 except Exception:
-                    # File exists but is invalid, recreate it
                     os.remove(self.db_path)
                     temp_conn = duckdb.connect(self.db_path)
                     temp_conn.close()
 
-        # Create read connections
-        for _ in range(self.read_pool_size):
-            conn = self._create_connection(read_only=True)
-            self.read_pool.put(conn)
-
-        # Create write connections
+        # Create write connections FIRST so the database/schema is initialized
+        # by a writer before any reader is opened.
         for _ in range(self.write_pool_size):
             conn = self._create_connection(read_only=False)
             self.write_pool.put(conn)
 
+        # Create read connections.
+        for _ in range(self.read_pool_size):
+            conn = self._create_connection(read_only=True)
+            self.read_pool.put(conn)
+
     def _create_connection(self, read_only: bool = False) -> duckdb.DuckDBPyConnection:
-        """Create a new DuckDB connection with appropriate settings."""
-        # Always create read-write connections to avoid configuration conflicts
-        # We manage read/write separation via the pools
+        """Create a new DuckDB connection with appropriate settings.
+
+        Read-only enforcement note (DuckDB 1.5.x, single-process):
+        DuckDB refuses to open a second connection to a database with a
+        *different* ``read_only`` configuration than connections already open
+        ("Can't open a connection to same database file with a different
+        configuration than existing connections"). Because the write pool must
+        keep read-write connections open, we therefore CANNOT open the read
+        pool with connection-level ``read_only=True`` for either file-based or
+        named in-memory databases — they share the same database and the
+        configurations would conflict.
+
+        Instead, read-pool connections are flagged here and the pool's
+        ``get_read_connection`` context manager wraps every use in a
+        ``BEGIN TRANSACTION READ ONLY`` block. That gives genuine
+        database-level write rejection (DuckDB raises a TransactionException on
+        any INSERT/UPDATE/DELETE/DDL), works identically for file and in-memory
+        databases, and does not conflict with the writer pool — true
+        defense-in-depth beyond the SQL guard.
+        """
         conn = duckdb.connect(self._connect_path, read_only=False)
 
         # Performance tuning
         conn.execute("PRAGMA threads=2;")  # Reduced for connection pooling
         conn.execute("PRAGMA memory_limit='1GB';")
 
+        # Tag the connection so the read pool can enforce read-only semantics
+        # at the DuckDB transaction level on every checkout.
+        try:
+            conn._pypitch_read_only = read_only  # type: ignore[attr-defined]
+        except Exception:  # nosec B110 — best-effort tag; enforcement falls back gracefully
+            pass
+
         with self._lock:
             self._created_connections += 1
 
         return conn
 
+    @staticmethod
+    def _end_read_only_transaction(conn) -> None:
+        """Best-effort close of a read-only transaction on a read connection.
+
+        Uses ROLLBACK (reads make no changes, so this is equivalent to COMMIT
+        but never fails on an aborted transaction). A no-op when no transaction
+        is active.
+        """
+        try:
+            conn.execute("ROLLBACK")
+        except Exception:  # nosec B110 — no active transaction is fine
+            pass
+
     @contextmanager
     def get_read_connection(self, timeout: float = 5.0):
-        """Get a read connection from the pool."""
+        """Get a read connection from the pool.
+
+        The connection is wrapped in a ``BEGIN TRANSACTION READ ONLY`` block so
+        any write/DDL attempt is rejected by DuckDB itself (defense-in-depth;
+        see ``_create_connection`` for why connection-level read_only is not
+        usable here). The read-only transaction is always closed before the
+        connection is returned to the pool.
+        """
         conn = None
+        read_only_txn = False
         try:
             conn = self.read_pool.get(timeout=timeout)
+            try:
+                conn.execute("BEGIN TRANSACTION READ ONLY")
+                read_only_txn = True
+            except Exception:
+                # If a read-only transaction cannot be started, fall back to
+                # handing out the connection without it rather than failing the
+                # read. The SQL guard remains in place at the API layer.
+                read_only_txn = False
             yield conn
         except queue.Empty:
             raise ConnectionError("No read connections available (pool exhausted)")
         finally:
             if conn:
+                if read_only_txn:
+                    self._end_read_only_transaction(conn)
                 try:
                     self.read_pool.put(conn, timeout=1.0)
                 except queue.Full:
