@@ -5,10 +5,10 @@ This script calculates the Standard Deviation of runs scored by a batter per mat
 Lower StdDev (relative to average) implies higher consistency.
 """
 
-from pypitch.api.session import PyPitchSession
+from midwicket.api.session import MidwicketSession
 
 def main():
-    session = PyPitchSession.get()
+    session = MidwicketSession.get()
     session.registry.close()
     
     registry_path = session.registry_path.replace("\\", "/")

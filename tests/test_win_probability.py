@@ -2,8 +2,8 @@
 Test cases for baseline win probability model.
 """
 import pytest
-from pypitch.models.win_predictor import WinPredictor
-from pypitch.compute.winprob import win_probability, set_win_model
+from midwicket.models.win_predictor import WinPredictor
+from midwicket.compute.winprob import win_probability, set_win_model
 
 def test_win_predictor_default():
     model = WinPredictor()

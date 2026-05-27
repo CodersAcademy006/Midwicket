@@ -1,5 +1,5 @@
 """
-Production readiness validator for PyPitch.
+Production readiness validator for Midwicket.
 
 Usage:
     python validate_production.py
@@ -12,21 +12,21 @@ import sys
 import time
 
 # Run as development so SECRET_KEY is not required during validation
-os.environ.setdefault("PYPITCH_ENV", "development")
+os.environ.setdefault("MIDWICKET_ENV", "development")
 
 
 def check_imports() -> bool:
     print("  Checking core imports...")
     try:
-        import pypitch as pp                                          # noqa: F401
-        from pypitch.api.session import PyPitchSession               # noqa: F401
-        from pypitch.storage.engine import QueryEngine               # noqa: F401
-        from pypitch.runtime.executor import RuntimeExecutor         # noqa: F401
-        from pypitch.compute.metrics import batting, bowling         # noqa: F401
-        from pypitch.compute.winprob import win_probability          # noqa: F401
-        from pypitch.query.defs import FantasyQuery, WinProbQuery    # noqa: F401
-        from pypitch.query.base import MatchupQuery                  # noqa: F401
-        from pypitch.storage.registry import IdentityRegistry        # noqa: F401
+        import midwicket as md                                          # noqa: F401
+        from midwicket.api.session import MidwicketSession               # noqa: F401
+        from midwicket.storage.engine import QueryEngine               # noqa: F401
+        from midwicket.runtime.executor import RuntimeExecutor         # noqa: F401
+        from midwicket.compute.metrics import batting, bowling         # noqa: F401
+        from midwicket.compute.winprob import win_probability          # noqa: F401
+        from midwicket.query.defs import FantasyQuery, WinProbQuery    # noqa: F401
+        from midwicket.query.base import MatchupQuery                  # noqa: F401
+        from midwicket.storage.registry import IdentityRegistry        # noqa: F401
         print("    OK")
         return True
     except Exception as exc:
@@ -38,14 +38,14 @@ def check_session_lifecycle() -> bool:
     print("  Checking session lifecycle...")
     try:
         import tempfile
-        from pypitch.api.session import PyPitchSession
-        from pypitch.storage.engine import QueryEngine
+        from midwicket.api.session import MidwicketSession
+        from midwicket.storage.engine import QueryEngine
 
         # Use a temp dir + in-memory engine so we never touch real data or
         # trigger network-dependent operations (downloads, migrations, etc.).
-        with tempfile.TemporaryDirectory(prefix="pypitch_validate_") as tmp:
+        with tempfile.TemporaryDirectory(prefix="midwicket_validate_") as tmp:
             mem_engine = QueryEngine(":memory:")
-            session = PyPitchSession(
+            session = MidwicketSession(
                 data_dir=tmp,
                 skip_registry_build=True,
                 engine=mem_engine,
@@ -67,9 +67,9 @@ def check_compute_metrics() -> bool:
     print("  Checking compute metrics (no DB)...")
     try:
         import pyarrow as pa
-        from pypitch.compute.metrics.batting import calculate_strike_rate
-        from pypitch.compute.metrics.bowling import calculate_economy
-        from pypitch.compute.metrics.team import calculate_team_win_rate
+        from midwicket.compute.metrics.batting import calculate_strike_rate
+        from midwicket.compute.metrics.bowling import calculate_economy
+        from midwicket.compute.metrics.team import calculate_team_win_rate
 
         runs  = pa.array([50, 30], type=pa.int64())
         balls = pa.array([40, 20], type=pa.int64())
@@ -91,7 +91,7 @@ def check_compute_metrics() -> bool:
 def check_win_probability() -> bool:
     print("  Checking win probability model...")
     try:
-        from pypitch.compute.winprob import win_probability
+        from midwicket.compute.winprob import win_probability
         result = win_probability(
             target=180, current_runs=90, wickets_down=3,
             overs_done=10.0, venue=None,
@@ -110,8 +110,8 @@ def check_schema_validation() -> bool:
     print("  Checking schema enforcement...")
     try:
         import pyarrow as pa
-        from pypitch.schema.v1 import BALL_EVENT_SCHEMA
-        from pypitch.storage.engine import QueryEngine
+        from midwicket.schema.v1 import BALL_EVENT_SCHEMA
+        from midwicket.storage.engine import QueryEngine
 
         engine = QueryEngine(":memory:")
         bad = pa.table({"col_a": [1, 2]})
@@ -134,13 +134,13 @@ def check_performance() -> bool:
     print("  Checking session init performance...")
     try:
         import tempfile
-        from pypitch.api.session import PyPitchSession
-        from pypitch.storage.engine import QueryEngine
+        from midwicket.api.session import MidwicketSession
+        from midwicket.storage.engine import QueryEngine
 
-        with tempfile.TemporaryDirectory(prefix="pypitch_perf_") as tmp:
+        with tempfile.TemporaryDirectory(prefix="midwicket_perf_") as tmp:
             mem_engine = QueryEngine(":memory:")
             t0 = time.perf_counter()
-            s = PyPitchSession(
+            s = MidwicketSession(
                 data_dir=tmp,
                 skip_registry_build=True,
                 engine=mem_engine,
@@ -159,7 +159,7 @@ def check_performance() -> bool:
 
 def main() -> int:
     print("=" * 55)
-    print("  PyPitch — Production Readiness Validator")
+    print("  Midwicket — Production Readiness Validator")
     print("=" * 55)
 
     checks = [

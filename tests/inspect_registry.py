@@ -5,10 +5,10 @@ import duckdb
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from pypitch.api.session import PyPitchSession
+from midwicket.api.session import MidwicketSession
 
 def inspect_registry():
-    session = PyPitchSession.get()
+    session = MidwicketSession.get()
     con = session.registry.con
     
     print("Searching for Bradman...")

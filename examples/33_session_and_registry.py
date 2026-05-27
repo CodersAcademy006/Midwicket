@@ -2,7 +2,7 @@
 33_session_and_registry.py — Session, Registry & Identity Resolution
 
 Shows how to:
-  • Initialize a PyPitchSession manually
+  • Initialize a MidwicketSession manually
   • Register players, teams, and venues in the IdentityRegistry
   • Resolve names ↔ integer IDs across match dates
   • Query player and venue stats
@@ -22,11 +22,11 @@ from datetime import date
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
 
-from pypitch.storage.registry import IdentityRegistry
+from midwicket.storage.registry import IdentityRegistry
 
 
 def main() -> None:
-    print("PyPitch Session & Registry Demo")
+    print("Midwicket Session & Registry Demo")
     print("=" * 50)
 
     # Use an in-memory registry — no files needed

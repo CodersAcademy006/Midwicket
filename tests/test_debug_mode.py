@@ -2,8 +2,8 @@
 Test cases for debug mode eager execution.
 """
 import pytest
-from pypitch.runtime import modes
-from pypitch.runtime.executor import RuntimeExecutor
+from midwicket.runtime import modes
+from midwicket.runtime.executor import RuntimeExecutor
 from unittest.mock import Mock
 
 def test_debug_mode_toggle():

@@ -11,11 +11,11 @@ Then open: http://localhost:8765/overlay
 """
 
 import time
-from pypitch.live.overlay import OverlayServer, LiveStats, LiveFeedSimulator
+from midwicket.live.overlay import OverlayServer, LiveStats, LiveFeedSimulator
 
 
 def main() -> None:
-    print("PyPitch Live Overlay Demo")
+    print("Midwicket Live Overlay Demo")
     print("=" * 45)
 
     # Start server on a non-conflicting port

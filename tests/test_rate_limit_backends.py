@@ -3,7 +3,7 @@
 from pathlib import Path
 import pytest
 
-from pypitch.serve.rate_limit import DuckDBRateLimiter, RateLimiter, _build_rate_limiter
+from midwicket.serve.rate_limit import DuckDBRateLimiter, RateLimiter, _build_rate_limiter
 
 
 def test_duckdb_rate_limiter_shared_state(tmp_path):
@@ -22,8 +22,8 @@ def test_duckdb_rate_limiter_shared_state(tmp_path):
 
 
 def test_build_rate_limiter_defaults_to_memory_for_dev(monkeypatch):
-    monkeypatch.delenv("PYPITCH_RATE_LIMIT_BACKEND", raising=False)
-    monkeypatch.setenv("PYPITCH_ENV", "development")
+    monkeypatch.delenv("MIDWICKET_RATE_LIMIT_BACKEND", raising=False)
+    monkeypatch.setenv("MIDWICKET_ENV", "development")
 
     limiter = _build_rate_limiter()
     assert isinstance(limiter, RateLimiter)
@@ -31,8 +31,8 @@ def test_build_rate_limiter_defaults_to_memory_for_dev(monkeypatch):
 
 def test_build_rate_limiter_uses_duckdb_when_configured(monkeypatch, tmp_path):
     db = tmp_path / "rl.duckdb"
-    monkeypatch.setenv("PYPITCH_RATE_LIMIT_BACKEND", "duckdb")
-    monkeypatch.setenv("PYPITCH_RATE_LIMIT_DB_PATH", str(db))
+    monkeypatch.setenv("MIDWICKET_RATE_LIMIT_BACKEND", "duckdb")
+    monkeypatch.setenv("MIDWICKET_RATE_LIMIT_DB_PATH", str(db))
 
     limiter = _build_rate_limiter()
     try:
@@ -44,8 +44,8 @@ def test_build_rate_limiter_uses_duckdb_when_configured(monkeypatch, tmp_path):
 
 @pytest.mark.parametrize("bad_value", ["not-an-int", "0", "-5", ""]) 
 def test_build_rate_limiter_invalid_requests_per_minute_falls_back(monkeypatch, bad_value):
-    monkeypatch.setenv("PYPITCH_RATE_LIMIT_BACKEND", "memory")
-    monkeypatch.setenv("PYPITCH_RATE_LIMIT_REQUESTS_PER_MINUTE", bad_value)
+    monkeypatch.setenv("MIDWICKET_RATE_LIMIT_BACKEND", "memory")
+    monkeypatch.setenv("MIDWICKET_RATE_LIMIT_REQUESTS_PER_MINUTE", bad_value)
 
     limiter = _build_rate_limiter()
     assert isinstance(limiter, RateLimiter)

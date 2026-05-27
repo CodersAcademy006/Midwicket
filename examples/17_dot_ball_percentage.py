@@ -5,10 +5,10 @@ This script calculates the dot ball percentage for bowlers.
 High dot ball % usually indicates good control.
 """
 
-from pypitch.api.session import PyPitchSession
+from midwicket.api.session import MidwicketSession
 
 def main():
-    session = PyPitchSession.get()
+    session = MidwicketSession.get()
     session.registry.close()
     
     registry_path = session.registry_path.replace("\\", "/")

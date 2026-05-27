@@ -2,7 +2,7 @@
 
 import pytest
 
-from pypitch.serve.sql_guard import validate_read_only_query, SQLValidationError
+from midwicket.serve.sql_guard import validate_read_only_query, SQLValidationError
 
 
 def test_sql_guard_allows_simple_select():

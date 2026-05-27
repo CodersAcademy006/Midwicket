@@ -5,10 +5,10 @@ This script demonstrates how to analyze performance across different phases of p
 Powerplay (0-6), Middle (7-15), Death (16-20).
 """
 
-from pypitch.api.session import PyPitchSession
+from midwicket.api.session import MidwicketSession
 
 def main():
-    session = PyPitchSession.get()
+    session = MidwicketSession.get()
     
     sql = """
     SELECT 

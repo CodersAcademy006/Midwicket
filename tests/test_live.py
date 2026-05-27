@@ -1,5 +1,5 @@
 """
-Tests for PyPitch Live Data Ingestion
+Tests for Midwicket Live Data Ingestion
 
 Tests the real-time data ingestion pipeline and overlay functionality.
 """
@@ -15,10 +15,10 @@ import tempfile
 import os
 from pathlib import Path
 
-from pypitch.live.ingestor import StreamIngestor, LiveMatch, create_stream_ingestor
-from pypitch.live.overlay import LiveStats, OverlayServer
-from pypitch.storage.thread_safe_engine import create_thread_safe_engine
-from pypitch.exceptions import DataIngestionError
+from midwicket.live.ingestor import StreamIngestor, LiveMatch, create_stream_ingestor
+from midwicket.live.overlay import LiveStats, OverlayServer
+from midwicket.storage.thread_safe_engine import create_thread_safe_engine
+from midwicket.exceptions import DataIngestionError
 
 class TestStreamIngestor:
     """Test the StreamIngestor class."""
@@ -322,7 +322,7 @@ class TestStreamIngestor:
                 ingestor.webhook_server.server_close()
                 ingestor.webhook_server = None
 
-    @patch('pypitch.live.ingestor.requests.get')
+    @patch('midwicket.live.ingestor.requests.get')
     def test_api_polling(self, mock_get, ingestor):
         """Test API polling functionality."""
         # Mock API response
@@ -359,7 +359,7 @@ class TestStreamIngestor:
         # Check that data was queued for processing
         assert not ingestor.update_queue.empty()
 
-    @patch('pypitch.live.ingestor.requests.get')
+    @patch('midwicket.live.ingestor.requests.get')
     def test_api_polling_applies_backoff_on_queue_pressure(self, mock_get, ingestor):
         """Queue saturation from update_match_data should trigger endpoint backoff."""
         mock_response = Mock()
@@ -391,7 +391,7 @@ class TestStreamIngestor:
         assert "test_api" in ingestor._api_backoff_state
         assert int(ingestor._api_backoff_state["test_api"]["attempts"]) == 1
 
-    @patch('pypitch.live.ingestor.requests.get')
+    @patch('midwicket.live.ingestor.requests.get')
     def test_api_polling_tolerates_endpoint_add_during_iteration(
         self,
         mock_get,
@@ -399,7 +399,7 @@ class TestStreamIngestor:
         monkeypatch,
     ):
         """Polling should not fail when endpoints are added while polling runs."""
-        import pypitch.live.ingestor as ingestor_mod
+        import midwicket.live.ingestor as ingestor_mod
 
         mock_response = Mock()
         mock_response.raise_for_status.return_value = None
@@ -710,7 +710,7 @@ class TestIngestorResilience:
         ingestor._ingest_delivery_data = failing_ingest
         ingestor._RETRY_BACKOFF_BASE = 0  # no actual sleep in test
 
-        import pypitch.live.ingestor as _mod
+        import midwicket.live.ingestor as _mod
         orig_base = _mod._RETRY_BACKOFF_BASE
         _mod._RETRY_BACKOFF_BASE = 0.0  # patch module-level constant to skip sleep
 
@@ -720,7 +720,7 @@ class TestIngestorResilience:
         ingestor._is_duplicate(key)  # mark seen so it doesn't count as dup
 
         # Replay the retry logic directly
-        from pypitch.live.ingestor import _MAX_RETRY_ATTEMPTS, _RETRY_BACKOFF_BASE
+        from midwicket.live.ingestor import _MAX_RETRY_ATTEMPTS, _RETRY_BACKOFF_BASE
         last_exc = None
         for attempt in range(_MAX_RETRY_ATTEMPTS):
             try:
@@ -747,8 +747,8 @@ class TestIngestorResilience:
 
         ingestor._ingest_delivery_data = flaky_ingest
 
-        import pypitch.live.ingestor as _mod
-        from pypitch.live.ingestor import _MAX_RETRY_ATTEMPTS
+        import midwicket.live.ingestor as _mod
+        from midwicket.live.ingestor import _MAX_RETRY_ATTEMPTS
         last_exc = None
         for attempt in range(_MAX_RETRY_ATTEMPTS):
             try:
@@ -773,7 +773,7 @@ class TestIngestorResilience:
         assert "failed_at" in entry
 
     def test_dead_letter_capped_at_max(self, ingestor):
-        from pypitch.live.ingestor import _DEAD_LETTER_MAX
+        from midwicket.live.ingestor import _DEAD_LETTER_MAX
         for i in range(_DEAD_LETTER_MAX + 10):
             ingestor._send_to_dead_letter(f"m{i}", self._delivery(), "err")
         assert len(ingestor.dead_letter) == _DEAD_LETTER_MAX
@@ -798,13 +798,13 @@ class TestIngestorResilience:
             side_effect=RuntimeError("persistent db error")
         )
 
-        import pypitch.live.ingestor as _mod
+        import midwicket.live.ingestor as _mod
         orig = _mod._RETRY_BACKOFF_BASE
         _mod._RETRY_BACKOFF_BASE = 0.0
 
         d = self._delivery()
         last_exc = None
-        from pypitch.live.ingestor import _MAX_RETRY_ATTEMPTS
+        from midwicket.live.ingestor import _MAX_RETRY_ATTEMPTS
         for attempt in range(_MAX_RETRY_ATTEMPTS):
             try:
                 ingestor._ingest_delivery_data("m1", d)
@@ -826,7 +826,7 @@ class TestIngestorResilience:
         ingestor.register_match("m1", "webhook")
         delivery = self._delivery(1, 5, 3)
 
-        import pypitch.live.ingestor as _mod
+        import midwicket.live.ingestor as _mod
         original_backoff = _mod._RETRY_BACKOFF_BASE
         _mod._RETRY_BACKOFF_BASE = 0.0
 

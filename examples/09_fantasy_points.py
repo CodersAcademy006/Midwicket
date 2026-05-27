@@ -5,8 +5,8 @@ This script demonstrates how to use the FantasyQuery directly to get player perf
 """
 
 from datetime import date
-from pypitch.api.session import get_executor, get_registry
-from pypitch.query.defs import FantasyQuery
+from midwicket.api.session import get_executor, get_registry
+from midwicket.query.defs import FantasyQuery
 
 def main():
     reg = get_registry()

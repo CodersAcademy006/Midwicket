@@ -8,11 +8,11 @@ entity names with ball-level stats in a single SQL query.
 Prerequisites: run 03_ingest_world.py first to populate data.
 """
 
-from pypitch.api.session import PyPitchSession
+from midwicket.api.session import MidwicketSession
 
 
 def main():
-    session = PyPitchSession.get()
+    session = MidwicketSession.get()
 
     registry_path = session.registry_path.replace("\\", "/")
 
