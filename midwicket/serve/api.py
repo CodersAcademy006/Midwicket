@@ -697,6 +697,7 @@ class MidwicketAPI:
                 "timestamp": time.time()
             }
 
+        @self.app.get("/v1/matches")
         @self.app.get("/matches")
         async def list_matches(
             date_from: Optional[_date_type] = Query(None, description="Filter matches on or after this date (YYYY-MM-DD)"),
@@ -1298,12 +1299,7 @@ class MidwicketAPI:
             players who changed teams or were renamed across seasons.
             """
 
-            class _Req:
-                pass
-
-            req = _Req()
-            req.name = name
-            req.match_date = match_date
+            req = PlayerLookupRequest(name=name, match_date=match_date)
             return self.lookup_player(req)
 
         @self.app.get("/v1/venues/resolve")
@@ -1318,12 +1314,7 @@ class MidwicketAPI:
         ):
             """Resolve a venue name to its canonical entity ID."""
 
-            class _Req:
-                pass
-
-            req = _Req()
-            req.name = name
-            req.match_date = match_date
+            req = VenueLookupRequest(name=name, match_date=match_date)
             return self.lookup_venue(req)
 
         # ── FEAT-06: Player search / autocomplete ────────────────────────────
@@ -1356,6 +1347,7 @@ class MidwicketAPI:
         # ── FEAT-07: Venue browse ─────────────────────────────────────────────
         @self.app.get("/v1/venues")
         async def list_venues(
+            q: Optional[str] = Query(None, description="Name prefix or substring"),
             page: int = Query(1, ge=1, description="Page number"),
             page_size: int = Query(50, ge=1, le=200, description="Results per page"),
             authenticated: bool = Depends(verify_api_key),
@@ -1364,20 +1356,30 @@ class MidwicketAPI:
             try:
                 offset = (page - 1) * page_size
                 with self.session.registry._lock:
-                    total_row = self.session.registry.con.execute(
-                        "SELECT count(*) FROM entities WHERE type = 'venue'"
-                    ).fetchone()
+                    if q:
+                        total_row = self.session.registry.con.execute(
+                            "SELECT count(DISTINCT e.id) FROM entities e JOIN aliases a ON a.entity_id = e.id WHERE e.type = 'venue' AND (LOWER(a.alias) LIKE LOWER(?) OR LOWER(e.primary_name) LIKE LOWER(?))",
+                            [f"%{q}%", f"%{q}%"]
+                        ).fetchone()
+                        rows = self.session.registry.con.execute(
+                            "SELECT DISTINCT e.id, e.primary_name FROM entities e JOIN aliases a ON a.entity_id = e.id WHERE e.type = 'venue' AND (LOWER(a.alias) LIKE LOWER(?) OR LOWER(e.primary_name) LIKE LOWER(?)) ORDER BY e.primary_name LIMIT ? OFFSET ?",
+                            [f"%{q}%", f"%{q}%", page_size, offset]
+                        ).fetchall()
+                    else:
+                        total_row = self.session.registry.con.execute(
+                            "SELECT count(*) FROM entities WHERE type = 'venue'"
+                        ).fetchone()
+                        rows = self.session.registry.con.execute(
+                            """
+                            SELECT id, primary_name
+                            FROM entities
+                            WHERE type = 'venue'
+                            ORDER BY primary_name
+                            LIMIT ? OFFSET ?
+                            """,
+                            [page_size, offset],
+                        ).fetchall()
                     total = total_row[0] if total_row else 0
-                    rows = self.session.registry.con.execute(
-                        """
-                        SELECT id, primary_name
-                        FROM entities
-                        WHERE type = 'venue'
-                        ORDER BY primary_name
-                        LIMIT ? OFFSET ?
-                        """,
-                        [page_size, offset],
-                    ).fetchall()
                 return {
                     "items": [{"id": r[0], "name": r[1]} for r in rows],
                     "total": total,
@@ -1431,13 +1433,7 @@ class MidwicketAPI:
             resolved against aliases that were valid on that date.
             """
 
-            class _Req:
-                pass
-
-            req = _Req()
-            req.batter = batter
-            req.bowler = bowler
-            req.match_date = match_date
+            req = MatchupRequest(batter=batter, bowler=bowler, match_date=match_date)
             return self.get_matchup_stats(req)
 
         @self.app.get("/v1/players/leaderboard/batting")
@@ -1468,6 +1464,190 @@ class MidwicketAPI:
                 return bowling_leaderboard(sort_by=sort_by, top_n=top_n, min_balls=min_balls)
             except Exception as e:
                 logger.warning("bowling_leaderboard failed: %s", e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        @self.app.get("/v1/players")
+        async def list_players(
+            q: Optional[str] = Query(None, description="Name prefix or substring"),
+            page: int = Query(1, ge=1),
+            page_size: int = Query(50, ge=1, le=200),
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """List or search players."""
+            try:
+                offset = (page - 1) * page_size
+                with self.session.registry._lock:
+                    if q:
+                        total_row = self.session.registry.con.execute(
+                            "SELECT count(DISTINCT e.id) FROM entities e JOIN aliases a ON a.entity_id = e.id WHERE e.type = 'player' AND (LOWER(a.alias) LIKE LOWER(?) OR LOWER(e.primary_name) LIKE LOWER(?))",
+                            [f"%{q}%", f"%{q}%"]
+                        ).fetchone()
+                        rows = self.session.registry.con.execute(
+                            "SELECT DISTINCT e.id, e.primary_name FROM entities e JOIN aliases a ON a.entity_id = e.id WHERE e.type = 'player' AND (LOWER(a.alias) LIKE LOWER(?) OR LOWER(e.primary_name) LIKE LOWER(?)) ORDER BY e.primary_name LIMIT ? OFFSET ?",
+                            [f"%{q}%", f"%{q}%", page_size, offset]
+                        ).fetchall()
+                    else:
+                        total_row = self.session.registry.con.execute(
+                            "SELECT count(*) FROM entities WHERE type = 'player'"
+                        ).fetchone()
+                        rows = self.session.registry.con.execute(
+                            "SELECT id, primary_name FROM entities WHERE type = 'player' ORDER BY primary_name LIMIT ? OFFSET ?",
+                            [page_size, offset]
+                        ).fetchall()
+                total = total_row[0] if total_row else 0
+                return {
+                    "items": [{"id": r[0], "name": r[1]} for r in rows],
+                    "total": total,
+                    "page": page,
+                    "page_size": page_size,
+                }
+            except Exception as e:
+                logger.warning("list_players failed: %s", e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        @self.app.get("/v1/players/{player_id}/stats")
+        async def get_player_stats_v1(
+            player_id: int,
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """All-in-one player stats endpoint combining PA-01 to PA-28."""
+            try:
+                row = self.session.registry.con.execute(
+                    "SELECT primary_name FROM entities WHERE id = ? AND type = 'player'", [player_id]
+                ).fetchone()
+                if not row:
+                    raise HTTPException(status_code=404, detail="Player not found")
+                
+                player_name = row[0]
+                
+                from midwicket.api.player_analytics import (
+                    career_batting, career_bowling, batting_by_phase, bowling_by_phase,
+                    batting_by_venue, bowling_by_venue, batting_by_season, bowling_by_season,
+                    batting_form, bowling_form, batting_in_chases, batting_under_pressure,
+                    death_over_specialist, batting_by_innings_number, weakness_detector,
+                    highest_score, best_bowling_figures, match_streaks, milestones_and_failures,
+                )
+
+                return {
+                    "player_id": player_id,
+                    "player_name": player_name,
+                    "career_batting": career_batting(player_name),
+                    "career_bowling": career_bowling(player_name),
+                    "batting_by_phase": batting_by_phase(player_name),
+                    "bowling_by_phase": bowling_by_phase(player_name),
+                    "batting_by_venue": batting_by_venue(player_name),
+                    "bowling_by_venue": bowling_by_venue(player_name),
+                    "batting_by_season": batting_by_season(player_name),
+                    "bowling_by_season": bowling_by_season(player_name),
+                    "batting_form": batting_form(player_name),
+                    "bowling_form": bowling_form(player_name),
+                    "batting_in_chases": batting_in_chases(player_name),
+                    "batting_under_pressure": batting_under_pressure(player_name),
+                    "death_over_specialist": death_over_specialist(player_name),
+                    "batting_by_innings": batting_by_innings_number(player_name),
+                    "weaknesses": weakness_detector(player_name),
+                    "highest_score": highest_score(player_name),
+                    "best_bowling_figures": best_bowling_figures(player_name),
+                    "streaks": match_streaks(player_name),
+                    "milestones": milestones_and_failures(player_name),
+                }
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.warning("get_player_stats_v1 failed: %s", e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        @self.app.get("/v1/venues/{name}/stats")
+        async def get_venue_stats_v1(
+            name: str,
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """Venue aggregations."""
+            try:
+                sql = """
+                SELECT 
+                    COUNT(DISTINCT match_id) AS matches,
+                    SUM(runs_batter + runs_extras) AS total_runs,
+                    SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END) AS total_wickets,
+                    AVG(runs_batter + runs_extras) * 120 AS projected_score_120_balls
+                FROM ball_events
+                WHERE LOWER(venue) = LOWER(?)
+                """
+                res = self.session.engine.execute_sql(sql, [name]).to_pydict()
+                if not res or not res.get("matches") or res["matches"][0] == 0:
+                    raise HTTPException(status_code=404, detail="Venue stats not found")
+                
+                return {
+                    "venue_name": name,
+                    "matches": res["matches"][0],
+                    "total_runs": res["total_runs"][0],
+                    "total_wickets": res["total_wickets"][0],
+                    "projected_score": res["projected_score_120_balls"][0]
+                }
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.warning("get_venue_stats_v1 failed: %s", e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        @self.app.get("/v1/matchups/{team_a}/{team_b}")
+        async def get_matchups(
+            team_a: str,
+            team_b: str,
+            match_date: Optional[_date_type] = Query(None),
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            from midwicket.api.head_to_head import head_to_head
+            try:
+                return head_to_head(team_a, team_b, date_context=match_date).as_dict()
+            except Exception as e:
+                logger.warning("matchups failed: %s", e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        @self.app.get("/v1/matches/{match_id}/fantasy")
+        async def match_fantasy(
+            match_id: str,
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """Calculate fantasy points for a match."""
+            try:
+                sql = """
+                SELECT 
+                    batter AS player,
+                    SUM(runs_batter) AS points_from_runs
+                FROM ball_events
+                WHERE match_id = ?
+                GROUP BY batter
+                """
+                batting_res = self.session.engine.execute_sql(sql, [match_id]).to_pydict()
+                
+                sql_bowl = """
+                SELECT 
+                    bowler AS player,
+                    SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END) * 10 AS points_from_wickets
+                FROM ball_events
+                WHERE match_id = ?
+                GROUP BY bowler
+                """
+                bowling_res = self.session.engine.execute_sql(sql_bowl, [match_id]).to_pydict()
+                
+                points = {}
+                if batting_res and "player" in batting_res:
+                    for i, player in enumerate(batting_res["player"]):
+                        if player is not None:
+                            points[player] = points.get(player, 0) + (batting_res["points_from_runs"][i] or 0)
+                
+                if bowling_res and "player" in bowling_res:
+                    for i, player in enumerate(bowling_res["player"]):
+                        if player is not None:
+                            points[player] = points.get(player, 0) + (bowling_res["points_from_wickets"][i] or 0)
+                
+                result = [{"player": p, "points": pts} for p, pts in points.items()]
+                result.sort(key=lambda x: x["points"], reverse=True)
+                
+                return {"match_id": match_id, "fantasy_points": result}
+            except Exception as e:
+                logger.warning("match_fantasy failed: %s", e)
                 raise HTTPException(status_code=500, detail="Internal server error")
 
     def run(self, host: str = "0.0.0.0", port: int = 8000, reload: bool = False):  # nosec B104
