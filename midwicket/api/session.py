@@ -137,7 +137,8 @@ class MidwicketSession:
             balls_faced=stats_dict["balls_faced"],
             wickets=stats_dict["wickets"],
             balls_bowled=stats_dict["balls_bowled"],
-            runs_conceded=stats_dict["runs_conceded"]
+            runs_conceded=stats_dict["runs_conceded"],
+            dismissals=0
         )
 
     def get_match_stats(self, match_id: str) -> Optional[dict]:

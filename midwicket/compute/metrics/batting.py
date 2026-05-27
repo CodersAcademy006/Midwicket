@@ -14,11 +14,11 @@ def calculate_strike_rate(runs: pa.Array, balls: pa.Array) -> pa.Array:
     balls_f = balls.cast(pa.float64())
     
     # pc.divide handles nulls, but we need to handle zero-balls manually to avoid Inf
-    sr = pc.divide(runs_f, balls_f)
-    sr = pc.multiply(sr, 100.0)
+    sr = pc.divide(runs_f, balls_f)  # type: ignore
+    sr = pc.multiply(sr, 100.0)  # type: ignore
     
     # Where balls == 0, SR is 0 (or null, depending on preference. We choose 0 for safety)
-    sr = pc.if_else(pc.equal(balls, 0), 0.0, sr)
+    sr = pc.if_else(pc.equal(balls, 0), 0.0, sr)  # type: ignore
     
     return sr
 
@@ -34,7 +34,7 @@ def strike_rate(events: pa.Table) -> float:
     # Standard definition: Runs / Legal Balls (excluding wides)
     
     # Total Runs (Batter runs only for SR)
-    total_runs = cast(float, pc.sum(events['runs_batter']).as_py())
+    total_runs = cast(float, pc.sum(events['runs_batter']).as_py())  # type: ignore
     
     # Legal Balls: Not Wide
     # Note: NoBalls count as balls faced. Wides do not.
@@ -68,7 +68,7 @@ def relative_strike_rate(events: pa.Table) -> Optional[float]:
         # For now, return None to indicate missing dependency.
         return None
         
-    expected_sr = pc.mean(events['venue_avg_sr']).as_py()
+    expected_sr = pc.mean(events['venue_avg_sr']).as_py()  # type: ignore
 
     # pc.mean() returns None when every venue_avg_sr value is null.
     # Guard for None, NaN, and zero before dividing to avoid TypeError/Inf.
@@ -93,14 +93,14 @@ def calculate_impact_score(
     """
     # 1. Define Expected Run Per Ball (RPB) map using vectorised if_else chains.
     # pc.case_when API changed across PyArrow versions; if_else chains are stable.
-    is_pp = pc.equal(phase, "Powerplay")
-    is_death = pc.equal(phase, "Death")
+    is_pp = pc.equal(phase, "Powerplay")  # type: ignore
+    is_death = pc.equal(phase, "Death")  # type: ignore
 
     # Build expected RPB: Powerplay=1.2, Death=1.6, Middle (else)=1.1
-    expected_rpb = pc.if_else(
+    expected_rpb = pc.if_else(  # type: ignore
         is_pp,
         pa.scalar(1.2, type=pa.float64()),
-        pc.if_else(
+        pc.if_else(  # type: ignore
             is_death,
             pa.scalar(1.6, type=pa.float64()),
             pa.scalar(1.1, type=pa.float64()),
@@ -108,9 +108,9 @@ def calculate_impact_score(
     )
 
     # 2. Calculate Expected Runs
-    expected_runs = pc.multiply(balls.cast(pa.float64()), expected_rpb)
+    expected_runs = pc.multiply(balls.cast(pa.float64()), expected_rpb)  # type: ignore
     
     # 3. Impact = Actual - Expected
-    impact = pc.subtract(runs.cast(pa.float64()), expected_runs)
+    impact = pc.subtract(runs.cast(pa.float64()), expected_runs)  # type: ignore
     
     return impact

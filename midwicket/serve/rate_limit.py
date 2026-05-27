@@ -261,7 +261,7 @@ class RedisRateLimiter:
         oldest = self.client.zrange(rkey, 0, 0, withscores=True)
         if not oldest:
             return 0
-        oldest_ts = oldest[0][1]
+        oldest_ts = oldest[0][1]  # type: ignore
         return max(0, (oldest_ts + 60) - now)
 
     def cleanup_old_keys(self) -> None:
@@ -293,9 +293,9 @@ def _build_rate_limiter() -> RateLimiter | DuckDBRateLimiter | RedisRateLimiter:
     if backend == "redis":
         try:
             redis_url = os.getenv("MIDWICKET_REDIS_URL", "").strip() or None
-            limiter = RedisRateLimiter(requests_per_minute=requests_per_minute, redis_url=redis_url)
+            redis_limiter = RedisRateLimiter(requests_per_minute=requests_per_minute, redis_url=redis_url)
             logger.info("Rate limiter backend: redis")
-            return limiter
+            return redis_limiter
         except Exception as exc:
             logger.warning("Failed to initialize Redis rate limiter (%s). Falling back to DuckDB.", exc)
             backend = "duckdb"
@@ -303,9 +303,9 @@ def _build_rate_limiter() -> RateLimiter | DuckDBRateLimiter | RedisRateLimiter:
     if backend == "duckdb":
         try:
             db_path = os.getenv("MIDWICKET_RATE_LIMIT_DB_PATH", "").strip() or None
-            limiter = DuckDBRateLimiter(requests_per_minute=requests_per_minute, db_path=db_path)
-            logger.info("Rate limiter backend: duckdb (%s)", limiter.db_path)
-            return limiter
+            duckdb_limiter = DuckDBRateLimiter(requests_per_minute=requests_per_minute, db_path=db_path)
+            logger.info("Rate limiter backend: duckdb (%s)", duckdb_limiter.db_path)
+            return duckdb_limiter
         except Exception as exc:
             logger.warning("Failed to initialize DuckDB rate limiter (%s). Falling back to memory.", exc)
 

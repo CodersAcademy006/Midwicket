@@ -49,8 +49,8 @@ _MIDDLE_MAX = 14      # overs 6-14
 
 def _get_con() -> Any:
     """Return live DuckDB connection from the active storage engine."""
-    from midwicket.api.session import get_session
-    session = get_session()
+    from midwicket.api.session import MidwicketSession
+    session = MidwicketSession.get()
     return session.engine.raw_connection()
 
 

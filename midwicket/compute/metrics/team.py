@@ -19,12 +19,12 @@ def calculate_team_win_rate(wins: pa.Array, matches: pa.Array) -> pa.Array:
     """
     matches_f = matches.cast(pa.float64())
     wins_f = wins.cast(pa.float64())
-    rate = pc.multiply(
-        pc.divide(wins_f, matches_f),
+    rate = pc.multiply(  # type: ignore
+        pc.divide(wins_f, matches_f),  # type: ignore
         pa.scalar(100.0),
     )
     # Guard: when matches == 0, division produces Inf/NaN; return 0.0 instead
-    return pc.if_else(pc.equal(matches_f, 0.0), 0.0, rate)
+    return pc.if_else(pc.equal(matches_f, 0.0), 0.0, rate)  # type: ignore
 
 
 def calculate_team_run_rate(runs: pa.Array, overs: pa.Array) -> pa.Array:
@@ -40,9 +40,9 @@ def calculate_team_run_rate(runs: pa.Array, overs: pa.Array) -> pa.Array:
     """
     overs_f = overs.cast(pa.float64())
     runs_f = runs.cast(pa.float64())
-    rate = pc.divide(runs_f, overs_f)
+    rate = pc.divide(runs_f, overs_f)  # type: ignore
     # Guard: when overs == 0, division produces Inf; return 0.0 instead
-    return pc.if_else(pc.equal(overs_f, 0.0), 0.0, rate)
+    return pc.if_else(pc.equal(overs_f, 0.0), 0.0, rate)  # type: ignore
 
 
 def calculate_average_first_innings_score(
@@ -59,8 +59,8 @@ def calculate_average_first_innings_score(
         Average first innings score, 0.0 where matches == 0.
     """
     matches_f = matches.cast(pa.float64())
-    avg = pc.divide(total_runs.cast(pa.float64()), matches_f)
-    return pc.if_else(pc.equal(matches_f, 0.0), 0.0, avg)
+    avg = pc.divide(total_runs.cast(pa.float64()), matches_f)  # type: ignore
+    return pc.if_else(pc.equal(matches_f, 0.0), 0.0, avg)  # type: ignore
 
 
 def calculate_average_second_innings_score(
@@ -77,8 +77,8 @@ def calculate_average_second_innings_score(
         Average second innings score, 0.0 where matches == 0.
     """
     matches_f = matches.cast(pa.float64())
-    avg = pc.divide(total_runs.cast(pa.float64()), matches_f)
-    return pc.if_else(pc.equal(matches_f, 0.0), 0.0, avg)
+    avg = pc.divide(total_runs.cast(pa.float64()), matches_f)  # type: ignore
+    return pc.if_else(pc.equal(matches_f, 0.0), 0.0, avg)  # type: ignore
 
 
 def calculate_team_boundary_percentage(
@@ -95,11 +95,11 @@ def calculate_team_boundary_percentage(
         Boundary percentage (0–100), 0.0 where total_runs == 0.
     """
     total_f = total_runs.cast(pa.float64())
-    pct = pc.multiply(
-        pc.divide(boundary_runs.cast(pa.float64()), total_f),
+    pct = pc.multiply(  # type: ignore
+        pc.divide(boundary_runs.cast(pa.float64()), total_f),  # type: ignore
         pa.scalar(100.0),
     )
-    return pc.if_else(pc.equal(total_f, 0.0), 0.0, pct)
+    return pc.if_else(pc.equal(total_f, 0.0), 0.0, pct)  # type: ignore
 
 
 def calculate_runs_per_match(total_runs: pa.Array, matches: pa.Array) -> pa.Array:
@@ -114,8 +114,8 @@ def calculate_runs_per_match(total_runs: pa.Array, matches: pa.Array) -> pa.Arra
         Average runs per match, 0.0 where matches == 0.
     """
     matches_f = matches.cast(pa.float64())
-    avg = pc.divide(total_runs.cast(pa.float64()), matches_f)
-    return pc.if_else(pc.equal(matches_f, 0.0), 0.0, avg)
+    avg = pc.divide(total_runs.cast(pa.float64()), matches_f)  # type: ignore
+    return pc.if_else(pc.equal(matches_f, 0.0), 0.0, avg)  # type: ignore
 
 
 def calculate_wickets_per_match(total_wickets: pa.Array, matches: pa.Array) -> pa.Array:
@@ -130,5 +130,5 @@ def calculate_wickets_per_match(total_wickets: pa.Array, matches: pa.Array) -> p
         Average wickets per match, 0.0 where matches == 0.
     """
     matches_f = matches.cast(pa.float64())
-    avg = pc.divide(total_wickets.cast(pa.float64()), matches_f)
-    return pc.if_else(pc.equal(matches_f, 0.0), 0.0, avg)
+    avg = pc.divide(total_wickets.cast(pa.float64()), matches_f)  # type: ignore
+    return pc.if_else(pc.equal(matches_f, 0.0), 0.0, avg)  # type: ignore

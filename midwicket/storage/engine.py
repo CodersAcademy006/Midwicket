@@ -127,6 +127,7 @@ class QueryEngine:
                     return False
                 if timed_out:
                     return True
+                assert timeout is not None
                 return (time.perf_counter() - started_at) >= float(timeout)
 
             def _interrupt_query() -> None:
@@ -138,6 +139,7 @@ class QueryEngine:
                         interrupt()
 
             if timeout_enabled:
+                assert timeout is not None
                 timer = threading.Timer(timeout, _interrupt_query)
                 timer.daemon = True
                 timer.start()

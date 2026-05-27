@@ -1631,7 +1631,7 @@ class MidwicketAPI:
                 """
                 bowling_res = self.session.engine.execute_sql(sql_bowl, [match_id]).to_pydict()
                 
-                points = {}
+                points: Dict[str, float] = {}
                 if batting_res and "player" in batting_res:
                     for i, player in enumerate(batting_res["player"]):
                         if player is not None:
@@ -1643,7 +1643,7 @@ class MidwicketAPI:
                             points[player] = points.get(player, 0) + (bowling_res["points_from_wickets"][i] or 0)
                 
                 result = [{"player": p, "points": pts} for p, pts in points.items()]
-                result.sort(key=lambda x: x["points"], reverse=True)
+                result.sort(key=lambda x: x["points"], reverse=True)  # type: ignore
                 
                 return {"match_id": match_id, "fantasy_points": result}
             except Exception as e:

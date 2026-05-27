@@ -17,10 +17,10 @@ def calculate_partnership_run_rate(runs: pa.Array, balls: pa.Array) -> pa.Array:
     Returns:
         Partnership run rate (runs per over), 0.0 where balls == 0.
     """
-    overs = pc.divide(balls.cast(pa.float64()), pa.scalar(6.0))
-    run_rate = pc.divide(runs.cast(pa.float64()), overs)
+    overs = pc.divide(balls.cast(pa.float64()), pa.scalar(6.0))  # type: ignore
+    run_rate = pc.divide(runs.cast(pa.float64()), overs)  # type: ignore
     # Guard: when balls == 0, overs == 0 → division produces Inf; return 0.0 instead
-    return pc.if_else(pc.equal(balls, 0), 0.0, run_rate)
+    return pc.if_else(pc.equal(balls, 0), 0.0, run_rate)  # type: ignore
 
 
 def calculate_partnership_contribution(
@@ -36,15 +36,15 @@ def calculate_partnership_contribution(
     Returns:
         Contribution as a percentage (0–100), 0.0 where partnership_runs == 0.
     """
-    pct = pc.multiply(
-        pc.divide(
+    pct = pc.multiply(  # type: ignore
+        pc.divide(  # type: ignore
             player_runs.cast(pa.float64()),
             partnership_runs.cast(pa.float64()),
         ),
         pa.scalar(100.0),
     )
     # Guard: when partnership_runs == 0, division by zero produces Inf; return 0.0
-    return pc.if_else(pc.equal(partnership_runs, 0), 0.0, pct)
+    return pc.if_else(pc.equal(partnership_runs, 0), 0.0, pct)  # type: ignore
 
 
 def calculate_partnership_runs(batter1_runs: pa.Array, batter2_runs: pa.Array) -> pa.Array:
@@ -58,7 +58,7 @@ def calculate_partnership_runs(batter1_runs: pa.Array, batter2_runs: pa.Array) -
     Returns:
         Total partnership runs array.
     """
-    return pc.add(batter1_runs.cast(pa.int64()), batter2_runs.cast(pa.int64()))
+    return pc.add(batter1_runs.cast(pa.int64()), batter2_runs.cast(pa.int64()))  # type: ignore
 
 
 def calculate_powerplay_strike_rate(runs: pa.Array, balls: pa.Array) -> pa.Array:
@@ -72,11 +72,11 @@ def calculate_powerplay_strike_rate(runs: pa.Array, balls: pa.Array) -> pa.Array
     Returns:
         Powerplay strike rate, 0.0 where balls == 0.
     """
-    sr = pc.multiply(
-        pc.divide(runs.cast(pa.float64()), balls.cast(pa.float64())),
+    sr = pc.multiply(  # type: ignore
+        pc.divide(runs.cast(pa.float64()), balls.cast(pa.float64())),  # type: ignore
         pa.scalar(100.0),
     )
-    return pc.if_else(pc.equal(balls, 0), 0.0, sr)
+    return pc.if_else(pc.equal(balls, 0), 0.0, sr)  # type: ignore
 
 
 def calculate_death_overs_strike_rate(runs: pa.Array, balls: pa.Array) -> pa.Array:
@@ -90,8 +90,8 @@ def calculate_death_overs_strike_rate(runs: pa.Array, balls: pa.Array) -> pa.Arr
     Returns:
         Death overs strike rate, 0.0 where balls == 0.
     """
-    sr = pc.multiply(
-        pc.divide(runs.cast(pa.float64()), balls.cast(pa.float64())),
+    sr = pc.multiply(  # type: ignore
+        pc.divide(runs.cast(pa.float64()), balls.cast(pa.float64())),  # type: ignore
         pa.scalar(100.0),
     )
-    return pc.if_else(pc.equal(balls, 0), 0.0, sr)
+    return pc.if_else(pc.equal(balls, 0), 0.0, sr)  # type: ignore

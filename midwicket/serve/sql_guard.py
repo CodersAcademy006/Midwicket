@@ -225,9 +225,12 @@ def _duckdb_table_refs(statement: str) -> tuple[set[str], set[str]] | None:
     try:
         con = duckdb.connect()
         try:
-            serialized = con.execute(
+            row = con.execute(
                 "SELECT json_serialize_sql(?)", [statement]
-            ).fetchone()[0]
+            ).fetchone()
+            if not row:
+                raise SQLValidationError("Query could not be parsed and is not permitted")
+            serialized = row[0]
         finally:
             con.close()
     except Exception:
