@@ -286,6 +286,15 @@ class MidwicketAPI:
         except Exception:
             pass  # Non-fatal: audit table creation may fail in read-only engines
 
+        # Implement 30-day eviction policy to prevent unbounded audit_log growth
+        try:
+            self.session.engine.execute_sql(
+                "DELETE FROM audit_log WHERE ts < current_timestamp - INTERVAL 30 DAY",
+                read_only=False
+            )
+        except Exception as e:
+            logger.warning("Failed to evict old audit logs: %s", e)
+
         # Initialize Live Ingestor (conditionally)
         if start_ingestor and getattr(self.session, 'engine', None) is not None:
             self.ingestor = StreamIngestor(self.session.engine)
@@ -834,10 +843,20 @@ class MidwicketAPI:
         # ── FEAT-04: Audit log reader (admin) ────────────────────────────────
         @self.app.get("/v1/audit")
         async def get_audit_log(
+            request: Request,
             limit: int = Query(100, ge=1, le=1000, description="Maximum rows to return"),
             authenticated: bool = Depends(verify_api_key),
         ):
             """Recent /analyze queries — admin endpoint for operator review."""
+            import os
+            import hmac
+            admin_keys = [k.strip() for k in os.getenv("MIDWICKET_ADMIN_KEYS", "").split(",") if k.strip()]
+            token = request.headers.get("Authorization") or request.headers.get("X-API-Key")
+            if token and token.startswith("Bearer "):
+                token = token[7:]
+            if not admin_keys or not token or not any(hmac.compare_digest(token, k) for k in admin_keys):
+                raise HTTPException(status_code=403, detail="Admin access required")
+
             try:
                 result = self.session.engine.execute_sql(
                     "SELECT ts, user_id, query_text, row_count, duration_ms, endpoint, action, ip_address "
@@ -1005,8 +1024,7 @@ class MidwicketAPI:
                     raise HTTPException(status_code=403, detail=str(exc))
                 except Exception as exc:
                     logger.warning(f"Cost estimation failed: {exc}")
-                    # Allow to proceed if EXPLAIN fails for other reasons, or reject?
-                    pass
+                    raise HTTPException(status_code=403, detail="Cost estimation failed")
 
                 # Explicit query timeout to reduce long-running query DoS risk.
                 raw_timeout = _os.getenv("MIDWICKET_ANALYZE_TIMEOUT_SECONDS", str(_ANALYZE_TIMEOUT_DEFAULT_S)).strip()
@@ -1265,8 +1283,8 @@ class MidwicketAPI:
 
         @self.app.get("/v1/players/compare")
         async def compare_players_endpoint(
-            p1: str,
-            p2: str,
+            p1: str = Query(..., max_length=100),
+            p2: str = Query(..., max_length=100),
             authenticated: bool = Depends(verify_api_key),
         ):
             """Side-by-side career comparison. ?p1=name&p2=name"""

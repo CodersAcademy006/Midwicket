@@ -75,7 +75,6 @@ _SYSTEM_PREFIXES = (
     "pg_",
     "sys.",
     "mysql.",
-    "audit_log",   # internal — not a public table
 )
 
 def _strip_string_literals(sql: str) -> str:

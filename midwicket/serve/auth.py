@@ -98,7 +98,12 @@ def verify_api_key(
         )
 
     # Constant-time comparison to prevent timing attacks
-    if not any(hmac.compare_digest(token, k) for k in valid_keys):
+    is_valid = False
+    for k in valid_keys:
+        if hmac.compare_digest(token, k):
+            is_valid = True
+            
+    if not is_valid:
         logger.info("auth: rejected request — invalid API key presented")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
