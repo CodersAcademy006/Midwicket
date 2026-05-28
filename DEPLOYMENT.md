@@ -11,8 +11,8 @@ You only need to do this once per repository:
 1. Log in to your PyPI account at [pypi.org/manage/account/publishing/](https://pypi.org/manage/account/publishing/).
 2. Scroll to the **"Add a new publisher"** section and select **GitHub**.
 3. Fill in the following details:
-   - **Publisher name:** `Midwicket GitHub Actions` (or anything descriptive)
-   - **Repository owner:** `CodersAcademy006`
+   - **PyPI Project Name:** `midwicket` *(This MUST match the `name` in `pyproject.toml` exactly)*
+   - **Owner:** `CodersAcademy006`
    - **Repository name:** `Midwicket`
    - **Workflow name:** `publish.yml`
    - **Environment name:** *(leave this blank)*
