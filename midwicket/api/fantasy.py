@@ -138,7 +138,7 @@ def fantasy_score(
             SELECT
                 COUNT(DISTINCT match_id)                                  AS matches,
                 COUNT(*)                                                  AS balls,
-                SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END)               AS wickets,
+                SUM(CASE WHEN is_wicket AND wicket_type NOT IN ('RUN_OUT', 'OBSTRUCTING_THE_FIELD', 'RETIRED_HURT', 'RETIRED_OUT', 'RETIRED_NOT_OUT') THEN 1 ELSE 0 END)               AS wickets,
                 SUM(runs_batter + runs_extras)                            AS runs_conceded
             FROM ball_events
             WHERE bowler = ? {season_clause}

@@ -170,7 +170,7 @@ class TestQueryEngineIngest:
             params=["live-match"],
         ).to_pydict()
         assert rows["match_id"] == ["live-match"]
-        assert rows["phase"] == ["death"]
+        assert rows["phase"] == ["Death"]
         assert rows["batter_id"] == [101]
         engine.close()
 
@@ -733,7 +733,7 @@ class TestThreadSafeQueryEngine:
                 params=["live-ts"],
             ).to_pydict()
             assert rows["match_id"] == ["live-ts"]
-            assert rows["phase"] == ["death"]
+            assert rows["phase"] == ["Death"]
             assert rows["bowler_id"] == [201]
         finally:
             engine.close()
