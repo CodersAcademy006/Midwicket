@@ -181,15 +181,16 @@ class QueryPlanner:
             clauses.append("venue_id = ?")
             params.append(query.venue_id)
         if hasattr(query, "phase"):
-            valid_phases = ("powerplay", "middle", "death", "all")
-            if query.phase not in valid_phases:
+            phase_val = query.phase.title() if query.phase != "all" else "all"
+            valid_phases = ("Powerplay", "Middle", "Death", "all")
+            if phase_val not in valid_phases:
                 raise ValueError(
                     f"Invalid phase '{query.phase}'. "
                     f"Must be one of {valid_phases}"
                 )
-            if query.phase != "all":
+            if phase_val != "all":
                 clauses.append("phase = ?")
-                params.append(query.phase)
+                params.append(phase_val)
 
         where = " AND ".join(clauses) if clauses else "1=1"
         return where, params
@@ -210,10 +211,10 @@ class QueryPlanner:
                 SELECT
                     sum(runs_batter)                                        AS runs,
                     count(*)                                                AS balls,
-                    sum(case when is_wicket=true then 1 else 0 end)        AS wickets,
+                    sum(case when is_wicket=true and wicket_type not in ('RUN_OUT','OBSTRUCTING_THE_FIELD','RETIRED_HURT','RETIRED_OUT','RETIRED_NOT_OUT') then 1 else 0 end)        AS wickets,
                     ROUND(sum(runs_batter)*100.0/NULLIF(count(*),0), 2)    AS strike_rate,
                     ROUND(sum(runs_batter)*1.0/NULLIF(
-                        sum(case when is_wicket=true then 1 else 0 end),0), 2) AS average
+                        sum(case when is_wicket=true and wicket_type not in ('RUN_OUT','OBSTRUCTING_THE_FIELD','RETIRED_HURT','RETIRED_OUT','RETIRED_NOT_OUT') then 1 else 0 end),0), 2) AS average
                                 FROM {table_ref}
                 WHERE batter_id = ?
                   AND bowler_id = ?
@@ -228,8 +229,9 @@ class QueryPlanner:
                     SUM(runs_batter)                                                AS runs,
                     SUM(CASE WHEN runs_batter = 4 THEN 1 ELSE 0 END)               AS fours,
                     SUM(CASE WHEN runs_batter = 6 THEN 1 ELSE 0 END)               AS sixes,
-                    SUM(CASE WHEN is_wicket THEN 20 ELSE 0 END)
-                        + SUM(runs_batter)                                          AS avg_points,
+                    SUM(runs_batter) 
+                        + SUM(CASE WHEN runs_batter = 4 THEN 1 ELSE 0 END) * 1 
+                        + SUM(CASE WHEN runs_batter = 6 THEN 1 ELSE 0 END) * 2      AS avg_points,
                     COUNT(DISTINCT match_id)                                        AS matches
                 FROM {table_ref}
                 WHERE venue_id = ?

@@ -429,12 +429,12 @@ class ThreadSafeQueryEngine:
         try:
             over = int(over_value)
         except (TypeError, ValueError):
-            return "middle"
+            return "Middle"
         if over <= 5:
-            return "powerplay"
+            return "Powerplay"
         if over <= 14:
-            return "middle"
-        return "death"
+            return "Middle"
+        return "Death"
 
     @staticmethod
     def _table_columns_conn(conn, table_name: str) -> set[str]:

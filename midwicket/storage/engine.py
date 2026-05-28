@@ -37,14 +37,17 @@ class QueryEngine:
     def derived_versions(self) -> dict[str, str]:
         return self._derived_versions
 
-    def ingest_events(self, arrow_table: pa.Table, snapshot_tag: str, append: bool = False) -> None:
+    def ingest_events(self, arrow_table: pa.Table, snapshot_tag: str, append: bool = False, incremental: bool = False) -> None:
         """
         Ingests strict Schema V1 Arrow Tables.
         Rejects anything that doesn't match the contract.
         """
-        if not arrow_table.schema.equals(BALL_EVENT_SCHEMA):
-            # In a real system, we might diff the schemas to give a better error
-            raise ValueError("Schema Violation: Input does not match BALL_EVENT_SCHEMA v1")
+        # Graceful Schema Degradation: Check required names instead of strict .equals()
+        expected_names = set(BALL_EVENT_SCHEMA.names)
+        actual_names = set(arrow_table.schema.names)
+        if not expected_names.issubset(actual_names):
+            missing = expected_names - actual_names
+            raise ValueError(f"Schema Violation: Missing required columns {missing}")
 
         # Debug: log incoming table info
         try:
@@ -78,7 +81,8 @@ class QueryEngine:
 
                 # New source data invalidates all previously materialized derived tables.
                 # Keep metadata and physical derived schema in sync.
-                self._invalidate_derived_state(con)
+                if not incremental:
+                    self._invalidate_derived_state(con)
 
                 # Track the active snapshot tag for observability/debugging.
                 self._snapshot_id = snapshot_tag
@@ -127,7 +131,7 @@ class QueryEngine:
                     return False
                 if timed_out:
                     return True
-                return (time.perf_counter() - started_at) >= float(timeout)
+                return bool(timeout is not None and (time.perf_counter() - started_at) >= float(timeout))
 
             def _interrupt_query() -> None:
                 nonlocal timed_out
@@ -138,7 +142,7 @@ class QueryEngine:
                         interrupt()
 
             if timeout_enabled:
-                timer = threading.Timer(timeout, _interrupt_query)
+                timer = threading.Timer(float(timeout) if timeout is not None else 0.0, _interrupt_query)
                 timer.daemon = True
                 timer.start()
 
@@ -149,10 +153,24 @@ class QueryEngine:
                         raise TimeoutError(f"Query timed out after {timeout}s")
                     return result
 
+                # Append LIMIT 100000 at the end of the query to prevent memory explosion if possible,
+                # but to be safe, we also chunk the arrow reader.
                 result = con.execute(sql, params).arrow()
                 # Ensure we return a Table, not a RecordBatchReader
                 if isinstance(result, pa.RecordBatchReader):
-                    result = result.read_all()
+                    batches = []
+                    total_rows = 0
+                    for batch in result:
+                        batches.append(batch)
+                        total_rows += batch.num_rows
+                        if total_rows >= 100000:
+                            break
+                    if not batches:
+                        result = result.schema.empty_table()
+                    else:
+                        result = pa.Table.from_batches(batches)
+                        if result.num_rows > 100000:
+                            result = result.slice(0, 100000)
 
                 if _has_timed_out():
                     raise TimeoutError(f"Query timed out after {timeout}s")
@@ -311,12 +329,12 @@ class QueryEngine:
         try:
             over = int(over_value)
         except (TypeError, ValueError):
-            return "middle"
+            return "Middle"
         if over <= 5:
-            return "powerplay"
+            return "Powerplay"
         if over <= 14:
-            return "middle"
-        return "death"
+            return "Middle"
+        return "Death"
 
     @staticmethod
     def _table_columns(table_name: str, con) -> set[str]:

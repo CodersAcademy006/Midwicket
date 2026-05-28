@@ -63,7 +63,7 @@ class WinPredictor:
         # Populated by create_trained_model / WinProbabilityTrainer.create_win_predictor
         self.training_metadata: Optional[Dict] = None
 
-    def predict(self, target: int, current_runs: int, wickets_down: int, overs_done: float, venue: str = None) -> Tuple[float, float]:
+    def predict(self, target: int, current_runs: int, wickets_down: int, overs_done: float, venue: str = None, balls_per_innings: float = 120.0) -> Tuple[float, float]:
         """
         Predict win probability for the chasing team with confidence interval.
 
@@ -73,13 +73,14 @@ class WinPredictor:
             wickets_down: Wickets fallen
             overs_done: Overs completed
             venue: Venue name for home advantage adjustment
+            balls_per_innings: Total balls in innings
 
         Returns:
             Tuple of (win_probability, confidence_score)
         """
         # Input validation
-        if overs_done < 0 or overs_done > 20:
-            raise ValueError("overs_done must be between 0 and 20")
+        if overs_done < 0 or overs_done > (balls_per_innings / 6.0):
+            raise ValueError(f"overs_done must be between 0 and {balls_per_innings / 6.0}")
         if wickets_down < 0 or wickets_down > 10:
             raise ValueError("wickets_down must be between 0 and 10")
         if current_runs < 0 or target < 0:
@@ -94,6 +95,7 @@ class WinPredictor:
             wickets_down=wickets_down,
             overs_done=overs_done,
             venue_adjustment=venue_adjust,
+            balls_per_innings=balls_per_innings,
         )
         runs_remaining = feature_values["runs_remaining"]
         wickets_remaining = feature_values["wickets_remaining"]
@@ -230,14 +232,14 @@ class WinPredictor:
 
         return lookup
 
-    def predict_with_details(self, target: int, current_runs: int, wickets_down: int, overs_done: float, venue: str = None) -> Dict[str, float]:
+    def predict_with_details(self, target: int, current_runs: int, wickets_down: int, overs_done: float, venue: str = None, balls_per_innings: float = 120.0) -> Dict[str, float]:
         """
         Predict win probability with detailed breakdown.
 
         Returns:
             Dict with win_prob, confidence, and feature contributions
         """
-        prob, conf = self.predict(target, current_runs, wickets_down, overs_done, venue)
+        prob, conf = self.predict(target, current_runs, wickets_down, overs_done, venue, balls_per_innings)
 
         # Calculate key metrics for context
         feature_values = compute_chase_features(
@@ -246,6 +248,7 @@ class WinPredictor:
             wickets_down=wickets_down,
             overs_done=overs_done,
             venue_adjustment=self.venue_adjustments.get(self._normalize_venue(venue), 0.0),
+            balls_per_innings=balls_per_innings,
         )
 
         return {

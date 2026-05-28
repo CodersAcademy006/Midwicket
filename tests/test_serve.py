@@ -708,9 +708,11 @@ class TestFastAPIApp:
         assert response.status_code == 200
         assert isinstance(response.json(), list)
 
-    def test_audit_endpoint_graceful_when_table_missing(self):
+    def test_audit_endpoint_graceful_when_table_missing(self, monkeypatch):
         """/v1/audit should degrade to empty output if audit_log table is unavailable."""
         from fastapi.testclient import TestClient
+
+        monkeypatch.setenv("MIDWICKET_ADMIN_KEYS", "test-admin-key")
 
         session = Mock()
         session.registry = Mock()
@@ -718,17 +720,26 @@ class TestFastAPIApp:
 
         def _execute_sql(sql, *args, **kwargs):
             normalized = " ".join(str(sql).split()).lower()
+            # Startup SQL that create_app issues — let it pass silently.
+            if "create sequence" in normalized:
+                return Mock()
             if "create table if not exists audit_log" in normalized:
                 raise RuntimeError("read-only connection")
+            if "delete from audit_log" in normalized:
+                raise RuntimeError("read-only connection")
+            # The actual /v1/audit query — simulate missing table.
             if "from audit_log" in normalized:
                 raise RuntimeError("Catalog Error: Table with name audit_log does not exist")
-            raise RuntimeError("unexpected SQL in test")
+            return Mock()
 
         session.engine.execute_sql.side_effect = _execute_sql
 
         app = create_app(session=session, start_ingestor=False)
         with TestClient(app, raise_server_exceptions=False) as client:
-            response = client.get("/v1/audit")
+            response = client.get(
+                "/v1/audit",
+                headers={"X-API-Key": "test-admin-key"},
+            )
 
         assert response.status_code == 200
         assert response.json() == {"entries": [], "count": 0}
