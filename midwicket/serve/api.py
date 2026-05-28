@@ -634,7 +634,7 @@ class MidwicketAPI:
         @self.app.get("/v1/ready", include_in_schema=False)
         def readiness_probe_v1():
             """Versioned readiness probe alias."""
-            return await readiness_probe()
+            return readiness_probe()
 
         # ── Prometheus scrape endpoint ────────────────────────────────────────
         @self.app.get("/metrics", include_in_schema=False)
@@ -691,7 +691,7 @@ class MidwicketAPI:
         @self.app.get("/health")
         def health_check_legacy(authenticated: bool = Depends(verify_api_key)):
             """Health check endpoint (legacy)."""
-            return await health_check_v1()
+            return health_check_v1()
 
         @self.app.get("/v1/metrics")
         def get_metrics(authenticated: bool = Depends(verify_api_key)):

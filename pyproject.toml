@@ -91,8 +91,8 @@ module = ["pyarrow.*", "duckdb.*", "pandas.*", "tqdm.*", "numpy.*", "plotly.*", 
 ignore_missing_imports = true
 
 [tool.setuptools.packages.find]
-include = ["midwicket*", "midwicket*"]
-exclude = ["data*", "examples*", "tests*"]
+include = ["midwicket*"]
+exclude = ["data*", "examples*", "tests*", "pypitch*", "scripts*", "monitoring*"]
 
 [tool.setuptools.package-data]
 midwicket = ["py.typed", "models/data/*.json"]
