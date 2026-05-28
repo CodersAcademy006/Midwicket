@@ -180,9 +180,11 @@ except ImportError:
     pass
 
 try:
-    _session = init()
-    if _session.is_empty():
-        _session.bootstrap_all()
+    import sys
+    if "pytest" not in sys.modules:
+        _session = init()
+        if _session.is_empty():
+            _session.bootstrap_all()
 except Exception as e:
     import logging
     logging.getLogger(__name__).warning("Failed to auto-bootstrap Midwicket data: %s", e)

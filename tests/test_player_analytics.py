@@ -141,8 +141,10 @@ class TestCareerBatting:
         assert result["strike_rate"] > 0
 
     def test_no_data_player(self, mock_con):
-        result = pa.career_batting("Ghost Player")
-        assert result["matches"] == 0
+        import pytest
+        from midwicket.exceptions import PlayerNotFoundError
+        with pytest.raises(PlayerNotFoundError):
+            pa.career_batting("Ghost Player")
 
     def test_has_fours_sixes(self, mock_con):
         result = pa.career_batting(BATTER)
@@ -174,8 +176,10 @@ class TestCareerBowling:
         assert "/" in result["best_figures"]
 
     def test_no_data(self, mock_con):
-        result = pa.career_bowling("Ghost Bowler")
-        assert result["matches"] == 0
+        import pytest
+        from midwicket.exceptions import PlayerNotFoundError
+        with pytest.raises(PlayerNotFoundError):
+            pa.career_bowling("Ghost Bowler")
 
 
 # ---------------------------------------------------------------------------
