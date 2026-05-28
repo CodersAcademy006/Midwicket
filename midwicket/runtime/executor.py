@@ -110,7 +110,17 @@ class RuntimeExecutor:
             (prefer-materialization, BUDGET guard) is tracked for v0.2.x.
         """
         start_time = time.perf_counter()
-        query_hash = query.cache_key
+        
+        # MW-035: Bind the cache key to the engine's actual snapshot_id
+        engine_snap = getattr(self.engine, "snapshot_id", "latest")
+        if not isinstance(engine_snap, str):
+            engine_snap = getattr(query, "snapshot_id", "latest")
+        from midwicket.query.base import BaseQuery
+        if isinstance(query, BaseQuery):
+            resolved_query = query.model_copy(update={"snapshot_id": engine_snap})
+            query_hash = resolved_query.cache_key
+        else:
+            query_hash = getattr(query, "cache_key", "latest")
 
         # Import here to avoid circular dependencies at module import time.
         from midwicket.query.defs import WinProbQuery
@@ -136,7 +146,7 @@ class RuntimeExecutor:
                 data=cached_data,
                 meta=ResultMetadata(
                     query_hash=query_hash,
-                    snapshot_id=query.snapshot_id,
+                    snapshot_id=engine_snap,
                     execution_time_ms=(time.perf_counter() - start_time) * 1000,
                     source="cache"
                 )
@@ -158,7 +168,7 @@ class RuntimeExecutor:
                     data=cached_after_wait,
                     meta=ResultMetadata(
                         query_hash=query_hash,
-                        snapshot_id=query.snapshot_id,
+                        snapshot_id=engine_snap,
                         execution_time_ms=(time.perf_counter() - start_time) * 1000,
                         source="cache"
                     )
@@ -181,7 +191,7 @@ class RuntimeExecutor:
                     data=result,
                     meta=ResultMetadata(
                         query_hash=query_hash,
-                        snapshot_id=query.snapshot_id,
+                        snapshot_id=engine_snap,
                         execution_time_ms=(time.perf_counter() - start_time) * 1000,
                         source="compute"
                     )
@@ -255,7 +265,7 @@ class RuntimeExecutor:
                 data=result_table,
                 meta=ResultMetadata(
                     query_hash=query_hash,
-                    snapshot_id=query.snapshot_id,
+                    snapshot_id=engine_snap,
                     execution_time_ms=(time.perf_counter() - start_time) * 1000,
                     source="compute"
                 )
@@ -275,7 +285,18 @@ class RuntimeExecutor:
         metric_name = getattr(metric_func, "__name__", "unknown_metric")
         metric_qualname = getattr(metric_func, "__qualname__", metric_name)
         metric_module = getattr(metric_func, "__module__", "unknown_module")
-        query_hash = f"{query.cache_key}:{metric_module}.{metric_qualname}"
+        
+        # MW-035: Bind the cache key to the engine's actual snapshot_id
+        engine_snap = getattr(self.engine, "snapshot_id", "latest")
+        if not isinstance(engine_snap, str):
+            engine_snap = getattr(query, "snapshot_id", "latest")
+        from midwicket.query.base import BaseQuery
+        if isinstance(query, BaseQuery):
+            resolved_query = query.model_copy(update={"snapshot_id": engine_snap})
+            resolved_key = resolved_query.cache_key
+        else:
+            resolved_key = getattr(query, "cache_key", "latest")
+        query_hash = f"{resolved_key}:{metric_module}.{metric_qualname}"
 
         cached = self.cache.get(query_hash)
         if cached is not None:
@@ -283,7 +304,7 @@ class RuntimeExecutor:
                 data=cached,
                 meta=ResultMetadata(
                     query_hash=query_hash,
-                    snapshot_id=query.snapshot_id,
+                    snapshot_id=engine_snap,
                     execution_time_ms=(time.perf_counter() - start_time) * 1000,
                     source="cache"
                 )
@@ -303,7 +324,7 @@ class RuntimeExecutor:
                     data=cached_after_wait,
                     meta=ResultMetadata(
                         query_hash=query_hash,
-                        snapshot_id=query.snapshot_id,
+                        snapshot_id=engine_snap,
                         execution_time_ms=(time.perf_counter() - start_time) * 1000,
                         source="cache"
                     )
@@ -316,7 +337,7 @@ class RuntimeExecutor:
                     # This ensures 'derived.venue_baselines' exists in DuckDB
                     self.derived.ensure_materialized(
                         req["table"],
-                        snapshot_id=query.snapshot_id
+                        snapshot_id=engine_snap
                     )
 
             # 3. Plan: Generate the Complex SQL
@@ -341,7 +362,7 @@ class RuntimeExecutor:
                 data=result_value,
                 meta=ResultMetadata(
                     query_hash=query_hash,
-                    snapshot_id=query.snapshot_id,
+                    snapshot_id=engine_snap,
                     execution_time_ms=(time.perf_counter() - start_time) * 1000,
                     source="compute"
                 )

@@ -10,6 +10,7 @@ from tqdm import tqdm
 # Internal Imports
 from midwicket.storage.engine import QueryEngine
 from midwicket.storage.registry import IdentityRegistry
+from midwicket.storage.snapshots import SnapshotManager
 from midwicket.runtime.executor import RuntimeExecutor
 from midwicket.runtime.cache_duckdb import DuckDBCache
 from midwicket.data.loader import DEFAULT_DATA_DIR, DataLoader
@@ -35,6 +36,13 @@ class MidwicketSession:
         # Initialize Components
         self.registry = IdentityRegistry(self.registry_path)
         self.engine = engine if engine else QueryEngine(self.db_path)
+        self.snapshot_manager = SnapshotManager(str(self.data_dir))
+        
+        # Restore latest snapshot on boot
+        latest_snap = self.snapshot_manager.get_latest()
+        if latest_snap != "initial":
+            self.engine._snapshot_id = latest_snap
+            
         self.cache = DuckDBCache(self.cache_path)
         self.executor = RuntimeExecutor(self.cache, self.engine)
         self.loader = DataLoader(str(self.data_dir))
@@ -109,7 +117,9 @@ class MidwicketSession:
         try:
             data = self.loader.get_match(match_id)
             table = canonicalize_match(data, self.registry, match_id)
-            self.engine.ingest_events(table, snapshot_tag=f"match_{match_id}", append=True)
+            tag = f"match_{match_id}"
+            self.engine.ingest_events(table, snapshot_tag=tag, append=True)
+            self.snapshot_manager.create_snapshot(tag=tag, description=f"Loaded match {match_id}")
             logger.info("Match %s loaded successfully.", match_id)
         except (FileNotFoundError, ValueError, RuntimeError) as e:
             logger.error("Failed to load match %s: %s", match_id, e)
