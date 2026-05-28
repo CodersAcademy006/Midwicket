@@ -1,601 +1,181 @@
-# Midwicket
+<div align="center">
+  <img src="https://img.icons8.com/color/256/cricket.png" alt="Midwicket Logo" width="150" />
 
-**The Open Source Cricket Intelligence SDK**
+  # 🏏 Midwicket
+  
+  **The Open Source Cricket Intelligence SDK**
 
-Midwicket is a comprehensive Python library for cricket analytics, providing a robust, agent-based architecture for querying, processing, and analyzing cricket data. Built on top of PyArrow, DuckDB, and Pydantic, it offers deterministic, cacheable queries with strict schema enforcement.
+  <p align="center">
+    <a href="https://pypi.org/project/midwicket/"><img src="https://img.shields.io/pypi/v/midwicket?color=blue&style=for-the-badge&logo=python&logoColor=white" alt="PyPI version" /></a>
+    <a href="https://github.com/CodersAcademy006/Midwicket/actions"><img src="https://img.shields.io/github/actions/workflow/status/CodersAcademy006/Midwicket/publish.yml?style=for-the-badge&logo=github&logoColor=white" alt="Build Status" /></a>
+    <a href="https://pypi.org/project/midwicket/"><img src="https://img.shields.io/pypi/pyversions/midwicket?style=for-the-badge&logo=python&logoColor=white" alt="Python Versions" /></a>
+    <a href="https://github.com/CodersAcademy006/Midwicket/blob/main/LICENSE"><img src="https://img.shields.io/github/license/CodersAcademy006/Midwicket?style=for-the-badge" alt="License" /></a>
+  </p>
 
-## Table of Contents
+  <p align="center">
+    <i>Lightning-fast, deterministic, and scalable cricket analytics built on modern data engineering.</i>
+  </p>
 
-- [Introduction](#introduction)
-- [Features](#features)
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [Usage](#usage)
-  - [API Overview](#api-overview)
-  - [Key Capabilities](#key-capabilities)
-- [Examples](#examples)
-- [Architecture Overview](#architecture-overview)
-- [Data Sources](#data-sources)
-- [Documentation](#documentation)
-- [Performance](#performance)
-- [Stability & Compatibility](#stability--compatibility)
-- [Contributing](#contributing)
-- [License](#license)
-- [Support](#support)
-- [Roadmap](#roadmap)
+  [**Installation**](#-quick-start) •
+  [**API Reference**](midwicket/docs/api.md) •
+  [**Architecture**](Agents.md) •
+  [**Examples**](examples/) •
+  [**Discuss**](https://github.com/CodersAcademy006/Midwicket/discussions)
+</div>
 
-## Introduction
+---
 
-Midwicket is a powerful cricket analytics SDK designed for developers, data scientists, and cricket enthusiasts. It provides a complete solution for ingesting, querying, and analyzing cricket data with a focus on performance, reliability, and ease of use.
+## ✨ Why Midwicket?
 
-The library leverages modern data engineering tools (PyArrow, DuckDB) and architectural patterns (agent-based design, deterministic queries) to deliver a professional-grade analytics platform. Whether you're building a fantasy cricket application, conducting statistical research, or creating interactive dashboards, Midwicket provides the tools you need.
+Midwicket isn't just another API wrapper—it's a **powerful, agent-based analytics engine** designed from the ground up for data scientists, app developers, and absolute cricket nerds. 
 
-### Target Audience
+🚀 **Lightning Fast:** Sub-millisecond analytical queries powered by vectorized PyArrow operations and DuckDB engines.  
+🧠 **Agent-Based Architecture:** Specialized internal agents (Gatekeeper, Planner, Archivist) isolate logic for scalable operations.  
+🔮 **Predictive ML:** Built-in Win Probability models out of the box.  
+🛡️ **Type-Safe & Deterministic:** Immutable V1 schemas enforced by Pydantic. Queries are securely hashed and natively cached.  
+🔌 **Ready for Production:** Ships with a FastAPI backend, Docker setups, Prometheus metrics, and Grafana tracking.
 
-- **Data Scientists**: Perform advanced cricket analytics with Python
-- **Application Developers**: Build cricket-related applications with robust APIs
-- **Cricket Enthusiasts**: Explore and analyze cricket data programmatically
-- **Researchers**: Conduct statistical analysis on cricket matches
+---
 
-## Features
+## ⚡ Quick Start
 
-- **Agent-Based Architecture**: Specialized agents (Gatekeeper, Planner, Archivist, Identity Manager, Analyst) handle different aspects of data processing
-- **Deterministic Queries**: All queries are hashed for reproducible results and caching
-- **Schema V1 Contract**: Immutable data schema with evolution rules for backward compatibility
-- **High Performance**: Vectorized operations using PyArrow and analytical queries via DuckDB
-- **Time-Aware Identity**: Consistent player/team/venue resolution across historical data
-- **Express API**: One-liner access to common operations with sensible defaults
-- **Cricket Data Integration**: Works with Cricsheet.org IPL dataset (download required on first run)
-- **Win Probability Model**: ML-powered match outcome predictions
-- **Rich Visualizations**: Charts, reports, and interactive dashboards
-
-## Installation
-
-### Prerequisites
-
-- Python 3.9 or higher
-- pip package manager
-
-### Install from PyPI
+### 1. Install the Package
 
 ```bash
 pip install midwicket
 ```
 
-### Install from Source
-
-For development or to get the latest features:
-
-```bash
-git clone https://github.com/CodersAcademy006/Midwicket.git
-cd Midwicket
-pip install -r requirements.txt
-pip install -e .
-```
-
-### Verify Installation
-
-```python
-import midwicket as mw
-print(mw.__version__)  # Should print: 0.1.0
-```
-
-Legacy compatibility is preserved:
-
-```python
-import midwicket as md  # still supported
-```
-
-## Deployment
-
-### Docker Deployment
-
-Midwicket includes production-ready Docker configuration for easy deployment:
-
-#### Quick Start with Docker
-
-```bash
-# Clone the repository
-git clone https://github.com/CodersAcademy006/Midwicket.git
-cd Midwicket
-
-# Copy environment configuration
-cp .env.example .env
-# Edit .env with your production values
-
-# Start all services
-docker-compose up -d
-
-# Check health (uses unauthenticated internal probe)
-curl http://localhost:8000/_internal/health
-```
-
-#### Services Included
-
-- **Midwicket API**: FastAPI-based REST API (`http://localhost:8000`)
-- **DuckDB (embedded)**: Analytics and metadata storage inside the API service
-- **Prometheus**: Metrics collection (`http://localhost:9090`)
-- **Grafana**: Monitoring dashboards (`http://localhost:3000`)
-
-#### API Endpoints
-
-```http
-GET  /health          - Health check
-GET  /v1/metrics      - System and API metrics
-GET  /matches         - List matches
-POST /analyze         - Custom analysis
-GET  /win_probability - Win probability predictions
-```
-
-#### Authentication
-
-Include your API key in requests:
-
-```bash
-curl -H "X-API-Key: your-api-key" http://localhost:8000/health
-```
-
-#### Rate Limiting
-
-- 60 requests per minute per API key/IP
-- Rate limit headers included in responses
-- 429 status code when exceeded
-
-### Manual Deployment
-
-For custom deployment scenarios:
-
-```bash
-# Install dependencies
-pip install -r requirements.txt
-pip install 'midwicket[serve]'
-
-# Set environment variables (all use MIDWICKET_ prefix)
-export MIDWICKET_SECRET_KEY="your-secret-key-at-least-32-chars"
-export MIDWICKET_API_KEY_REQUIRED="true"
-export MIDWICKET_API_KEYS="your-api-key-here"
-export MIDWICKET_CORS_ORIGINS="https://your-frontend.example.com"
-export MIDWICKET_ALLOWED_HOSTS="your-domain.example.com,localhost"
-
-# Run the API
-python -c "from midwicket import serve; serve()"
-```
-
-## Quick Start
-
-Midwicket uses live cricket data from [Cricsheet.org](https://cricsheet.org). On first run, download the IPL dataset (~50 MB, one-time):
-
-### Step 1 — Download Data
+### 2. Download the Dataset
+Midwicket leverages [Cricsheet](https://cricsheet.org)'s incredible ball-by-ball dataset. You only need to run this once to populate your local DuckDB instance (~50MB).
 
 ```python
 from midwicket.data.loader import DataLoader
 
 loader = DataLoader()
-loader.download()  # Downloads from cricsheet.org — run once
+loader.download()
 ```
 
-### Step 2 — Use the Library
+### 3. Start Analyzing!
+We provide a beautiful **Express API** for one-liner analysis:
 
 ```python
 import midwicket.express as px
 
-# Get player statistics (requires data downloaded above)
+# 🏏 Get Lifetime Stats
 stats = px.get_player_stats("Virat Kohli")
-if stats:
-    print(f"{stats.name}: {stats.runs} runs in {stats.matches} matches")
+print(f"{stats.name} has absolutely smashed {stats.runs} runs in {stats.matches} matches.")
 
-# Predict win probability (no data required)
-from midwicket.compute.winprob import win_probability
-prob = win_probability(target=180, current_runs=120, wickets_down=5, overs_done=15.0)
-print(f"Win probability: {prob['win_prob']:.1%}")
+# 🔮 Predict Win Probability Live
+result = px.predict_win(
+    venue="Wankhede Stadium", 
+    target=180, 
+    current_runs=120, 
+    wickets_down=5, 
+    overs_completed=15.0
+)
+print(f"Win Probability: {result['win_prob']:.1%}")
 ```
 
-### Full Setup with Custom Data
-
-For production use or custom datasets:
-
-```bash
-pip install midwicket
-```
-
-```python
-import midwicket as md
-
-# Initialize session with data directory
-session = md.api.session.MidwicketSession("./data")
-
-# Download sample data (IPL 2023)
-from midwicket.data.loader import DataLoader
-loader = DataLoader("./data")
-loader.download()
-
-# Analyze player performance
-stats = session.get_player_stats("V Kohli")
-print(f"Player: {stats.name}")
-print(f"Matches: {stats.matches}, Runs: {stats.runs}")
-```
-
-## Usage
-
-### API Overview
-
-Midwicket provides multiple API levels for different use cases:
-
-### Express API (`midwicket.express`)
-- **Best for**: Quick analysis, prototyping, beginners
-- **Features**: One-liner functions, automatic setup, sensible defaults
-- **Example**: `px.get_player_stats("V Kohli")`
-
-### Core API (`midwicket.api`)
-- **Best for**: Production applications, custom workflows
-- **Features**: Full control, session management, advanced features
-- **Example**: `MidwicketSession("./data").get_player_stats("V Kohli")`
-
-### Direct Engine Access (`midwicket.storage`, `midwicket.compute`)
-- **Best for**: Custom analytics, high-performance computing
-- **Features**: Raw data access, custom queries, plugin system
-
-## Key Capabilities
-
-### Player Analytics
-```python
-# Career statistics
-stats = px.get_player_stats("Steve Smith")
-
-# Head-to-head matchups
-matchup = px.get_matchup("V Kohli", "JJ Bumrah")
-
-# Fantasy cheat sheet for a venue
-cheat = md.fantasy.cheat_sheet("Wankhede Stadium")
-print(cheat.head())
-```
-
-### Match Analysis
-```python
-# Load a specific match into the engine
-session.load_match("980959")
-
-# Win probability at a point in the match
-from midwicket.compute.winprob import win_probability
-prob = win_probability(target=180, current_runs=120,
-                       wickets_down=5, overs_done=15.0, venue=None)
-print(f"Chase win probability: {prob['win_prob']:.1%}")
-```
-
-### Predictive Modeling
-```python
-# Win probability via Express API
-result = px.predict_win("Eden Gardens", 180, 120, 5, 15.0)
-print(f"Win chance: {result['win_prob']:.1%}")
-
-# Venue batting/bowling bias
-bias = md.fantasy.venue_bias("Wankhede Stadium")
-print(f"Verdict: {bias['verdict']}")
-```
-
-### Data Management
-```python
-# Download IPL data (~50 MB)
-from midwicket.data.loader import DataLoader
-loader = DataLoader("./data")
-loader.download()
-
-# Build the identity registry from raw files
-from midwicket.data.pipeline import build_registry_stats
-build_registry_stats(loader, session.registry)
-
-# Raw SQL via the query engine
-from midwicket.storage.engine import QueryEngine
-engine = QueryEngine("./data/midwicket.duckdb")
-results = engine.execute_sql("SELECT * FROM ball_events LIMIT 10")
-```
-
-## Architecture Overview
-
-Midwicket uses a modular, agent-based architecture with clear separation of concerns:
-
-```
-Data Flow: Cricsheet JSON → Ingestion → DuckDB Cache → PyArrow Table → Pandas
-```
-
-### Module Structure
-
-```
-midwicket/
-├── api/             # User-Facing APIs (Express, Core, Plugins)
-├── schema/          # Immutable Data Definitions (Schema V1)
-├── query/           # Explicit Query Objects with Hashing
-├── storage/         # I/O & State Management (DuckDB/Parquet)
-├── runtime/         # Execution & Planning (Cache, Modes)
-├── compute/         # Pure Math & Analytics (PyArrow)
-├── core/            # Raw Data Processing (Cricsheet → Arrow)
-├── data/            # External Data Fetching & Loading
-├── models/          # ML Models (Win Probability, etc.)
-├── visuals/         # Charts, Reports, Dashboards
-├── report/          # PDF/Interactive Report Generation
-├── live/            # Live Broadcasting Overlays
-├── serve/           # REST API Server
-└── tests/           # Comprehensive Test Suite
-```
-
-For detailed architecture information, see [Agents.md](Agents.md).
-
-## Data Sources
-
-Midwicket uses [Cricsheet](https://cricsheet.org/) as its primary data source, providing comprehensive ball-by-ball data for international and domestic cricket matches. The library also supports:
-
-- **Custom Data Ingestion**: Import your own cricket data in JSON format
-- **Cricsheet Data Download**: Fetch IPL/international data via `loader.download()` (~50 MB, one-time)
-- **Live Data Streaming**: Real-time match data (upcoming feature)
-
-## Documentation
-
-### Core Documentation
-
-- **[Complete API Reference](midwicket/docs/api.md)**: Detailed function documentation with examples
-- **[Architecture Guide](Agents.md)**: Agent-based system design and philosophy
-- **[Win Probability Model](midwicket/docs/winprob_model.md)**: ML model implementation details
-- **[Debug Mode](midwicket/docs/debug_mode.md)**: Troubleshooting and debugging guide
-
-### Additional Resources
-
-- **[Examples](examples/)**: Jupyter notebooks and sample scripts (25+ examples)
-- **[Adapters](midwicket/docs/adapters.md)**: Custom data source integration guide
-- **[Impact Player](midwicket/docs/impact_player.md)**: Player impact analysis documentation
-
-## Examples
-
-Midwicket includes a comprehensive collection of examples to help you get started. All examples are located in the [examples/](examples/) directory.
-
-### Basic Analysis
-
-Analyze player statistics across multiple players:
-
-```python
-import midwicket.express as px
-
-# Load data first (one-time download from cricsheet.org, ~50 MB)
-session = px.quick_load()
-
-# Compare top run scorers
-players = ["V Kohli", "S Dhawan", "RG Sharma", "DA Warner", "AB de Villiers"]
-for player in players:
-    stats = px.get_player_stats(player)
-    if stats:
-        avg = stats.runs / stats.matches if stats.matches > 0 else 0
-        print(f"{player}: {stats.runs} runs ({avg:.1f} avg)")
-```
-
-### Match Win Prediction
-
-Predict match outcomes using real-time data:
-
-```python
-import midwicket.express as px
-
-# Real-time win probability calculation
-venue = "Wankhede Stadium"
-target = 180
-current_score = 120
-wickets_down = 5
-overs_completed = 15.0
-
-prob = px.predict_win(venue, target, current_score, wickets_down, overs_completed)
-print(f"Current win probability: {prob['win_prob']:.1%}")
-print(f"Model confidence: {prob['confidence']:.1%}")
-```
-
-### Fantasy Cricket Cheat Sheet
-
-Generate a fantasy selection cheat sheet ranked by projected points at a venue:
-
-```python
-from midwicket.api.fantasy import cheat_sheet, venue_bias
-
-# Top 20 players by avg fantasy points at this venue
-df = cheat_sheet("Wankhede Stadium")
-print(df[["player_id", "avg_points"]].head(10))
-
-# Batting-first vs chase advantage at the venue
-bias = venue_bias("Eden Gardens")
-print(f"Verdict: {bias['verdict']} "
-      f"(bat-first win%: {bias['win_bat_first_pct']}, "
-      f"chase win%: {bias['win_chase_pct']})")
-```
-
-### Advanced Analytics
-
-Perform custom analytics using direct SQL queries:
-
-```python
-from midwicket.storage.engine import QueryEngine
-
-# Initialize query engine
-engine = QueryEngine("./data/midwicket.duckdb")
-
-# Custom SQL query for detailed analysis
-query = """
-    SELECT batter_id,
-           SUM(runs_batter)  AS total_runs,
-           COUNT(*)          AS balls_faced
-    FROM ball_events
-    WHERE match_id = ?
-    GROUP BY batter_id
-    ORDER BY total_runs DESC
-    LIMIT 10
-"""
-results = engine.execute_sql(query, ["980959"])
-print(results.to_pandas())
-```
-
-For more examples, see the [examples/](examples/) directory which contains 25+ scripts covering various use cases.
-
-## Performance
-
-Midwicket is engineered for high performance with modern data processing technologies:
-
-### Performance Features
-
-- **Vectorized Operations**: Leverages PyArrow for fast columnar data processing
-- **Analytical Queries**: Uses DuckDB for sub-second analytical queries on large datasets
-- **Smart Caching**: Implements deterministic query hashing for efficient result caching
-- **Memory Efficient**: Employs lazy loading and streaming for handling large datasets
-- **Optimized I/O**: Parquet file format for fast reads and minimal storage
-
-### Benchmark Results
-
-Performance metrics on sample IPL 2023 dataset:
-
-| Operation | Execution Time |
-|-----------|---------------|
-| Player stats query | ~400μs |
-| Match loading | ~6.5ms |
-| Registry resolution | ~800μs |
-| Win probability prediction | ~50μs |
-
-*Note: Benchmarks performed on standard hardware. Actual performance may vary based on dataset size and hardware specifications.*
-
-## Stability & Compatibility
-
-### Versioning
-Midwicket follows [Semantic Versioning](https://semver.org/):
-
-- **Major (1.x → 2.x)**: Breaking architecture changes
-- **Minor (0.1 → 0.2)**: New features (backward compatible)
-- **Patch (0.1.1 → 0.1.2)**: Bug fixes only
-
-### API Stability
-
-- **Express API**: Designed to be stable with backward compatibility maintained in future versions
-- **Core API**: Structurally stable, with parameter additions only in minor versions
-- **Internal APIs**: May change between minor versions (use at your own risk)
-
-## Contributing
-
-We welcome contributions from the community! Midwicket is an open-source project and we appreciate help in the following areas:
-
-- Bug fixes and issue reporting
-- Feature development and enhancements
-- Documentation improvements
-- Test coverage expansion
-- Performance optimizations
-
-### How to Contribute
-
-1. **Fork the Repository**: Create your own fork of the Midwicket repository
-2. **Create a Branch**: Make a feature branch for your changes
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
-3. **Make Changes**: Implement your changes with clear, documented code
-4. **Write Tests**: Add tests for new features or bug fixes
-5. **Run Tests**: Ensure all tests pass
-   ```bash
-   pytest
-   ```
-6. **Submit Pull Request**: Create a PR with a clear description of your changes
-
-### Development Setup
-
-```bash
-# Clone the repository
-git clone https://github.com/CodersAcademy006/Midwicket.git
-cd Midwicket
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Install in editable mode
-pip install -e .
-
-# Run tests
-pytest
-
-# Run with coverage
-pytest --cov=midwicket
-```
-
-### Code Style Guidelines
-
-- Follow PEP 8 Python style guidelines
-- Use type hints for function signatures
-- Write docstrings for all public functions and classes
-- Keep functions focused and modular
-- Add comments for complex logic
-
-### Reporting Issues
-
-When reporting issues, please include:
-- Python version and operating system
-- Midwicket version
-- Minimal code example to reproduce the issue
-- Expected vs. actual behavior
-- Error messages and stack traces
-
-## License
-
-Midwicket is released under the **MIT License**. This means you are free to use, modify, and distribute the software, subject to the terms and conditions of the MIT License.
-
-For full license details, see the [LICENSE](LICENSE) file in the repository.
-
-## Support
-
-### Getting Help
-
-If you need assistance or have questions about Midwicket:
-
-- **Documentation**: Comprehensive guides available in the [docs](midwicket/docs/) directory
-- **GitHub Issues**: [Report bugs or request features](https://github.com/CodersAcademy006/Midwicket/issues)
-- **GitHub Discussions**: [Ask questions and share ideas](https://github.com/CodersAcademy006/Midwicket/discussions)
-- **Examples**: Browse [25+ example scripts](examples/) for common use cases
-
-### Community
-
-Join the Midwicket community to connect with other users and contributors:
-
-- Share your cricket analytics projects
-- Get help from experienced users
-- Contribute to the project's development
-- Stay updated on new features and releases
-
-## Roadmap
-
-Midwicket is under active development with a clear roadmap for future enhancements.
-
-### Current Version: v0.1.0
-
-**Completed Features:**
-- ✅ Express API with one-liner access patterns
-- ✅ Data integration with Cricsheet (download via `loader.download()`)
-- ✅ Win probability ML model implementation
-- ✅ Comprehensive test suite (87% auth coverage, 70%+ overall target)
-- ✅ Performance benchmarks and optimizations
-- ✅ PDF report generation capabilities
-- ✅ Live broadcasting overlay support
-- ✅ Agent-based architecture with clear separation of concerns
-
-### Upcoming: v1.1
-
-**Planned Features:**
-- 🔄 Enhanced ML models (player impact analysis, pitch condition predictions)
-- 🔄 Real-time data streaming capabilities
-- 🔄 Advanced data visualizations and interactive charts
-- 🔄 Plugin ecosystem for extensibility
-- 🔄 REST API server improvements and optimizations
-- 🔄 Expanded test coverage (target: 75%+)
-
-### Future Releases
-
-**Long-term Goals:**
-- Multi-sport support (extending beyond cricket)
-- Cloud deployment options and scalability
-- Mobile SDK for iOS and Android
-- Advanced AI-powered analytics and insights
-- Enhanced caching strategies
-- Support for additional data sources
-
-We welcome community input on the roadmap. Feel free to suggest features or vote on priorities in our [GitHub Discussions](https://github.com/CodersAcademy006/Midwicket/discussions).
+> [!TIP]
+> **Building a web app?** You can launch the built-in REST API instantly:
+> ```bash
+> python -c "from midwicket import serve; serve()"
+> ```
 
 ---
 
-**Built with ❤️ for the cricket analytics community**
+## 🏗️ Architecture
+
+Midwicket's engine is built on a clean separation of concerns. Raw JSON is heavily processed, flattened into Parquet using PyArrow, and served analytically by an embedded DuckDB instance.
+
+```mermaid
+graph LR
+    A[Cricsheet JSON] -->|Ingestion| B(PyArrow Pipeline)
+    B -->|Parquet| C{DuckDB Cache}
+    C -->|SQL Queries| D[Midwicket Engine]
+    D -->|Express API| E[Jupyter / Scripts]
+    D -->|FastAPI| F[Web / Mobile Clients]
+```
+
+---
+
+## 📊 Key Capabilities
+
+<details>
+<summary><b>1. Fantasy Cricket Cheat Sheets</b></summary>
+
+Generate venue-specific fantasy picks based on historical point averages.
+```python
+from midwicket.api.fantasy import cheat_sheet
+top_picks = cheat_sheet("Eden Gardens")
+print(top_picks.head(10))
+```
+</details>
+
+<details>
+<summary><b>2. Direct SQL Engine Access</b></summary>
+
+Bypass the SDK methods and run blazing fast queries directly against the historical event table.
+```python
+from midwicket.storage.engine import QueryEngine
+
+engine = QueryEngine("./data/midwicket.duckdb")
+results = engine.execute_sql("""
+    SELECT batter_id, SUM(runs_batter) AS total_runs
+    FROM ball_events
+    GROUP BY batter_id
+    ORDER BY total_runs DESC LIMIT 5
+""")
+print(results.to_pandas())
+```
+</details>
+
+<details>
+<summary><b>3. Live Match Overlays</b></summary>
+
+Calculate match situations mathematically using the SDK, then generate live broadcasting overlays or PDF reports for post-match analysis natively.
+</details>
+
+---
+
+## 🐳 Deployment
+
+Midwicket is built to handle traffic. We provide native dockerization.
+
+```bash
+git clone https://github.com/CodersAcademy006/Midwicket.git
+cd Midwicket
+cp .env.example .env
+
+# Deploy the FastAPI Backend, Grafana, and Prometheus
+docker-compose up -d
+```
+> [!IMPORTANT]
+> To configure Rate Limiting, API Keys, and CORS in production, make sure to read the `.env.example` file carefully.
+
+---
+
+## 🤝 Contributing
+
+We love contributions! Whether you're adding support for new data sources, optimizing the DuckDB queries, or expanding the ML models to include pitch bias—your PRs are welcome. 
+
+Please read the [Architecture Guide](Agents.md) before starting to understand the agent patterns used throughout the codebase.
+
+1. Fork the repo
+2. Create a feature branch (`git checkout -b feature/magic-ball`)
+3. Run the tests (`pytest`)
+4. Submit a Pull Request
+
+---
+
+## 📜 License
+
+Midwicket is completely open-source and released under the **MIT License**. Use it, break it, fix it, and build cool things with it.
+
+<br>
+<br>
+
+<div align="center">
+  <h3>Made with ❤️ by Srijan Upadhyay</h3>
+  <i>Built to flex.</i>
+</div>
