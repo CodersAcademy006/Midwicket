@@ -4,10 +4,10 @@
 This script demonstrates how to filter data by season (year) using SQL.
 """
 
-from pypitch.api.session import PyPitchSession
+from midwicket.api.session import MidwicketSession
 
 def main():
-    session = PyPitchSession.get()
+    session = MidwicketSession.get()
     
     # Filter for matches in 2023
     sql = """

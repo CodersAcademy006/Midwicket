@@ -2,11 +2,11 @@
 03_player_lookup.py
 
 This script demonstrates how to use the IdentityRegistry to resolve player names to IDs.
-PyPitch handles aliases (e.g., "V Kohli", "Virat Kohli") and time-travel consistency.
+Midwicket handles aliases (e.g., "V Kohli", "Virat Kohli") and time-travel consistency.
 """
 
 from datetime import date
-from pypitch.api.session import get_registry
+from midwicket.api.session import get_registry
 
 def main():
     registry = get_registry()

@@ -11,11 +11,11 @@ from contextlib import contextmanager
 import pytest
 import pyarrow as pa
 
-from pypitch.storage.engine import QueryEngine, StorageEngine
-from pypitch.storage.connection_pool import ConnectionPool
-from pypitch.storage.thread_safe_engine import create_thread_safe_engine
-from pypitch.schema.v1 import BALL_EVENT_SCHEMA
-from pypitch.exceptions import DataIngestionError, QueryTimeoutError
+from midwicket.storage.engine import QueryEngine, StorageEngine
+from midwicket.storage.connection_pool import ConnectionPool
+from midwicket.storage.thread_safe_engine import create_thread_safe_engine
+from midwicket.schema.v1 import BALL_EVENT_SCHEMA
+from midwicket.exceptions import DataIngestionError, QueryTimeoutError
 
 
 # ---------------------------------------------------------------------------
@@ -306,7 +306,7 @@ class TestQueryEngineExecuteSQL:
 
         engine = QueryEngine(":memory:")
         try:
-            import pypitch.storage.engine as engine_mod
+            import midwicket.storage.engine as engine_mod
 
             monkeypatch.setattr(engine_mod.threading, "Timer", _NoFireTimer)
             monkeypatch.setattr(engine.pool, "connection", _fake_connection)
@@ -537,7 +537,7 @@ class TestThreadSafeQueryEngine:
 
         engine = create_thread_safe_engine(":memory:")
         try:
-            import pypitch.storage.thread_safe_engine as ts_mod
+            import midwicket.storage.thread_safe_engine as ts_mod
 
             monkeypatch.setattr(ts_mod.threading, "Timer", _NoFireTimer)
             monkeypatch.setattr(engine.pool, "get_read_connection", _fake_read_connection)
@@ -760,7 +760,7 @@ class TestThreadSafeQueryEngine:
 
 class TestMetricsCollector:
     def test_record_request_increments_total(self):
-        from pypitch.serve.monitoring import MetricsCollector
+        from midwicket.serve.monitoring import MetricsCollector
         mc = MetricsCollector()
         mc.record_request("GET", "/health", 200, 0.05)
         mc.record_request("POST", "/analyze", 403, 0.10)
@@ -768,39 +768,39 @@ class TestMetricsCollector:
         assert metrics["total_requests"] >= 2
 
     def test_error_metrics_recorded(self):
-        from pypitch.serve.monitoring import MetricsCollector
+        from midwicket.serve.monitoring import MetricsCollector
         mc = MetricsCollector()
         mc.record_request("GET", "/bad", 500, 0.01)
         metrics = mc.get_api_metrics()
         assert metrics.get("total_errors", 0) >= 1 or metrics.get("error_rate", 0) >= 0
 
     def test_request_metrics_returns_dict(self):
-        from pypitch.serve.monitoring import MetricsCollector
+        from midwicket.serve.monitoring import MetricsCollector
         mc = MetricsCollector()
         result = mc.get_api_metrics()
         assert isinstance(result, dict)
 
     def test_system_metrics_returns_dict(self):
-        from pypitch.serve.monitoring import MetricsCollector
+        from midwicket.serve.monitoring import MetricsCollector
         mc = MetricsCollector()
         result = mc.get_system_metrics()
         assert isinstance(result, dict)
 
     def test_record_error_metrics(self):
-        from pypitch.serve.monitoring import MetricsCollector
+        from midwicket.serve.monitoring import MetricsCollector
         mc = MetricsCollector()
         mc.record_error("ValueError", "/test")
         # Should not raise
 
     def test_get_api_metrics_handles_zero_time_span(self):
         from unittest.mock import patch
-        from pypitch.serve.monitoring import MetricsCollector
+        from midwicket.serve.monitoring import MetricsCollector
 
         mc = MetricsCollector()
-        with patch("pypitch.serve.monitoring.time.time", return_value=1000.0):
+        with patch("midwicket.serve.monitoring.time.time", return_value=1000.0):
             mc.record_request("GET", "/health", 200, 0.05)
 
-        with patch("pypitch.serve.monitoring.time.time", return_value=1000.0):
+        with patch("midwicket.serve.monitoring.time.time", return_value=1000.0):
             metrics = mc.get_api_metrics(since=1000.0)
 
         assert metrics["total_requests"] == 1
@@ -808,17 +808,17 @@ class TestMetricsCollector:
 
     def test_record_error_cleans_up_stale_metrics(self):
         from unittest.mock import patch
-        from pypitch.serve.monitoring import MetricsCollector
+        from midwicket.serve.monitoring import MetricsCollector
 
         mc = MetricsCollector()
         mc.max_metrics_age = 10
 
         # First error becomes stale.
-        with patch("pypitch.serve.monitoring.time.time", return_value=1000.0):
+        with patch("midwicket.serve.monitoring.time.time", return_value=1000.0):
             mc.record_error("ValueError", "old")
 
         # Second error should trigger cleanup and remove stale entry.
-        with patch("pypitch.serve.monitoring.time.time", return_value=1015.0):
+        with patch("midwicket.serve.monitoring.time.time", return_value=1015.0):
             mc.record_error("ValueError", "new")
 
         errors = mc.metrics["errors"]
@@ -832,45 +832,45 @@ class TestMetricsCollector:
 
 class TestRateLimiter:
     def test_first_request_is_allowed(self):
-        from pypitch.serve.rate_limit import RateLimiter
+        from midwicket.serve.rate_limit import RateLimiter
         limiter = RateLimiter(requests_per_minute=5)
         assert limiter.is_allowed("client-1") is True
 
     def test_within_limit_all_allowed(self):
-        from pypitch.serve.rate_limit import RateLimiter
+        from midwicket.serve.rate_limit import RateLimiter
         limiter = RateLimiter(requests_per_minute=3)
         for _ in range(3):
             assert limiter.is_allowed("client-x") is True
 
     def test_exceeds_limit_is_blocked(self):
-        from pypitch.serve.rate_limit import RateLimiter
+        from midwicket.serve.rate_limit import RateLimiter
         limiter = RateLimiter(requests_per_minute=2)
         limiter.is_allowed("c")
         limiter.is_allowed("c")
         assert limiter.is_allowed("c") is False
 
     def test_different_clients_tracked_independently(self):
-        from pypitch.serve.rate_limit import RateLimiter
+        from midwicket.serve.rate_limit import RateLimiter
         limiter = RateLimiter(requests_per_minute=1)
         assert limiter.is_allowed("a") is True
         assert limiter.is_allowed("b") is True
         assert limiter.is_allowed("a") is False
 
     def test_get_remaining_requests(self):
-        from pypitch.serve.rate_limit import RateLimiter
+        from midwicket.serve.rate_limit import RateLimiter
         limiter = RateLimiter(requests_per_minute=5)
         limiter.is_allowed("r")
         remaining = limiter.get_remaining_requests("r")
         assert remaining == 4
 
     def test_cleanup_old_keys_does_not_raise(self):
-        from pypitch.serve.rate_limit import RateLimiter
+        from midwicket.serve.rate_limit import RateLimiter
         limiter = RateLimiter(requests_per_minute=10)
         limiter.is_allowed("temp-key")
         limiter.cleanup_old_keys()
 
     def test_get_client_key_uses_peer_ip(self):
-        from pypitch.serve.rate_limit import get_client_key
+        from midwicket.serve.rate_limit import get_client_key
         from unittest.mock import MagicMock
         req = MagicMock()
         req.client = MagicMock()
@@ -880,7 +880,7 @@ class TestRateLimiter:
         assert "10.0.0.1" in key
 
     def test_get_client_key_uses_bearer_token(self):
-        from pypitch.serve.rate_limit import get_client_key
+        from midwicket.serve.rate_limit import get_client_key
         from unittest.mock import MagicMock
         req = MagicMock()
         req.client = None

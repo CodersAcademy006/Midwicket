@@ -1,5 +1,5 @@
 """
-28_express_quickstart.py — PyPitch Express API: One-liner Access
+28_express_quickstart.py — Midwicket Express API: One-liner Access
 
 The express module mirrors Plotly Express: sensible defaults, zero boilerplate.
 Data is downloaded automatically on first run (~50 MB IPL dataset).
@@ -8,12 +8,12 @@ Usage:
     python examples/28_express_quickstart.py
 """
 
-import pypitch.express as px
+import midwicket.express as px
 
 
 def main() -> None:
     print("=" * 60)
-    print("PyPitch Express — Quick Start Demo")
+    print("Midwicket Express — Quick Start Demo")
     print("=" * 60)
 
     # ------------------------------------------------------------------

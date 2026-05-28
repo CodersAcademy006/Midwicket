@@ -2,8 +2,8 @@ import threading
 
 import pytest
 from datetime import date
-from pypitch.storage.registry import IdentityRegistry, EntityNotFoundError
-from pypitch.storage import registry as _registry_module
+from midwicket.storage.registry import IdentityRegistry, EntityNotFoundError
+from midwicket.storage import registry as _registry_module
 
 @pytest.fixture
 def registry():

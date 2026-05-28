@@ -3,7 +3,7 @@ Test cases for CricsheetLoader zero-config ingestion.
 """
 import os
 import pytest
-from pypitch.sources.cricsheet_loader import CricsheetLoader
+from midwicket.sources.cricsheet_loader import CricsheetLoader
 
 def test_cricsheet_loader_match_ids(tmp_path):
     # Setup: create fake data dir with one match

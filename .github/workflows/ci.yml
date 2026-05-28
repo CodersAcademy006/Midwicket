@@ -35,10 +35,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PYPITCH_ENV: testing
-  PYPITCH_API_KEY_REQUIRED: "false"
-  PYPITCH_DATA_DIR: /tmp/pypitch_test_data
-  PYPITCH_SECRET_KEY: ci-test-secret-key-not-for-production
+  MIDWICKET_ENV: testing
+  MIDWICKET_API_KEY_REQUIRED: "false"
+  MIDWICKET_DATA_DIR: /tmp/midwicket_test_data
+  MIDWICKET_SECRET_KEY: ci-test-secret-key-not-for-production
 
 jobs:
   # --------------------------------------------------------------------------
@@ -113,18 +113,18 @@ jobs:
           fi
 
           # Core engine -> complete CI.
-          if match '^pypitch/(core|storage|runtime|compute|query)/' \
-             || match '^pypitch/(config|exceptions|__init__|features|logging_config)\.py$'; then
+          if match '^midwicket/(core|storage|runtime|compute|query)/' \
+             || match '^midwicket/(config|exceptions|__init__|features|logging_config)\.py$'; then
             core=true
           fi
 
-          # Any Python source under pypitch/.
-          if echo "${CHANGED}" | grep -Eq '^pypitch/.*\.py$'; then
+          # Any Python source under midwicket/.
+          if echo "${CHANGED}" | grep -Eq '^midwicket/.*\.py$'; then
             src_changed=true
           fi
 
           if match '^tests/'; then tests=true; fi
-          if match '(^|/)[^/]+\.md$' || match '^docs/' || match '^pypitch/docs/'; then docs=true; fi
+          if match '(^|/)[^/]+\.md$' || match '^docs/' || match '^midwicket/docs/'; then docs=true; fi
 
           # ---- Tier decision -------------------------------------------------
           full=false
@@ -213,13 +213,13 @@ jobs:
         run: |
           # Real-bug checks: syntax errors, undefined names, f-string bugs,
           # broken comparisons. These must always pass.
-          ruff check pypitch/ tests/ --select E9,F63,F7,F82
+          ruff check midwicket/ tests/ --select E9,F63,F7,F82
 
       - name: Lint — ruff (style, informational)
-        run: ruff check pypitch/ || true
+        run: ruff check midwicket/ || true
 
       - name: Security — bandit
-        run: bandit -r pypitch/ -ll -x pypitch/sources/retrosheet_adapter.py
+        run: bandit -r midwicket/ -ll -x midwicket/sources/retrosheet_adapter.py
 
       # Soft gate: there is a backlog of pre-existing type errors (largely
       # missing pyarrow.compute stubs in compute/metrics/*). mypy runs and
@@ -227,7 +227,7 @@ jobs:
       # once the backlog is burned down to ratchet this into a hard gate.
       - name: Type check — mypy (non-blocking)
         continue-on-error: true
-        run: mypy pypitch/ --ignore-missing-imports
+        run: mypy midwicket/ --ignore-missing-imports
 
   # --------------------------------------------------------------------------
   # Dependency vulnerability audit. Complete tier (and manual) only.
@@ -301,7 +301,7 @@ jobs:
             MARKERS='not performance'
           fi
           pytest tests/ -v --strict-markers --strict-config \
-            --cov=pypitch --cov-report=xml --cov-report=term-missing \
+            --cov=midwicket --cov-report=xml --cov-report=term-missing \
             --cov-fail-under=70 -m "${MARKERS}"
 
       - name: Upload coverage report

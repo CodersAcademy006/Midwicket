@@ -5,9 +5,9 @@ from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from starlette.requests import Request
 
-from pypitch.client import PyPitchClient
-from pypitch.serve.auth import verify_api_key
-from pypitch.serve.rate_limit import get_client_key
+from midwicket.client import MidwicketClient
+from midwicket.serve.auth import verify_api_key
+from midwicket.serve.rate_limit import get_client_key
 
 
 def _request_with_headers(headers: dict[str, str], client_host: str = "127.0.0.1") -> Request:
@@ -28,8 +28,8 @@ def _request_with_headers(headers: dict[str, str], client_host: str = "127.0.0.1
 
 
 def test_verify_api_key_accepts_bearer_token(monkeypatch):
-    monkeypatch.setattr("pypitch.serve.auth.API_KEY_REQUIRED", True)
-    monkeypatch.setenv("PYPITCH_API_KEYS", "abc123")
+    monkeypatch.setattr("midwicket.serve.auth.API_KEY_REQUIRED", True)
+    monkeypatch.setenv("MIDWICKET_API_KEYS", "abc123")
 
     req = _request_with_headers({"Authorization": "Bearer abc123"})
     creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="abc123")
@@ -38,8 +38,8 @@ def test_verify_api_key_accepts_bearer_token(monkeypatch):
 
 
 def test_verify_api_key_accepts_legacy_x_api_key(monkeypatch):
-    monkeypatch.setattr("pypitch.serve.auth.API_KEY_REQUIRED", True)
-    monkeypatch.setenv("PYPITCH_API_KEYS", "legacy-key")
+    monkeypatch.setattr("midwicket.serve.auth.API_KEY_REQUIRED", True)
+    monkeypatch.setenv("MIDWICKET_API_KEYS", "legacy-key")
 
     req = _request_with_headers({"X-API-Key": "legacy-key"})
 
@@ -47,8 +47,8 @@ def test_verify_api_key_accepts_legacy_x_api_key(monkeypatch):
 
 
 def test_verify_api_key_rejects_missing_token(monkeypatch):
-    monkeypatch.setattr("pypitch.serve.auth.API_KEY_REQUIRED", True)
-    monkeypatch.setenv("PYPITCH_API_KEYS", "abc123")
+    monkeypatch.setattr("midwicket.serve.auth.API_KEY_REQUIRED", True)
+    monkeypatch.setenv("MIDWICKET_API_KEYS", "abc123")
 
     req = _request_with_headers({})
 
@@ -70,7 +70,7 @@ def test_rate_limit_client_key_prefers_bearer():
 
 
 def test_rate_limit_client_key_uses_xff_for_trusted_proxy(monkeypatch):
-    monkeypatch.setenv("PYPITCH_TRUSTED_PROXIES", "10.0.0.0/8")
+    monkeypatch.setenv("MIDWICKET_TRUSTED_PROXIES", "10.0.0.0/8")
     req = _request_with_headers(
         {"X-Forwarded-For": "198.51.100.7"},
         client_host="10.10.0.2",
@@ -79,7 +79,7 @@ def test_rate_limit_client_key_uses_xff_for_trusted_proxy(monkeypatch):
 
 
 def test_rate_limit_client_key_ignores_xff_for_untrusted_peer(monkeypatch):
-    monkeypatch.setenv("PYPITCH_TRUSTED_PROXIES", "10.0.0.0/8")
+    monkeypatch.setenv("MIDWICKET_TRUSTED_PROXIES", "10.0.0.0/8")
     req = _request_with_headers(
         {"X-Forwarded-For": "198.51.100.7"},
         client_host="203.0.113.20",
@@ -88,7 +88,7 @@ def test_rate_limit_client_key_ignores_xff_for_untrusted_peer(monkeypatch):
 
 
 def test_rate_limit_client_key_rejects_malformed_xff(monkeypatch):
-    monkeypatch.setenv("PYPITCH_TRUSTED_PROXIES", "10.0.0.0/8")
+    monkeypatch.setenv("MIDWICKET_TRUSTED_PROXIES", "10.0.0.0/8")
     req = _request_with_headers(
         {"X-Forwarded-For": "not-an-ip"},
         client_host="10.10.0.2",
@@ -97,7 +97,7 @@ def test_rate_limit_client_key_rejects_malformed_xff(monkeypatch):
 
 
 def test_rate_limit_client_key_ignores_xff_when_proxy_list_invalid(monkeypatch):
-    monkeypatch.setenv("PYPITCH_TRUSTED_PROXIES", "not-a-cidr")
+    monkeypatch.setenv("MIDWICKET_TRUSTED_PROXIES", "not-a-cidr")
     req = _request_with_headers(
         {"X-Forwarded-For": "198.51.100.7"},
         client_host="10.10.0.2",
@@ -106,7 +106,7 @@ def test_rate_limit_client_key_ignores_xff_when_proxy_list_invalid(monkeypatch):
 
 
 def test_client_sets_bearer_and_legacy_headers():
-    client = PyPitchClient(api_key="token-xyz")
+    client = MidwicketClient(api_key="token-xyz")
 
     assert client.session.headers["Authorization"] == "Bearer token-xyz"
     assert client.session.headers["X-API-Key"] == "token-xyz"

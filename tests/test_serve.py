@@ -1,7 +1,7 @@
 """
-Tests for PyPitch REST API Server
+Tests for Midwicket REST API Server
 
-Tests the FastAPI-based REST API for serving PyPitch functionality.
+Tests the FastAPI-based REST API for serving Midwicket functionality.
 """
 
 import pytest
@@ -11,21 +11,21 @@ import tempfile
 from pathlib import Path
 from pydantic import ValidationError
 
-from pypitch.serve.api import PyPitchAPI, create_app
-from pypitch.api.validation import (
+from midwicket.serve.api import MidwicketAPI, create_app
+from midwicket.api.validation import (
     WinPredictionRequest, PlayerLookupRequest, VenueLookupRequest,
     MatchupRequest, FantasyPointsRequest, StatsFilterRequest,
     LiveMatchRegistrationRequest, DeliveryDataRequest
 )
-from pypitch.exceptions import PyPitchError, DataIngestionError, DataValidationError
+from midwicket.exceptions import MidwicketError, DataIngestionError, DataValidationError
 
-from pypitch.storage.engine import QueryEngine
-from pypitch.storage.registry import IdentityRegistry
-from pypitch.runtime.cache_duckdb import DuckDBCache
-from pypitch.runtime.executor import RuntimeExecutor
+from midwicket.storage.engine import QueryEngine
+from midwicket.storage.registry import IdentityRegistry
+from midwicket.runtime.cache_duckdb import DuckDBCache
+from midwicket.runtime.executor import RuntimeExecutor
 
-class TestPyPitchAPI:
-    """Test the PyPitchAPI class."""
+class TestMidwicketAPI:
+    """Test the MidwicketAPI class."""
 
     @pytest.fixture
     def temp_db_path(self):
@@ -38,11 +38,11 @@ class TestPyPitchAPI:
 
     @pytest.fixture
     def api_instance(self, temp_db_path):
-        """Create a PyPitchAPI instance."""
+        """Create a MidwicketAPI instance."""
         # Mock session to avoid full DB initialization
         mock_session = Mock()
         mock_session.engine = Mock()
-        with PyPitchAPI(session=mock_session) as api:
+        with MidwicketAPI(session=mock_session) as api:
             yield api
 
     def test_api_initialization(self, api_instance):
@@ -243,7 +243,7 @@ class TestPyPitchAPI:
     def test_error_handling(self, api_instance):
         """Test error handling in API methods."""
         # Test with invalid data that should cause internal errors
-        with patch('pypitch.serve.api.wp_func', side_effect=Exception("Test error")):
+        with patch('midwicket.serve.api.wp_func', side_effect=Exception("Test error")):
             request = WinPredictionRequest(
                 target=150,
                 current_runs=50,
@@ -301,7 +301,7 @@ class TestFastAPIApp:
 
     def test_create_app_shutdown_stops_ingestor(self, mock_session, monkeypatch):
         """ASGI shutdown should stop the background ingestor exactly once."""
-        import pypitch.serve.api as api_mod
+        import midwicket.serve.api as api_mod
         from fastapi.testclient import TestClient
 
         calls = {"stop": 0}
@@ -335,7 +335,7 @@ class TestFastAPIApp:
                 session = Mock()
                 session.engine = Mock()
                 session.registry = Mock()
-                with PyPitchAPI(session=session, start_ingestor=False) as api:
+                with MidwicketAPI(session=session, start_ingestor=False) as api:
                     outcome["ok"] = hasattr(api.app, "routes")
             except Exception as exc:
                 outcome["ok"] = False
@@ -351,7 +351,7 @@ class TestFastAPIApp:
         """When draining is active, non-probe requests should be rejected with 503."""
         from fastapi.testclient import TestClient
 
-        with PyPitchAPI(session=mock_session, start_ingestor=False) as api:
+        with MidwicketAPI(session=mock_session, start_ingestor=False) as api:
             api._draining_event.set()
             with TestClient(api.app, raise_server_exceptions=False) as c:
                 response = c.get(
@@ -371,7 +371,7 @@ class TestFastAPIApp:
         """Internal probe endpoints should remain available during drain mode."""
         from fastapi.testclient import TestClient
 
-        with PyPitchAPI(session=mock_session, start_ingestor=False) as api:
+        with MidwicketAPI(session=mock_session, start_ingestor=False) as api:
             api._draining_event.set()
             with TestClient(api.app, raise_server_exceptions=False) as c:
                 response = c.get("/_internal/health")
@@ -383,8 +383,8 @@ class TestFastAPIApp:
     def client(self, mock_session):
         """Create a test client for the FastAPI app.
 
-        Auth is disabled via PYPITCH_API_KEY_REQUIRED=false in conftest.py.
-        TrustedHostMiddleware allows 'testserver' when PYPITCH_ENV=testing.
+        Auth is disabled via MIDWICKET_API_KEY_REQUIRED=false in conftest.py.
+        TrustedHostMiddleware allows 'testserver' when MIDWICKET_ENV=testing.
         """
         from fastapi.testclient import TestClient
 
@@ -414,7 +414,7 @@ class TestFastAPIApp:
     def test_v1_health_bypasses_rate_limit_middleware(self, mock_session, monkeypatch):
         """/v1/health should not invoke rate limiting middleware."""
         from fastapi.testclient import TestClient
-        import pypitch.serve.api as api_mod
+        import midwicket.serve.api as api_mod
 
         calls = {"count": 0}
 
@@ -438,7 +438,7 @@ class TestFastAPIApp:
             def stop(self):
                 raise RuntimeError("stop failed")
 
-        api = PyPitchAPI(session=mock_session, start_ingestor=False)
+        api = MidwicketAPI(session=mock_session, start_ingestor=False)
         api.ingestor = _FailingIngestor()
 
         # Should not raise and should clear ingestor reference.
@@ -495,17 +495,17 @@ class TestFastAPIApp:
         assert "detail" in response.json()
 
     def test_analyze_disabled_by_default(self, client):
-        """Custom SQL analysis must be disabled when PYPITCH_ANALYZE_ENABLED is not set."""
+        """Custom SQL analysis must be disabled when MIDWICKET_ANALYZE_ENABLED is not set."""
         response = client.post("/analyze", json={"sql": "SELECT 1"})
-        # Should return 403 when PYPITCH_ANALYZE_ENABLED != 'true'
+        # Should return 403 when MIDWICKET_ANALYZE_ENABLED != 'true'
         assert response.status_code == 403
 
     def test_analyze_query_timeout_error_maps_to_408(self, monkeypatch):
         """Thread-safe engine timeout exceptions should map to HTTP 408."""
         from fastapi.testclient import TestClient
-        from pypitch.exceptions import QueryTimeoutError
+        from midwicket.exceptions import QueryTimeoutError
 
-        monkeypatch.setenv("PYPITCH_ANALYZE_ENABLED", "true")
+        monkeypatch.setenv("MIDWICKET_ANALYZE_ENABLED", "true")
 
         session = Mock()
         session.registry = Mock()
@@ -522,9 +522,9 @@ class TestFastAPIApp:
     def test_auth_required_without_key(self, mock_session, monkeypatch):
         """When auth IS required, missing key returns 401."""
         import os
-        import pypitch.serve.auth as auth_mod
+        import midwicket.serve.auth as auth_mod
 
-        monkeypatch.setenv("PYPITCH_API_KEYS", "valid-key")
+        monkeypatch.setenv("MIDWICKET_API_KEYS", "valid-key")
         # Patch the module-level constant directly since it's bound at import time
         monkeypatch.setattr(auth_mod, "API_KEY_REQUIRED", True)
 
@@ -539,9 +539,9 @@ class TestFastAPIApp:
 
     def test_auth_accepted_with_valid_key(self, mock_session, monkeypatch):
         """Valid X-API-Key header is accepted."""
-        import pypitch.serve.auth as auth_mod
+        import midwicket.serve.auth as auth_mod
 
-        monkeypatch.setenv("PYPITCH_API_KEYS", "valid-key")
+        monkeypatch.setenv("MIDWICKET_API_KEYS", "valid-key")
         monkeypatch.setattr(auth_mod, "API_KEY_REQUIRED", True)
 
         from fastapi.testclient import TestClient
@@ -557,7 +557,7 @@ class TestFastAPIApp:
 
     def test_cors_preflight_allows_x_api_key(self, mock_session, monkeypatch):
         """CORS preflight must include X-API-Key for browser legacy clients."""
-        import pypitch.serve.api as api_mod
+        import midwicket.serve.api as api_mod
         from fastapi.testclient import TestClient
 
         monkeypatch.setattr(api_mod, "API_CORS_ORIGINS", ["https://app.example.com"])
@@ -579,7 +579,7 @@ class TestFastAPIApp:
 
     def test_cors_preflight_rejects_unauthorized_origin(self, mock_session, monkeypatch):
         """CORS preflight should not grant allow-origin for disallowed origins."""
-        import pypitch.serve.api as api_mod
+        import midwicket.serve.api as api_mod
         from fastapi.testclient import TestClient
 
         monkeypatch.setattr(api_mod, "API_CORS_ORIGINS", ["https://app.example.com"])
@@ -630,7 +630,7 @@ class TestFastAPIApp:
                     "Missing required live delivery fields for schema v1 table: batter_id"
                 )
 
-        with PyPitchAPI(session=mock_session, start_ingestor=False) as api:
+        with MidwicketAPI(session=mock_session, start_ingestor=False) as api:
             api.ingestor = _DummyIngestor()
             with TestClient(api.app, raise_server_exceptions=False) as client:
                 response = client.post(
@@ -658,7 +658,7 @@ class TestFastAPIApp:
                     "Live ingestion queue is full. The server is under load; please retry after a short delay."
                 )
 
-        with PyPitchAPI(session=mock_session, start_ingestor=False) as api:
+        with MidwicketAPI(session=mock_session, start_ingestor=False) as api:
             api.ingestor = _DummyIngestor()
             with TestClient(api.app, raise_server_exceptions=False) as client:
                 response = client.post(
@@ -684,7 +684,7 @@ class TestFastAPIApp:
             def update_match_data(self, match_id, delivery_data):
                 return False
 
-        with PyPitchAPI(session=mock_session, start_ingestor=False) as api:
+        with MidwicketAPI(session=mock_session, start_ingestor=False) as api:
             api.ingestor = _DummyIngestor()
             with TestClient(api.app, raise_server_exceptions=False) as client:
                 response = client.post(

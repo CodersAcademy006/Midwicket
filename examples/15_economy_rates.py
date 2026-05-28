@@ -4,10 +4,10 @@
 This script calculates economy rates for bowlers who have bowled at least 120 balls (20 overs).
 """
 
-from pypitch.api.session import PyPitchSession
+from midwicket.api.session import MidwicketSession
 
 def main():
-    session = PyPitchSession.get()
+    session = MidwicketSession.get()
     session.registry.close()
     
     registry_path = session.registry_path.replace("\\", "/")

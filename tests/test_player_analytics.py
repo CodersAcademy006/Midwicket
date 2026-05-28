@@ -1,5 +1,5 @@
 """
-Tests for pypitch/api/player_analytics.py (PA-01 to PA-28).
+Tests for midwicket/api/player_analytics.py (PA-01 to PA-28).
 
 Uses an in-memory DuckDB session with synthetic ball_events data.
 All player_analytics functions call _get_con() → session.engine.raw_connection().
@@ -13,7 +13,7 @@ import duckdb
 import pytest
 from unittest.mock import patch
 
-import pypitch.api.player_analytics as pa
+import midwicket.api.player_analytics as pa
 
 
 # ---------------------------------------------------------------------------
@@ -141,8 +141,10 @@ class TestCareerBatting:
         assert result["strike_rate"] > 0
 
     def test_no_data_player(self, mock_con):
-        result = pa.career_batting("Ghost Player")
-        assert result["matches"] == 0
+        import pytest
+        from midwicket.exceptions import PlayerNotFoundError
+        with pytest.raises(PlayerNotFoundError):
+            pa.career_batting("Ghost Player")
 
     def test_has_fours_sixes(self, mock_con):
         result = pa.career_batting(BATTER)
@@ -174,8 +176,10 @@ class TestCareerBowling:
         assert "/" in result["best_figures"]
 
     def test_no_data(self, mock_con):
-        result = pa.career_bowling("Ghost Bowler")
-        assert result["matches"] == 0
+        import pytest
+        from midwicket.exceptions import PlayerNotFoundError
+        with pytest.raises(PlayerNotFoundError):
+            pa.career_bowling("Ghost Bowler")
 
 
 # ---------------------------------------------------------------------------
@@ -464,7 +468,19 @@ class TestComparePlayers:
 # ---------------------------------------------------------------------------
 
 class TestBattingLeaderboard:
-    def test_returns_list(self, mock_con):
+    def test_returns_list(self, mock_con, monkeypatch):
+        from midwicket.api.session import MidwicketSession
+        class MockRegistry:
+            con = duckdb.connect(":memory:")
+            con.execute("CREATE TABLE player_stats (entity_id VARCHAR, matches INT, runs INT, balls_faced INT, wickets INT, balls_bowled INT, runs_conceded INT)")
+            con.execute("CREATE TABLE entities (id VARCHAR, primary_name VARCHAR, entity_type VARCHAR)")
+            con.execute("INSERT INTO entities VALUES ('E1', 'V Kohli', 'player')")
+            con.execute("INSERT INTO player_stats VALUES ('E1', 10, 500, 350, 0, 0, 0)")
+        
+        class MockSession:
+            registry = MockRegistry()
+
+        monkeypatch.setattr("midwicket.api.session.MidwicketSession.get", lambda: MockSession())
         result = pa.batting_leaderboard(sort_by="runs", top_n=5, min_balls=1)
         assert isinstance(result, list)
         assert len(result) >= 1
@@ -472,12 +488,36 @@ class TestBattingLeaderboard:
             assert "player" in r
             assert "runs" in r
 
-    def test_sorted_by_runs(self, mock_con):
+    def test_sorted_by_runs(self, mock_con, monkeypatch):
+        from midwicket.api.session import MidwicketSession
+        class MockRegistry:
+            con = duckdb.connect(":memory:")
+            con.execute("CREATE TABLE player_stats (entity_id VARCHAR, matches INT, runs INT, balls_faced INT, wickets INT, balls_bowled INT, runs_conceded INT)")
+            con.execute("CREATE TABLE entities (id VARCHAR, primary_name VARCHAR, entity_type VARCHAR)")
+            con.execute("INSERT INTO entities VALUES ('E1', 'P1', 'player'), ('E2', 'P2', 'player')")
+            con.execute("INSERT INTO player_stats VALUES ('E1', 10, 500, 350, 0, 0, 0), ('E2', 10, 600, 400, 0, 0, 0)")
+        
+        class MockSession:
+            registry = MockRegistry()
+
+        monkeypatch.setattr("midwicket.api.session.MidwicketSession.get", lambda: MockSession())
         result = pa.batting_leaderboard(sort_by="runs", top_n=10, min_balls=1)
         runs = [r["runs"] for r in result]
         assert runs == sorted(runs, reverse=True)
 
-    def test_sort_by_sr(self, mock_con):
+    def test_sort_by_sr(self, mock_con, monkeypatch):
+        from midwicket.api.session import MidwicketSession
+        class MockRegistry:
+            con = duckdb.connect(":memory:")
+            con.execute("CREATE TABLE player_stats (entity_id VARCHAR, matches INT, runs INT, balls_faced INT, wickets INT, balls_bowled INT, runs_conceded INT)")
+            con.execute("CREATE TABLE entities (id VARCHAR, primary_name VARCHAR, entity_type VARCHAR)")
+            con.execute("INSERT INTO entities VALUES ('E1', 'P1', 'player')")
+            con.execute("INSERT INTO player_stats VALUES ('E1', 10, 500, 350, 0, 0, 0)")
+        
+        class MockSession:
+            registry = MockRegistry()
+
+        monkeypatch.setattr("midwicket.api.session.MidwicketSession.get", lambda: MockSession())
         result = pa.batting_leaderboard(sort_by="strike_rate", top_n=5, min_balls=1)
         assert isinstance(result, list)
 
@@ -487,7 +527,19 @@ class TestBattingLeaderboard:
 # ---------------------------------------------------------------------------
 
 class TestBowlingLeaderboard:
-    def test_returns_list(self, mock_con):
+    def test_returns_list(self, mock_con, monkeypatch):
+        from midwicket.api.session import MidwicketSession
+        class MockRegistry:
+            con = duckdb.connect(":memory:")
+            con.execute("CREATE TABLE player_stats (entity_id VARCHAR, matches INT, runs INT, balls_faced INT, wickets INT, balls_bowled INT, runs_conceded INT)")
+            con.execute("CREATE TABLE entities (id VARCHAR, primary_name VARCHAR, entity_type VARCHAR)")
+            con.execute("INSERT INTO entities VALUES ('E1', 'B1', 'player')")
+            con.execute("INSERT INTO player_stats VALUES ('E1', 10, 0, 0, 20, 300, 400)")
+        
+        class MockSession:
+            registry = MockRegistry()
+
+        monkeypatch.setattr("midwicket.api.session.MidwicketSession.get", lambda: MockSession())
         result = pa.bowling_leaderboard(sort_by="wickets", top_n=5, min_balls=1)
         assert isinstance(result, list)
         assert len(result) >= 1
@@ -495,7 +547,19 @@ class TestBowlingLeaderboard:
             assert "player" in r
             assert "wickets" in r
 
-    def test_sort_by_economy(self, mock_con):
+    def test_sort_by_economy(self, mock_con, monkeypatch):
+        from midwicket.api.session import MidwicketSession
+        class MockRegistry:
+            con = duckdb.connect(":memory:")
+            con.execute("CREATE TABLE player_stats (entity_id VARCHAR, matches INT, runs INT, balls_faced INT, wickets INT, balls_bowled INT, runs_conceded INT)")
+            con.execute("CREATE TABLE entities (id VARCHAR, primary_name VARCHAR, entity_type VARCHAR)")
+            con.execute("INSERT INTO entities VALUES ('E1', 'B1', 'player'), ('E2', 'B2', 'player')")
+            con.execute("INSERT INTO player_stats VALUES ('E1', 10, 0, 0, 20, 300, 400), ('E2', 10, 0, 0, 15, 300, 350)")
+        
+        class MockSession:
+            registry = MockRegistry()
+
+        monkeypatch.setattr("midwicket.api.session.MidwicketSession.get", lambda: MockSession())
         result = pa.bowling_leaderboard(sort_by="economy", top_n=5, min_balls=1)
         economies = [r["economy"] for r in result if r["economy"] is not None]
         assert economies == sorted(economies)

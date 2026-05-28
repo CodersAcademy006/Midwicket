@@ -8,11 +8,11 @@ valid key is presented, and that the internal health probe always passes.
 import pytest
 from fastapi.testclient import TestClient
 
-from pypitch.serve.api import create_app
-from pypitch.storage.engine import QueryEngine
-from pypitch.storage.registry import IdentityRegistry
-from pypitch.runtime.cache_duckdb import DuckDBCache
-from pypitch.runtime.executor import RuntimeExecutor
+from midwicket.serve.api import create_app
+from midwicket.storage.engine import QueryEngine
+from midwicket.storage.registry import IdentityRegistry
+from midwicket.runtime.cache_duckdb import DuckDBCache
+from midwicket.runtime.executor import RuntimeExecutor
 
 
 class _Session:
@@ -26,16 +26,16 @@ class _Session:
 @pytest.fixture()
 def app_auth(monkeypatch):
     """App with auth enforced (API_KEY_REQUIRED=True, a known valid key)."""
-    import pypitch.serve.auth as auth_mod
+    import midwicket.serve.auth as auth_mod
     monkeypatch.setattr(auth_mod, "API_KEY_REQUIRED", True)
-    monkeypatch.setenv("PYPITCH_API_KEYS", "test-secret-key")
+    monkeypatch.setenv("MIDWICKET_API_KEYS", "test-secret-key")
     return create_app(session=_Session(), start_ingestor=False)
 
 
 @pytest.fixture()
 def app_no_auth(monkeypatch):
     """App with auth disabled."""
-    import pypitch.serve.auth as auth_mod
+    import midwicket.serve.auth as auth_mod
     monkeypatch.setattr(auth_mod, "API_KEY_REQUIRED", False)
     return create_app(session=_Session(), start_ingestor=False)
 
@@ -106,15 +106,15 @@ def test_win_probability_with_key_returns_200(app_auth):
 
 def test_analyze_without_key_returns_401(app_auth, monkeypatch):
     """/analyze without API key → 401 when auth required (before the 403 gate)."""
-    monkeypatch.setenv("PYPITCH_ANALYZE_ENABLED", "true")
+    monkeypatch.setenv("MIDWICKET_ANALYZE_ENABLED", "true")
     with TestClient(app_auth, raise_server_exceptions=False) as c:
         resp = c.post("/analyze", json={"sql": "SELECT 1"})
         assert resp.status_code == 401
 
 
 def test_analyze_disabled_returns_403(app_no_auth, monkeypatch):
-    """/analyze when PYPITCH_ANALYZE_ENABLED is not set → 403 (feature gate)."""
-    monkeypatch.delenv("PYPITCH_ANALYZE_ENABLED", raising=False)
+    """/analyze when MIDWICKET_ANALYZE_ENABLED is not set → 403 (feature gate)."""
+    monkeypatch.delenv("MIDWICKET_ANALYZE_ENABLED", raising=False)
     with TestClient(app_no_auth, raise_server_exceptions=False) as c:
         resp = c.post("/analyze", json={"sql": "SELECT 1"})
         assert resp.status_code == 403
@@ -123,7 +123,7 @@ def test_analyze_disabled_returns_403(app_no_auth, monkeypatch):
 
 def test_analyze_enabled_with_key_returns_200(app_auth, monkeypatch):
     """/analyze with valid key + enabled → 200."""
-    monkeypatch.setenv("PYPITCH_ANALYZE_ENABLED", "true")
+    monkeypatch.setenv("MIDWICKET_ANALYZE_ENABLED", "true")
     with TestClient(app_auth, raise_server_exceptions=False) as c:
         resp = c.post(
             "/analyze",

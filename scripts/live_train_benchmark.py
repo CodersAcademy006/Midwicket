@@ -8,7 +8,7 @@ This script will:
 5. Register best model in ModelRegistry and print deploy env vars.
 
 Usage:
-    e:/Srijan/PyPitch/.venv/Scripts/python.exe scripts/live_train_benchmark.py --data-dir ./data
+    e:/Srijan/Midwicket/.venv/Scripts/python.exe scripts/live_train_benchmark.py --data-dir ./data
 """
 
 from __future__ import annotations
@@ -31,12 +31,12 @@ from tqdm.auto import tqdm
 
 # Prevent noisy wildcard CORS warning during local benchmark runs unless user
 # explicitly sets their own CORS value.
-os.environ.setdefault("PYPITCH_CORS_ORIGINS", "http://localhost")
+os.environ.setdefault("MIDWICKET_CORS_ORIGINS", "http://localhost")
 
-from pypitch.api.session import PyPitchSession
-from pypitch.core.canonicalize import canonicalize_match
-from pypitch.models.registry import get_model_registry
-from pypitch.models.train import WinProbabilityTrainer
+from midwicket.api.session import MidwicketSession
+from midwicket.core.canonicalize import canonicalize_match
+from midwicket.models.registry import get_model_registry
+from midwicket.models.train import WinProbabilityTrainer
 
 
 def parse_args() -> argparse.Namespace:
@@ -47,7 +47,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def ingest_all_matches(session: PyPitchSession, max_matches: int = 0) -> dict[str, int]:
+def ingest_all_matches(session: MidwicketSession, max_matches: int = 0) -> dict[str, int]:
     # Reset training table to avoid duplicate rows across repeated runs.
     session.engine.execute_sql("DROP TABLE IF EXISTS ball_events", read_only=False)
 
@@ -77,7 +77,7 @@ def ingest_all_matches(session: PyPitchSession, max_matches: int = 0) -> dict[st
     return {"ok": ok, "fail": fail, "total": len(files), "elapsed_s": round(elapsed, 2)}
 
 
-def load_training_events(session: PyPitchSession) -> pd.DataFrame:
+def load_training_events(session: MidwicketSession) -> pd.DataFrame:
     query = """
         SELECT
             match_id,
@@ -202,8 +202,8 @@ def main() -> int:
     data_dir = Path(args.data_dir)
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    print("Initializing PyPitch session...")
-    session = PyPitchSession(data_dir=str(data_dir))
+    print("Initializing Midwicket session...")
+    session = MidwicketSession(data_dir=str(data_dir))
 
     try:
         print("Downloading dataset...")
@@ -310,8 +310,8 @@ def main() -> int:
         print(f"\nModel registered: {version}")
         print(f"Report written: {report_path}")
         print("\nDeploy with:")
-        print("  PYPITCH_WIN_MODEL_MODE=registry")
-        print(f"  PYPITCH_WIN_MODEL_VERSION={version}")
+        print("  MIDWICKET_WIN_MODEL_MODE=registry")
+        print(f"  MIDWICKET_WIN_MODEL_VERSION={version}")
         return 0
     finally:
         session.close()

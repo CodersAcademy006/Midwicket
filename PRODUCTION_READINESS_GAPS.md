@@ -1,7 +1,7 @@
-# PyPitch Production Readiness Gaps
+# Midwicket Production Readiness Gaps
 
 ## Overview
-This document catalogs 14 critical and high-priority gaps that prevent PyPitch from being production-ready. These are organized by category and include implementation guidance for each.
+This document catalogs 14 critical and high-priority gaps that prevent Midwicket from being production-ready. These are organized by category and include implementation guidance for each.
 
 ## Status Update (2026-04-13)
 
@@ -221,7 +221,7 @@ This document catalogs 14 critical and high-priority gaps that prevent PyPitch f
 **Current State**:
 - Memory backend still exists for development.
 - DuckDB backend now available and selected by default in production env.
-- Backend is configurable through `PYPITCH_RATE_LIMIT_BACKEND`.
+- Backend is configurable through `MIDWICKET_RATE_LIMIT_BACKEND`.
 
 **What's Needed**:
 1. Redis-backed rate limiter (or DuckDB-backed as alternative)
@@ -241,7 +241,7 @@ This document catalogs 14 critical and high-priority gaps that prevent PyPitch f
 
 **Current State**:
 - `/analyze` now has a stable payload contract (`sql`, optional positional `params`).
-- Validation now runs through `pypitch.serve.sql_guard` (single statement, read-only starts, forbidden-token checks, complexity bounds, comment denial).
+- Validation now runs through `midwicket.serve.sql_guard` (single statement, read-only starts, forbidden-token checks, complexity bounds, comment denial).
 
 **What's Needed**:
 1. Replace keyword blocklist with **whitelist** of allowed operations

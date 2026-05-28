@@ -1,5 +1,5 @@
 """
-Performance Regression Tests for PyPitch
+Performance Regression Tests for Midwicket
 
 Ensures that core operations remain fast and don't regress over time.
 Uses pytest-benchmark to track query performance.
@@ -8,8 +8,8 @@ Uses pytest-benchmark to track query performance.
 import pytest
 import tempfile
 from pathlib import Path
-from pypitch.api.session import PyPitchSession
-from pypitch.data.loader import DataLoader
+from midwicket.api.session import MidwicketSession
+from midwicket.data.loader import DataLoader
 
 # Skip all tests in this module if pytest-benchmark is not installed
 pytest_benchmark = pytest.importorskip("pytest_benchmark", reason="pytest-benchmark not installed")
@@ -27,7 +27,7 @@ def benchmark_session():
             f.write("{}")
 
         # Create minimal test data
-        with PyPitchSession(data_dir=str(data_dir), skip_registry_build=True) as session:
+        with MidwicketSession(data_dir=str(data_dir), skip_registry_build=True) as session:
             # Load a small amount of test data
             loader = DataLoader(str(data_dir))
             # For benchmarking, we'll use existing data or create mock data
@@ -114,10 +114,10 @@ def pytest_configure(config):
         "markers", "performance: marks tests as performance benchmarks"
     )
 
-# Custom benchmark fixture for PyPitch-specific thresholds
+# Custom benchmark fixture for Midwicket-specific thresholds
 @pytest.fixture
-def pypitch_benchmark(benchmark):
-    """Custom benchmark fixture with PyPitch-specific thresholds."""
+def midwicket_benchmark(benchmark):
+    """Custom benchmark fixture with Midwicket-specific thresholds."""
 
     def benchmark_with_threshold(func, max_time_ms=100):
         """Benchmark a function and assert it stays under max_time_ms."""

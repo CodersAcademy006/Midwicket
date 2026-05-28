@@ -1,0 +1,1753 @@
+"""
+Midwicket Serve Plugin: REST API Deployment
+
+One-command deployment of Midwicket as a REST API.
+Perfect for enterprise engineers and startups.
+"""
+from typing import Dict, Any, Optional, List
+import hashlib
+import os
+import signal
+import threading
+from contextlib import asynccontextmanager
+import uvicorn
+from fastapi import FastAPI, Request, HTTPException, Depends, Query
+from fastapi.responses import JSONResponse, Response
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from pydantic import BaseModel
+from datetime import date as _date_type
+import json
+from pathlib import Path
+import time
+import logging
+
+from midwicket.live.ingestor import StreamIngestor
+from midwicket.serve.auth import verify_api_key
+from . import auth as auth_module
+from midwicket.serve.rate_limit import check_rate_limit, rate_limiter, get_client_key
+from midwicket.serve.monitoring import record_request_metrics, record_error_metrics, metrics_collector, generate_prometheus_metrics
+from midwicket.config import API_CORS_ORIGINS, is_production, get_secret_key
+from midwicket.api.session import MidwicketSession
+from midwicket.exceptions import QueryTimeoutError
+from midwicket.compute.winprob import win_probability as wp_func
+
+logger = logging.getLogger(__name__)
+
+# Pydantic models for request validation
+class PlayerLookupRequest(BaseModel):
+    name: str
+    match_date: Optional[_date_type] = None  # ISO date string; used for historical alias resolution
+
+class VenueLookupRequest(BaseModel):
+    name: str
+    match_date: Optional[_date_type] = None
+
+class MatchupRequest(BaseModel):
+    batter: str
+    bowler: str
+    match_date: Optional[_date_type] = None  # pass match date for correct historical resolution
+
+class LiveMatchRegistration(BaseModel):
+    match_id: str
+    source: str
+    metadata: Optional[Dict[str, Any]] = None
+
+class DeliveryData(BaseModel):
+    match_id: str
+    inning: int
+    over: int
+    ball: int
+    runs_total: int
+    wickets_fallen: int
+    target: Optional[int] = None
+    venue: Optional[str] = None
+    timestamp: Optional[float] = None
+
+class MidwicketAPI:
+    """
+    FastAPI wrapper for Midwicket deployment.
+
+    Automatically creates endpoints for common operations.
+    """
+
+    ingestor: Optional["StreamIngestor"]
+
+    def __init__(self, session=None, *, start_ingestor: bool = True) -> None:
+        """
+        Initialize the Midwicket API.
+
+        Args:
+            session: Midwicket session instance. If None, uses singleton.
+            start_ingestor: Whether to start the live ingestor (disable for testing).
+        """
+        # Disable interactive docs in production — they expose the full API
+        # surface and schema to unauthenticated users.  Set MIDWICKET_ENV=development
+        # (the default) to enable them locally.
+        _prod = is_production()
+
+        # Fail fast on unsafe production config.
+        if _prod:
+            # Raises when key is missing in production.
+            get_secret_key()
+
+            if not auth_module.API_KEY_REQUIRED:
+                raise RuntimeError(
+                    "MIDWICKET_API_KEY_REQUIRED must remain true in production."
+                )
+
+            if not os.getenv("MIDWICKET_API_KEYS", "").strip():
+                raise RuntimeError(
+                    "MIDWICKET_API_KEYS must be configured in production."
+                )
+        elif not auth_module.API_KEY_REQUIRED:
+            logger.warning(
+                "API key authentication disabled (MIDWICKET_API_KEY_REQUIRED=false). "
+                "Use only for local development/testing."
+            )
+
+        @asynccontextmanager
+        async def _lifespan(_app: FastAPI):
+            try:
+                yield
+            finally:
+                self.close()
+
+        self.app = FastAPI(
+            title="Midwicket API",
+            description="Cricket Analytics API powered by Midwicket",
+            version="1.0.0",
+            docs_url=None if _prod else "/v1/docs",
+            redoc_url=None if _prod else "/v1/redoc",
+            openapi_url=None if _prod else "/v1/openapi.json",
+            lifespan=_lifespan,
+        )
+
+        # CORS — never default to wildcard; require explicit config in production.
+        # When origins is empty (default) the middleware allows no cross-origin requests.
+        origins = [o for o in API_CORS_ORIGINS if o and o != "*"]
+        self.app.add_middleware(
+            CORSMiddleware,
+            allow_origins=origins,
+            allow_credentials=bool(origins),  # credentials forbidden with wildcard
+            allow_methods=["GET", "POST", "OPTIONS"],
+            allow_headers=["Authorization", "Content-Type", "X-API-Key"],
+        )
+
+        # TrustedHost guard — protects against Host-header injection in
+        # reverse-proxy deployments.  MIDWICKET_ALLOWED_HOSTS is comma-separated;
+        # defaults to localhost-only when not set.
+        import os as _os
+        _allowed_hosts_raw = _os.getenv("MIDWICKET_ALLOWED_HOSTS", "localhost,127.0.0.1")
+        _allowed_hosts = [h.strip() for h in _allowed_hosts_raw.split(",") if h.strip()]
+        # In testing mode, also allow the "testserver" host used by FastAPI TestClient
+        if _os.getenv("MIDWICKET_ENV") == "testing" and "testserver" not in _allowed_hosts:
+            _allowed_hosts.append("testserver")
+        if _allowed_hosts:
+            self.app.add_middleware(TrustedHostMiddleware, allowed_hosts=_allowed_hosts)
+
+        # ── Drain mode — set by SIGTERM handler ──────────────────────────────
+        self._draining = False  # legacy mirror for compatibility
+        self._draining_event = threading.Event()
+        _PROBE_PATHS = frozenset({"/ready", "/v1/ready", "/live", "/_internal/health"})
+
+        def _handle_sigterm(*_):
+            self._draining = True
+            self._draining_event.set()
+            logger.info("SIGTERM received — drain mode active; rejecting new non-probe requests")
+
+        # Python only allows signal registration in the main thread.
+        if threading.current_thread() is threading.main_thread():
+            try:
+                signal.signal(signal.SIGTERM, _handle_sigterm)
+            except (ValueError, AttributeError):
+                logger.debug("SIGTERM handler registration unavailable in this runtime")
+        else:
+            logger.debug("Skipping SIGTERM handler registration outside main thread")
+
+        @self.app.middleware("http")
+        async def drain_middleware(request: Request, call_next):
+            if self._draining_event.is_set() and request.url.path not in _PROBE_PATHS:
+                return JSONResponse(status_code=503, content={"detail": "Service draining"})
+            return await call_next(request)
+
+        # Add rate limiting middleware
+        @self.app.middleware("http")
+        async def rate_limit_middleware(request: Request, call_next):
+            # Skip rate limiting for docs, probes, and health endpoints
+            if request.url.path in {"/v1/docs", "/v1/redoc", "/v1/openapi.json", "/health", "/v1/health",
+                                     "/_internal/health", "/live", "/ready", "/v1/ready", "/metrics", "/"}:
+                return await call_next(request)
+
+            await check_rate_limit(request)
+            return await call_next(request)
+
+        # Add security headers
+        @self.app.middleware("http")
+        async def add_security_headers(request: Request, call_next):
+            response = await call_next(request)
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["X-Frame-Options"] = "DENY"
+            response.headers["X-XSS-Protection"] = "1; mode=block"
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+
+            # Add rate limit headers
+            client_key = get_client_key(request)
+            remaining = rate_limiter.get_remaining_requests(client_key)
+            reset_time = rate_limiter.get_reset_time(client_key)
+
+            response.headers["X-RateLimit-Limit"] = str(rate_limiter.requests_per_minute)
+            response.headers["X-RateLimit-Remaining"] = str(remaining)
+            response.headers["X-RateLimit-Reset"] = str(int(time.time() + reset_time))
+
+            return response
+
+        # Add API Key Audit Middleware
+        @self.app.middleware("http")
+        async def audit_api_key_usage(request: Request, call_next):
+            start_time = time.time()
+            response = await call_next(request)
+            duration_ms = (time.time() - start_time) * 1000
+            
+            path = request.url.path
+            
+            sensitive_prefixes = ("/v1/players", "/v1/teams", "/matches", "/v1/venues")
+            
+            if response.status_code < 400 and path.startswith(sensitive_prefixes):
+                auth_identity = request.headers.get("Authorization") or request.headers.get("X-API-Key")
+                if auth_identity:
+                    user_id = hashlib.sha256(auth_identity.encode("utf-8")).hexdigest()[:16]
+                    client_ip = request.client.host if request.client else "unknown"
+                    try:
+                        self.session.engine.execute_sql(
+                            "INSERT INTO audit_log (ts, user_id, query_text, row_count, duration_ms, endpoint, action, ip_address) "
+                            "VALUES (current_timestamp, ?, ?, ?, ?, ?, ?, ?)",
+                            [user_id, f"API key usage on {path}", 0, round(duration_ms, 2), path, "api_key_usage", client_ip],
+                            read_only=False,
+                        )
+                    except Exception as e:
+                        logger.warning("Failed to log API key usage: %s", e)
+                        
+            return response
+
+        # Add request logging
+        @self.app.middleware("http")
+        async def log_requests(request: Request, call_next):
+            start_time = time.time()
+            response = await call_next(request)
+            process_time = time.time() - start_time
+
+            # Record metrics
+            record_request_metrics(
+                method=request.method,
+                endpoint=request.url.path,
+                status_code=response.status_code,
+                duration=process_time
+            )
+
+            logger.info(f"{request.method} {request.url.path} - {response.status_code} - {process_time:.3f}s")
+            return response
+
+        # Initialize session
+        if session is None:
+            self.session = MidwicketSession.get()
+        else:
+            self.session = session
+
+        # Record app start time for real uptime reporting (FIX 2).
+        self._start_monotonic = time.monotonic()
+
+        # Ensure audit_log table exists for /analyze audit trail (FEAT-04).
+        # Back the id column with a DuckDB sequence so rows are identifiable.
+        try:
+            self.session.engine.execute_sql(
+                "CREATE SEQUENCE IF NOT EXISTS audit_log_id_seq",
+                read_only=False,
+            )
+            self.session.engine.execute_sql("""
+                CREATE TABLE IF NOT EXISTS audit_log (
+                    id BIGINT DEFAULT nextval('audit_log_id_seq'),
+                    ts TIMESTAMP DEFAULT current_timestamp,
+                    user_id VARCHAR,
+                    query_text VARCHAR,
+                    row_count INTEGER,
+                    duration_ms DOUBLE,
+                    endpoint VARCHAR DEFAULT 'unknown',
+                    action VARCHAR DEFAULT 'unknown',
+                    ip_address VARCHAR DEFAULT 'unknown'
+                )
+            """, read_only=False)
+            try:
+                self.session.engine.execute_sql("ALTER TABLE audit_log ADD COLUMN endpoint VARCHAR DEFAULT 'unknown'", read_only=False)
+                self.session.engine.execute_sql("ALTER TABLE audit_log ADD COLUMN action VARCHAR DEFAULT 'unknown'", read_only=False)
+                self.session.engine.execute_sql("ALTER TABLE audit_log ADD COLUMN ip_address VARCHAR DEFAULT 'unknown'", read_only=False)
+            except Exception:
+                pass
+        except Exception:
+            pass  # Non-fatal: audit table creation may fail in read-only engines
+
+        # Initialize Live Ingestor (conditionally)
+        if start_ingestor and getattr(self.session, 'engine', None) is not None:
+            self.ingestor = StreamIngestor(self.session.engine)
+            # Start the ingestor background threads
+            self.ingestor.start()
+        else:
+            self.ingestor = None
+
+        self._setup_routes()
+
+        # Add exception handlers for monitoring
+        @self.app.exception_handler(HTTPException)
+        async def http_exception_handler(request: Request, exc: HTTPException):
+            record_error_metrics("HTTPException", str(exc.detail))
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={"detail": exc.detail}
+            )
+
+        @self.app.exception_handler(Exception)
+        async def general_exception_handler(request: Request, exc: Exception):
+            record_error_metrics("Exception", str(exc))
+            return JSONResponse(
+                status_code=500,
+                content={"detail": "Internal server error"}
+            )
+
+    def close(self):
+        """Explicitly close and cleanup resources."""
+        if hasattr(self, 'ingestor') and self.ingestor is not None:
+            stop = getattr(self.ingestor, "stop", None)
+            try:
+                if callable(stop):
+                    stop()
+            except Exception as exc:  # nosec B110 - best effort shutdown cleanup
+                logger.warning("ingestor stop failed during API close: %s", exc)
+            finally:
+                self.ingestor = None
+
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - ensures cleanup."""
+        self.close()
+
+    def predict_win_probability(self, request):
+        """Calculate win probability for current match state."""
+        try:
+            result = wp_func(
+                target=request.target,
+                current_runs=request.current_runs,
+                wickets_down=request.wickets_down,
+                overs_done=request.overs_done
+            )
+            return result
+        except Exception as e:
+            raise Exception(f"Win probability calculation failed: {str(e)}")
+
+    def lookup_player(self, request):
+        """Lookup player by name via identity registry.
+
+        Uses ``request.match_date`` (date object) when present so that
+        historical alias resolution is correct for old data queries.
+        Falls back to today only if no date is supplied — callers should
+        always supply a date for historical data queries.
+        """
+        from datetime import date as _date
+        explicit_date = getattr(request, "match_date", None)
+        if explicit_date is None:
+            logger.warning(
+                "lookup_player: no match_date supplied for %r — "
+                "falling back to today(), which may give incorrect results for historical data.",
+                request.name,
+            )
+        resolve_date = explicit_date or _date.today()
+        try:
+            player_id = self.session.registry.resolve_player(
+                request.name, resolve_date
+            )
+            stats = self.session.registry.get_player_stats(player_id)
+            return {
+                "player_name": request.name,
+                "player_id": player_id,
+                "found": True,
+                "stats": stats or {},
+                "resolved_as_of": resolve_date.isoformat(),
+            }
+        except Exception as exc:
+            logger.warning("lookup_player(%r) failed: %s", request.name, exc)
+            return {"player_name": request.name, "found": False}
+
+    def lookup_venue(self, request):
+        """Lookup venue by name via identity registry.
+
+        Uses ``request.match_date`` when present for correct historical alias
+        resolution (e.g. venue renames across seasons).
+        Logs a warning when falling back to today() for historical queries.
+        """
+        from datetime import date as _date
+        explicit_date = getattr(request, "match_date", None)
+        if explicit_date is None:
+            logger.warning(
+                "lookup_venue: no match_date supplied for %r — "
+                "falling back to today(), which may be incorrect for historical data.",
+                request.name,
+            )
+        resolve_date = explicit_date or _date.today()
+        try:
+            venue_id = self.session.registry.resolve_venue(
+                request.name, resolve_date
+            )
+            stats = self.session.registry.get_venue_stats(venue_id)
+            return {
+                "venue_name": request.name,
+                "venue_id": venue_id,
+                "found": True,
+                "stats": stats or {},
+                "resolved_as_of": resolve_date.isoformat(),
+            }
+        except Exception as exc:
+            logger.warning("lookup_venue(%r) failed: %s", request.name, exc)
+            return {"venue_name": request.name, "found": False}
+
+    def get_matchup_stats(self, request):
+        """Get head-to-head matchup stats from registry.
+
+        Uses ``request.match_date`` when present so resolution is historically
+        correct (avoids mis-resolving a player who was known under a different
+        alias in an earlier season).
+        Logs a warning when falling back to today() without explicit date.
+        """
+        from datetime import date as _date
+        explicit_date = getattr(request, "match_date", None)
+        if explicit_date is None:
+            logger.warning(
+                "get_matchup_stats: no match_date supplied for %r vs %r — "
+                "falling back to today(); pass match_date for accurate historical resolution.",
+                request.batter, request.bowler,
+            )
+        resolve_date = explicit_date or _date.today()
+        try:
+            reg = self.session.registry
+            b_id = reg.resolve_player(request.batter, resolve_date)
+            bo_id = reg.resolve_player(request.bowler, resolve_date)
+            stats = reg.get_matchup_stats(b_id, bo_id)
+            return {
+                "batter": request.batter,
+                "bowler": request.bowler,
+                "found": stats is not None,
+                "stats": stats or {},
+                "resolved_as_of": resolve_date.isoformat(),
+            }
+        except Exception as exc:
+            logger.warning("get_matchup_stats failed: %s", exc)
+            return {"batter": request.batter, "bowler": request.bowler, "found": False, "stats": {}}
+
+    def get_fantasy_points(self, request):
+        """Return per-match fantasy point estimate computed from ball_events."""
+        from midwicket.api.fantasy import fantasy_score
+        season = getattr(request, "season", None)
+        try:
+            result = fantasy_score(request.player_name, season=season)
+            return {
+                "player": request.player_name,
+                "season": result.get("season", season or "all"),
+                "points": result.get("per_match_avg", 0.0),
+                "total_pts": result.get("total_pts", 0.0),
+                "matches": result.get("matches", 0),
+                "batting_breakdown": result.get("batting_breakdown", {}),
+                "bowling_breakdown": result.get("bowling_breakdown", {}),
+            }
+        except Exception as exc:
+            logger.warning("get_fantasy_points(%r) failed: %s", request.player_name, exc)
+            return {"player": request.player_name, "points": 0.0, "season": season or "all"}
+
+    def get_player_stats(self, request):
+        """Get player career stats via player_analytics."""
+        from midwicket.api.player_analytics import career_batting, career_bowling
+        try:
+            batting = career_batting(request.player_name)
+            bowling = career_bowling(request.player_name)
+            return {
+                "player": request.player_name,
+                "stats": {"batting": batting, "bowling": bowling},
+            }
+        except Exception as exc:
+            logger.warning("get_player_stats(%r) failed: %s", request.player_name, exc)
+            return {"player": request.player_name, "stats": {}}
+
+    def register_live_match(self, request):
+        """Register a match for live tracking via ingestor."""
+        if self.ingestor is None:
+            return {"match_id": request.match_id, "registered": False, "error": "ingestor not running"}
+        try:
+            ok = self.ingestor.register_match(
+                request.match_id,
+                source=getattr(request, "source", "webhook"),
+                metadata=getattr(request, "metadata", {}),
+            )
+            return {"match_id": request.match_id, "registered": ok}
+        except Exception as exc:
+            logger.warning("register_live_match failed: %s", exc)
+            return {"match_id": request.match_id, "registered": False, "error": str(exc)}
+
+    def ingest_delivery_data(self, request):
+        """Ingest a live delivery into the active match via ingestor."""
+        if self.ingestor is None:
+            return {"match_id": request.match_id, "ingested": False, "error": "ingestor not running"}
+        try:
+            if hasattr(request, "model_dump"):
+                payload = request.model_dump(exclude_none=True)
+            elif hasattr(request, "dict"):
+                payload = request.dict(exclude_none=True)
+            else:
+                payload = {
+                    key: value
+                    for key, value in vars(request).items()
+                    if value is not None
+                }
+
+            match_id = payload.pop("match_id", getattr(request, "match_id", None))
+            if not match_id:
+                raise ValueError("match_id is required")
+
+            accepted = self.ingestor.update_match_data(
+                str(match_id),
+                delivery_data=payload,
+            )
+            if accepted is False:
+                return {
+                    "match_id": str(match_id),
+                    "ingested": False,
+                    "error": "match not registered",
+                }
+            return {"match_id": str(match_id), "ingested": True}
+        except Exception as exc:
+            logger.warning("ingest_delivery_data failed: %s", exc)
+            return {
+                "match_id": str(getattr(request, "match_id", "")),
+                "ingested": False,
+                "error": str(exc),
+            }
+
+    def get_live_matches(self):
+        """Return live match list from ingestor."""
+        if self.ingestor is None:
+            return {"matches": []}
+        try:
+            return {"matches": self.ingestor.get_live_matches()}
+        except Exception as exc:
+            logger.warning("get_live_matches failed: %s", exc)
+            return {"matches": []}
+
+    def _uptime_seconds(self) -> float:
+        """Real process/app uptime in seconds since __init__."""
+        start = getattr(self, "_start_monotonic", None)
+        if start is None:
+            return 0.0
+        return max(0.0, time.monotonic() - start)
+
+    def _active_connections(self) -> int:
+        """Real connection-pool usage via the engine's get_connection_stats().
+
+        Degrades gracefully to 0 when the engine lacks the method (e.g. the
+        plain QueryEngine) or stats are unavailable.
+        """
+        get_stats = getattr(self.session.engine, "get_connection_stats", None)
+        if not callable(get_stats):
+            return 0
+        try:
+            stats = get_stats() or {}
+            if not isinstance(stats, dict):
+                return 0
+            created = int(stats.get("total_created", 0) or 0)
+            idle = int(stats.get("read_pool_size", 0) or 0) + int(stats.get("write_pool_size", 0) or 0)
+            return max(0, created - idle)
+        except Exception:
+            return 0
+
+    def get_health_status(self):
+        """Get health status of the API."""
+        try:
+            # Check database connectivity
+            db_status = "healthy"
+            try:
+                # Simple query to test DB connection
+                self.session.engine.execute_sql("SELECT 1")
+            except Exception:
+                db_status = "unhealthy"
+
+            status = "healthy" if db_status == "healthy" else "degraded"
+
+            return {
+                "status": status,
+                "version": "1.0.0",
+                "uptime_seconds": self._uptime_seconds(),
+                "database_status": db_status,
+                "active_connections": self._active_connections(),
+            }
+        except Exception as e:
+            raise Exception(f"Health check failed: {str(e)}")
+
+    def _setup_routes(self):
+        """Setup all API routes."""
+
+        # ── Internal health probe (no auth) — for Docker / k8s healthchecks ──
+        # Bind this path to the MIDWICKET_ALLOWED_HOSTS guard but not to auth so
+        # that container orchestrators can probe liveness without an API key.
+        @self.app.get("/_internal/health", include_in_schema=False)
+        async def internal_health():
+            """Unauthenticated liveness probe for orchestrators."""
+            return {"status": "ok"}
+
+        # ── Kubernetes probes (no auth required) ─────────────────────────────
+        @self.app.get("/live", include_in_schema=False)
+        async def liveness_probe():
+            """Liveness probe — 200 if process is alive (no DB check)."""
+            return {"status": "alive"}
+
+        @self.app.get("/ready", include_in_schema=False)
+        async def readiness_probe():
+            """Readiness probe — 200 when DB pool is healthy and model is loaded."""
+            errors: List[str] = []
+            try:
+                self.session.engine.execute_sql("SELECT 1")
+            except Exception:
+                errors.append("database")
+            from midwicket.compute.winprob import _default_model
+            if _default_model is None:
+                errors.append("model")
+            if errors:
+                raise HTTPException(status_code=503, detail=f"Not ready: {', '.join(errors)}")
+            return {"status": "ready"}
+
+        @self.app.get("/v1/ready", include_in_schema=False)
+        async def readiness_probe_v1():
+            """Versioned readiness probe alias."""
+            return await readiness_probe()
+
+        # ── Prometheus scrape endpoint ────────────────────────────────────────
+        @self.app.get("/metrics", include_in_schema=False)
+        async def prometheus_metrics():
+            """Prometheus text-format metrics scrape endpoint."""
+            return Response(
+                content=generate_prometheus_metrics(),
+                media_type="text/plain; version=0.0.4; charset=utf-8",
+            )
+
+        @self.app.get("/")
+        async def root(authenticated: bool = Depends(verify_api_key)):
+            """API root with available endpoints."""
+            return {
+                "message": "Midwicket API is running",
+                "version": "1.0.0",
+                "endpoints": {
+                    "GET /": "This help message",
+                    "GET /health": "Health check endpoint",
+                    "GET /matches": "List available matches",
+                    "GET /matches/{match_id}": "Get match details",
+                    "GET /players/{player_id}": "Get player statistics",
+                    "GET /teams/{team_id}": "Get team statistics",
+                    "POST /analyze": "Run custom analysis",
+                    "GET /win_probability": "Calculate win probability"
+                }
+            }
+
+        @self.app.get("/v1/health")
+        async def health_check_v1(authenticated: bool = Depends(verify_api_key)):
+            """Health check endpoint (v1)."""
+            try:
+                # Check database connectivity
+                db_status = "healthy"
+                try:
+                    # Simple query to test DB connection
+                    self.session.engine.execute_sql("SELECT 1")
+                except Exception:
+                    db_status = "unhealthy"
+
+                status = "healthy" if db_status == "healthy" else "degraded"
+
+                return {
+                    "status": status,
+                    "version": "1.0.0",
+                    "uptime_seconds": self._uptime_seconds(),
+                    "database_status": db_status,
+                    "active_connections": self._active_connections(),
+                }
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Health check failed: {str(e)}")
+
+        # Keep the old endpoint for backward compatibility
+        @self.app.get("/health")
+        async def health_check_legacy(authenticated: bool = Depends(verify_api_key)):
+            """Health check endpoint (legacy)."""
+            return await health_check_v1()
+
+        @self.app.get("/v1/metrics")
+        async def get_metrics(authenticated: bool = Depends(verify_api_key)):
+            """Get API and system metrics."""
+
+            api_metrics = metrics_collector.get_api_metrics()
+            system_metrics = metrics_collector.get_system_metrics()
+
+            return {
+                "api": api_metrics,
+                "system": system_metrics,
+                "timestamp": time.time()
+            }
+
+        @self.app.get("/v1/matches")
+        @self.app.get("/matches")
+        async def list_matches(
+            date_from: Optional[_date_type] = Query(None, description="Filter matches on or after this date (YYYY-MM-DD)"),
+            date_to: Optional[_date_type] = Query(None, description="Filter matches on or before this date (YYYY-MM-DD)"),
+            venue: Optional[str] = Query(None, max_length=100, description="Filter by venue name"),
+            team: Optional[str] = Query(None, max_length=100, description="Filter by team name"),
+            sort_by: str = Query("match_id", description="Sort field: match_id | date"),
+            order: str = Query("asc", description="Sort order: asc | desc"),
+            page: int = Query(1, ge=1, description="Page number"),
+            page_size: int = Query(50, ge=1, le=200, description="Results per page"),
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """List available matches with optional date/venue/team filters and pagination."""
+            try:
+                where: List[str] = []
+                params: List[Any] = []
+
+                if date_from:
+                    where.append("MIN(date) >= ?")
+                    params.append(str(date_from))
+                if date_to:
+                    where.append("MIN(date) <= ?")
+                    params.append(str(date_to))
+
+                venue_id: Optional[int] = None
+                if venue:
+                    try:
+                        from datetime import date as _date_cls
+                        venue_id = self.session.registry.resolve_venue(venue, match_date=_date_cls.today())
+                    except Exception:
+                        return {"items": [], "total": 0, "page": page, "page_size": page_size}
+                    where.append("venue_id = ?")
+                    params.append(venue_id)
+
+                team_id: Optional[int] = None
+                if team:
+                    try:
+                        from datetime import date as _date_cls
+                        team_id = self.session.registry.resolve_team(team, match_date=_date_cls.today())
+                    except Exception:
+                        return {"items": [], "total": 0, "page": page, "page_size": page_size}
+                    where.append("(batting_team_id = ? OR bowling_team_id = ?)")
+                    params.extend([team_id, team_id])
+
+                sort_col = "match_id" if sort_by not in ("match_id", "date") else sort_by
+                sort_dir = "DESC" if order.lower() == "desc" else "ASC"
+                having_clause = ("HAVING " + " AND ".join(where)) if where else ""
+
+                count_sql = f"""
+                    SELECT count(*) FROM (
+                        SELECT match_id FROM ball_events
+                        GROUP BY match_id {having_clause}
+                    ) t
+                """  # nosec B608 - having_clause built from fixed column allowlist; values parameterized
+                total_row = self.session.engine.execute_sql(count_sql, params).to_pydict()
+                total = list(total_row.values())[0][0] if total_row else 0
+
+                offset = (page - 1) * page_size
+                data_sql = f"""
+                    SELECT match_id, MIN(date) AS date FROM ball_events
+                    GROUP BY match_id {having_clause}
+                    ORDER BY {sort_col} {sort_dir}
+                    LIMIT ? OFFSET ?
+                """  # nosec B608 - having_clause/sort built from fixed column allowlist; values parameterized
+                result = self.session.engine.execute_sql(data_sql, params + [page_size, offset])
+                rows = result.to_pydict()
+                items = [
+                    {"match_id": mid, "date": str(d)}
+                    for mid, d in zip(rows.get("match_id", []), rows.get("date", []))
+                ]
+                return {"items": items, "total": total, "page": page, "page_size": page_size}
+            except HTTPException:
+                raise
+            except Exception as e:
+                # A real failure (DB outage, query error) must surface as 5xx
+                # rather than masquerading as an empty result set. A genuinely
+                # empty dataset returns [] via the successful query path above.
+                logger.warning("list_matches failed: %s", e)
+                record_error_metrics("ListMatchesError", str(e))
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        @self.app.get("/matches/{match_id}")
+        async def get_match(match_id: str, authenticated: bool = Depends(verify_api_key)):
+            """Get details for a specific match."""
+            try:
+                self.session.load_match(match_id)
+
+                sql = """
+                    SELECT
+                        inning,
+                        MAX(over) as overs,
+                        SUM(runs_batter + runs_extras) as runs,
+                        SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END) as wickets
+                    FROM ball_events
+                    WHERE match_id = ?
+                    GROUP BY inning
+                """
+                result = self.session.engine.execute_sql(sql, [match_id])
+                df = result.to_pandas()
+                return {"match_id": match_id, "innings": df.to_dict("records")}
+
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.warning("get_match(%s) failed: %s", match_id, e)
+                raise HTTPException(status_code=404, detail="Match not found")
+
+        @self.app.get("/teams/{team_id}")
+        async def get_team_stats(team_id: str, authenticated: bool = Depends(verify_api_key)):
+            """Get statistics for a specific team."""
+            try:
+                result = self.session.engine.execute_sql(
+                    """
+                    SELECT
+                        batting_team AS team,
+                        COUNT(DISTINCT match_id) AS matches,
+                        SUM(runs_batter + runs_extras) AS total_runs,
+                        SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END) AS total_wickets
+                    FROM ball_events
+                    WHERE LOWER(batting_team) = LOWER(?)
+                    GROUP BY batting_team
+                    """,
+                    [team_id],
+                )
+                rows = result.to_pydict()
+                if not rows.get("team"):
+                    raise HTTPException(status_code=404, detail="Team not found")
+                return {k: rows[k][0] for k in rows}
+            except HTTPException:
+                raise
+            except (RuntimeError, AttributeError, TypeError, ValueError) as e:
+                logger.warning("get_team_stats(%s) failed: %s", team_id, e)
+                raise HTTPException(status_code=404, detail="Team not found")
+
+        # ── FEAT-04: Audit log reader (admin) ────────────────────────────────
+        @self.app.get("/v1/audit")
+        async def get_audit_log(
+            limit: int = Query(100, ge=1, le=1000, description="Maximum rows to return"),
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """Recent /analyze queries — admin endpoint for operator review."""
+            try:
+                result = self.session.engine.execute_sql(
+                    "SELECT ts, user_id, query_text, row_count, duration_ms, endpoint, action, ip_address "
+                    "FROM audit_log ORDER BY ts DESC LIMIT ?",
+                    [limit],
+                )
+                rows = result.to_pydict()
+                entries = [
+                    {
+                        "ts": str(rows["ts"][i]),
+                        "user_id": rows["user_id"][i],
+                        "query": rows["query_text"][i],
+                        "row_count": rows["row_count"][i],
+                        "duration_ms": rows["duration_ms"][i],
+                        "endpoint": rows["endpoint"][i] if "endpoint" in rows else "unknown",
+                        "action": rows["action"][i] if "action" in rows else "unknown",
+                        "ip_address": rows["ip_address"][i] if "ip_address" in rows else "unknown",
+                    }
+                    for i in range(len(rows.get("ts", [])))
+                ]
+                return {"entries": entries, "count": len(entries)}
+            except Exception as e:
+                err = str(e).lower()
+                if "audit_log" in err and (
+                    "does not exist" in err
+                    or "not found" in err
+                    or "catalog error" in err
+                ):
+                    # Graceful fallback when audit table could not be created
+                    # (e.g. read-only engine startup).
+                    return {"entries": [], "count": 0}
+                logger.warning("get_audit_log failed: %s", e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        @self.app.get("/players/{player_id}")
+        async def get_player_stats(player_id: int, authenticated: bool = Depends(verify_api_key)):
+            """Get statistics for a specific player."""
+            try:
+                stats = self.session.registry.get_player_stats(player_id)
+                if stats:
+                    return stats
+                raise HTTPException(status_code=404, detail="Player not found")
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.warning("get_player_stats(%s) failed: %s", player_id, e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        @self.app.get("/win_probability")
+        async def win_probability(
+            target: int = Query(150, gt=0, le=720, description="Target score (1-720)"),
+            current_runs: int = Query(50, ge=0, le=720, description="Runs scored so far"),
+            wickets_down: int = Query(2, ge=0, le=10, description="Wickets fallen (0-10)"),
+            overs_done: float = Query(10.0, ge=0.0, le=20.0, description="Overs completed (0-20)"),
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """Calculate win probability for current match state."""
+            if current_runs > target:
+                raise HTTPException(status_code=400, detail="current_runs cannot exceed target")
+            try:
+                result = wp_func(
+                    target=target,
+                    current_runs=current_runs,
+                    wickets_down=wickets_down,
+                    overs_done=overs_done,
+                )
+                return result
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+            except Exception as e:
+                logger.warning("win_probability failed: %s", e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        _MAX_ANALYZE_ROWS = 100
+        _ANALYZE_ROW_LIMIT = 500  # enforced at SQL level to prevent full-scan materialisation
+        _ANALYZE_TIMEOUT_DEFAULT_S = 8.0
+
+
+        @self.app.get("/v1/export")
+        async def bulk_export(
+            request: Request,
+            table: str = Query("ball_events", description="Table to export"),
+            limit: int = Query(10000, le=100000, description="Max rows to export"),
+            authenticated: bool = Depends(verify_api_key)
+        ):
+            """Bulk export data."""
+            if table not in ["ball_events", "matches", "players", "venues"]:
+                raise HTTPException(status_code=400, detail="Invalid table for export")
+                
+            try:
+                t0 = time.time()
+                result = self.session.engine.execute_sql(f"SELECT * FROM {table} LIMIT ?", [limit], read_only=True)  # nosec B608 - table validated against fixed allowlist above; limit parameterized
+                duration_ms = (time.time() - t0) * 1000
+                rows = result.to_pydict()
+                
+                keys = list(rows.keys())
+                n = min(len(rows[keys[0]]) if keys else 0, limit)
+                records = [{k: rows[k][i] for k in keys} for i in range(n)]
+                
+                # Audit log
+                auth_identity = request.headers.get("Authorization") or request.headers.get("X-API-Key") or "anonymous"
+                user_id = hashlib.sha256(auth_identity.encode("utf-8")).hexdigest()[:16]
+                client_ip = request.client.host if request.client else "unknown"
+                try:
+                    self.session.engine.execute_sql(
+                        "INSERT INTO audit_log (ts, user_id, query_text, row_count, duration_ms, endpoint, action, ip_address) "
+                        "VALUES (current_timestamp, ?, ?, ?, ?, ?, ?, ?)",
+                        [user_id, f"Export {table}", n, round(duration_ms, 2), "/v1/export", "bulk_export", client_ip],
+                        read_only=False,
+                    )
+                except Exception as e:
+                    logger.warning("audit_log write failed for bulk_export: %s", e)
+                
+                return {"table": table, "exported_rows": n, "data": records}
+            except Exception as e:
+                logger.warning("Bulk export failed: %s", e)
+                raise HTTPException(status_code=500, detail="Export failed")
+
+        @self.app.post("/analyze")
+        async def custom_analysis(request: Request, query: Dict[str, Any], authenticated: bool = Depends(verify_api_key)):
+            """Run a read-only SELECT query against ball_events."""
+            import os as _os
+            from midwicket.serve.sql_guard import validate_read_only_query, check_query_plan, SQLValidationError
+            if not _os.getenv("MIDWICKET_ANALYZE_ENABLED", "false").lower() == "true":
+                raise HTTPException(
+                    status_code=403,
+                    detail="Custom SQL analysis is disabled. Set MIDWICKET_ANALYZE_ENABLED=true to enable.",
+                )
+            try:
+                # Accept both "sql" and legacy "query" key
+                sql = (query.get("sql") or query.get("query") or "").strip()
+                if not sql:
+                    raise HTTPException(status_code=400, detail="SQL query required")
+
+                # Validate params is a list when provided
+                params = query.get("params")
+                if params is not None and not isinstance(params, list):
+                    raise HTTPException(status_code=400, detail="params must be a list of positional values")
+
+                # C1: Use dedicated sql_guard validator — strict keyword blocklist,
+                # comment stripping, single-statement enforcement, complexity bounds.
+                try:
+                    sql = validate_read_only_query(
+                        sql,
+                        max_selects=5,
+                        max_joins=8,
+                        max_unions=3,
+                    )
+                except SQLValidationError as exc:
+                    raise HTTPException(status_code=403, detail=str(exc))
+
+                # Inject a hard row-limit to prevent full-scan memory exhaustion.
+                safe_sql = f"SELECT * FROM ({sql}) AS _q LIMIT {_ANALYZE_ROW_LIMIT}"  # nosec B608 – sql_guard validated above
+
+                # Cost estimation via EXPLAIN JSON
+                try:
+                    explain_res = self.session.engine.execute_sql(
+                        f"EXPLAIN (FORMAT JSON) {safe_sql}",
+                        params=params,
+                        read_only=True
+                    ).to_pandas()
+                    plan_json = explain_res.iloc[0]['physical_plan'] if 'physical_plan' in explain_res.columns else explain_res.iloc[0][1]
+                    check_query_plan(plan_json)
+                except SQLValidationError as exc:
+                    raise HTTPException(status_code=403, detail=str(exc))
+                except Exception as exc:
+                    logger.warning(f"Cost estimation failed: {exc}")
+                    # Allow to proceed if EXPLAIN fails for other reasons, or reject?
+                    pass
+
+                # Explicit query timeout to reduce long-running query DoS risk.
+                raw_timeout = _os.getenv("MIDWICKET_ANALYZE_TIMEOUT_SECONDS", str(_ANALYZE_TIMEOUT_DEFAULT_S)).strip()
+                try:
+                    timeout_seconds = float(raw_timeout) if raw_timeout else _ANALYZE_TIMEOUT_DEFAULT_S
+                except ValueError:
+                    timeout_seconds = _ANALYZE_TIMEOUT_DEFAULT_S
+                timeout_seconds = max(1.0, min(timeout_seconds, 120.0))
+
+                t0 = time.time()
+                result = self.session.engine.execute_sql(
+                    safe_sql,
+                    params=params,
+                    read_only=True,
+                    timeout=timeout_seconds,
+                )
+                duration_ms = (time.time() - t0) * 1000
+                rows = result.to_pydict()
+                keys = list(rows.keys())
+                n = min(len(rows[keys[0]]) if keys else 0, _MAX_ANALYZE_ROWS)
+                records = [{k: rows[k][i] for k in keys} for i in range(n)]
+
+                # Audit log — best-effort, never block the response
+                try:
+                    auth_identity = (
+                        request.headers.get("Authorization")
+                        or request.headers.get("X-API-Key")
+                        or "anonymous"
+                    )
+                    user_id = hashlib.sha256(auth_identity.encode("utf-8")).hexdigest()[:16]
+                    client_ip = request.client.host if request.client else "unknown"
+                    self.session.engine.execute_sql(
+                        "INSERT INTO audit_log (ts, user_id, query_text, row_count, duration_ms, endpoint, action, ip_address) "
+                        "VALUES (current_timestamp, ?, ?, ?, ?, ?, ?, ?)",
+                        [user_id, sql, n, round(duration_ms, 2), "/analyze", "custom_query", client_ip],
+                        read_only=False,
+                    )
+                except Exception as audit_exc:
+                    # The /analyze response must still succeed, but a failed audit
+                    # write must be observable — never silently swallowed.
+                    logger.warning("audit_log write failed: %s", audit_exc)
+                    record_error_metrics("AuditWriteError", str(audit_exc))
+
+                return {"rows": n, "data": records}
+
+            except (TimeoutError, QueryTimeoutError):
+                raise HTTPException(
+                    status_code=408,
+                    detail="Query execution timed out. Reduce query complexity or tighten filters.",
+                )
+
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.warning("custom_analysis failed: %s", e)
+                raise HTTPException(status_code=500, detail="Query execution failed")
+
+        @self.app.post("/live/register")
+        async def register_live_match(
+            request: LiveMatchRegistration,
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """Register a match for live tracking."""
+            try:
+                if self.ingestor is None:
+                    raise HTTPException(status_code=503, detail="Live ingestor not running")
+
+                success = self.ingestor.register_match(
+                    match_id=request.match_id,
+                    source=request.source,
+                    metadata=request.metadata or {},
+                )
+                if not success:
+                    raise HTTPException(status_code=409, detail="Match already registered")
+                return {"success": True, "match_id": request.match_id}
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.warning("register_live_match failed: %s", e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        @self.app.post("/live/ingest")
+        async def ingest_delivery(
+            data: DeliveryData,
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """Ingest live delivery data."""
+            try:
+                if self.ingestor is None:
+                    raise HTTPException(status_code=503, detail="Live ingestor not running")
+
+                delivery_dict = data.model_dump(exclude_none=True)
+                match_id = delivery_dict.pop("match_id")
+                accepted = self.ingestor.update_match_data(match_id, delivery_dict)
+                if accepted is False:
+                    raise HTTPException(status_code=404, detail="Match not registered")
+                return {"success": True}
+            except HTTPException:
+                raise
+            except Exception as e:
+                from midwicket.exceptions import DataIngestionError
+                if isinstance(e, DataIngestionError):
+                    message = str(e)
+                    # Queue saturation is a transient overload signal.
+                    # Other ingestion errors are request/data issues.
+                    if "queue is full" in message.lower():
+                        raise HTTPException(status_code=429, detail=message)
+                    raise HTTPException(status_code=400, detail=message)
+                logger.warning("ingest_delivery failed: %s", e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        @self.app.get("/live/matches")
+        async def get_live_matches(authenticated: bool = Depends(verify_api_key)):
+            """Get list of currently live matches."""
+            try:
+                if self.ingestor is None:
+                    logger.info("get_live_matches: ingestor not available")
+                    return []
+
+                return self.ingestor.get_live_matches()
+            except Exception as e:
+                logger.warning("get_live_matches failed: %s", e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        # ------------------------------------------------------------------
+        # Player Analytics endpoints (PA-01 to PA-28)
+        # ------------------------------------------------------------------
+
+        @self.app.get("/v1/players/{player_name}/batting")
+        async def player_batting(
+            player_name: str,
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """Career batting + phase/venue/season/form/situation breakdown."""
+            from midwicket.api.player_analytics import (
+                career_batting, batting_by_phase, batting_by_venue,
+                batting_by_season, batting_form, batting_in_chases,
+                batting_under_pressure, death_over_specialist,
+                batting_by_innings_number, weakness_detector,
+            )
+            try:
+                return {
+                    "career": career_batting(player_name),
+                    "by_phase": batting_by_phase(player_name),
+                    "by_venue": batting_by_venue(player_name),
+                    "by_season": batting_by_season(player_name),
+                    "form_last5": batting_form(player_name),
+                    "chases": batting_in_chases(player_name),
+                    "under_pressure": batting_under_pressure(player_name),
+                    "death_specialist": death_over_specialist(player_name),
+                    "innings_split": batting_by_innings_number(player_name),
+                    "weaknesses": weakness_detector(player_name),
+                }
+            except Exception as e:
+                logger.warning("player_batting failed for %s: %s", player_name, e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        @self.app.get("/v1/players/{player_name}/bowling")
+        async def player_bowling(
+            player_name: str,
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """Career bowling + phase/venue/season/form breakdown."""
+            from midwicket.api.player_analytics import (
+                career_bowling, bowling_by_phase, bowling_by_venue,
+                bowling_by_season, bowling_form,
+            )
+            try:
+                return {
+                    "career": career_bowling(player_name),
+                    "by_phase": bowling_by_phase(player_name),
+                    "by_venue": bowling_by_venue(player_name),
+                    "by_season": bowling_by_season(player_name),
+                    "form_last5": bowling_form(player_name),
+                }
+            except Exception as e:
+                logger.warning("player_bowling failed for %s: %s", player_name, e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        @self.app.get("/v1/players/{player_name}/milestones")
+        async def player_milestones(
+            player_name: str,
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """Highest scores, best bowling figures, streaks, ducks."""
+            from midwicket.api.player_analytics import (
+                highest_score, best_bowling_figures,
+                match_streaks, milestones_and_failures,
+            )
+            try:
+                return {
+                    "highest_scores": highest_score(player_name),
+                    "best_bowling_figures": best_bowling_figures(player_name),
+                    "streaks": match_streaks(player_name),
+                    "failures": milestones_and_failures(player_name),
+                }
+            except Exception as e:
+                logger.warning("player_milestones failed for %s: %s", player_name, e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        @self.app.get("/v1/players/{player_name}/fantasy")
+        async def player_fantasy(
+            player_name: str,
+            season: Optional[str] = None,
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """Per-match fantasy point estimate using standard T20 scoring rules."""
+            from midwicket.api.fantasy import fantasy_score
+            try:
+                return fantasy_score(player_name, season=season)
+            except Exception as e:
+                logger.warning("player_fantasy failed for %s: %s", player_name, e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        @self.app.get("/v1/venues/{venue_name}/fantasy")
+        async def venue_fantasy(
+            venue_name: str,
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """Fantasy cheat sheet + venue bias (bat-first vs chase win%) for a venue."""
+            from midwicket.api.fantasy import cheat_sheet, venue_bias
+            try:
+                bias = venue_bias(venue_name)
+                top_players = cheat_sheet(venue_name)
+                return {
+                    "venue": venue_name,
+                    "venue_bias": bias,
+                    "top_players": top_players.to_dict(orient="records") if not top_players.empty else [],
+                }
+            except Exception as e:
+                logger.warning("venue_fantasy failed for %s: %s", venue_name, e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        @self.app.get("/v1/players/{player_name}/vs-team/{team_name}")
+        async def player_vs_team(
+            player_name: str,
+            team_name: str,
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """Batting and bowling vs specific opposition."""
+            from midwicket.api.player_analytics import batting_vs_teams, bowling_vs_teams
+            try:
+                bat_all = batting_vs_teams(player_name)
+                bowl_all = bowling_vs_teams(player_name)
+                bat = next((r for r in bat_all if team_name.lower() in r["opposition"].lower()), None)
+                bowl = next((r for r in bowl_all if team_name.lower() in r["opposition"].lower()), None)
+                return {
+                    "player": player_name,
+                    "team": team_name,
+                    "batting": bat or {"message": "no data"},
+                    "bowling": bowl or {"message": "no data"},
+                }
+            except Exception as e:
+                logger.warning("player_vs_team failed: %s", e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        @self.app.get("/v1/players/compare")
+        async def compare_players_endpoint(
+            p1: str,
+            p2: str,
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """Side-by-side career comparison. ?p1=name&p2=name"""
+            from midwicket.api.player_analytics import compare_players
+            try:
+                return compare_players(p1, p2)
+            except Exception as e:
+                logger.warning("compare_players failed: %s", e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        # ------------------------------------------------------------------
+        # Identity resolution endpoints — typed routes with explicit date
+        # ------------------------------------------------------------------
+
+        @self.app.get("/v1/players/resolve")
+        async def resolve_player(
+            name: str = Query(..., description="Player name as stored in registry"),
+            match_date: _date_type = Query(
+                ...,
+                description="ISO date of the match/query (YYYY-MM-DD). "
+                            "Required for accurate historical alias resolution.",
+            ),
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """Resolve a player name to its canonical entity ID.
+
+            Pass ``match_date`` for any historical queries — without it the
+            resolution uses today's date which may return the wrong alias for
+            players who changed teams or were renamed across seasons.
+            """
+
+            req = PlayerLookupRequest(name=name, match_date=match_date)
+            return self.lookup_player(req)
+
+        @self.app.get("/v1/venues/resolve")
+        async def resolve_venue(
+            name: str = Query(..., description="Venue name as stored in registry"),
+            match_date: _date_type = Query(
+                ...,
+                description="ISO date of the match (YYYY-MM-DD). "
+                            "Required for venues that were renamed across seasons.",
+            ),
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """Resolve a venue name to its canonical entity ID."""
+
+            req = VenueLookupRequest(name=name, match_date=match_date)
+            return self.lookup_venue(req)
+
+        # ── FEAT-06: Player search / autocomplete ────────────────────────────
+        @self.app.get("/v1/players/search")
+        async def search_players(
+            q: str = Query(..., min_length=1, max_length=100, description="Name prefix or substring"),
+            limit: int = Query(10, ge=1, le=50, description="Maximum results"),
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """Prefix/substring player search against the alias table."""
+            try:
+                with self.session.registry._lock:
+                    rows = self.session.registry.con.execute(
+                        """
+                        SELECT DISTINCT e.id, e.primary_name, e.type
+                        FROM entities e
+                        JOIN aliases a ON a.entity_id = e.id
+                        WHERE e.type = 'player'
+                          AND (LOWER(a.alias) LIKE LOWER(?) OR LOWER(e.primary_name) LIKE LOWER(?))
+                        ORDER BY e.primary_name
+                        LIMIT ?
+                        """,
+                        [f"%{q}%", f"%{q}%", limit],
+                    ).fetchall()
+                return {"results": [{"id": r[0], "name": r[1]} for r in rows]}
+            except Exception as e:
+                logger.warning("search_players failed: %s", e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        # ── FEAT-07: Venue browse ─────────────────────────────────────────────
+        @self.app.get("/v1/venues")
+        async def list_venues(
+            q: Optional[str] = Query(None, description="Name prefix or substring"),
+            page: int = Query(1, ge=1, description="Page number"),
+            page_size: int = Query(50, ge=1, le=200, description="Results per page"),
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """Paginated list of all known venues."""
+            try:
+                offset = (page - 1) * page_size
+                with self.session.registry._lock:
+                    if q:
+                        total_row = self.session.registry.con.execute(
+                            "SELECT count(DISTINCT e.id) FROM entities e JOIN aliases a ON a.entity_id = e.id WHERE e.type = 'venue' AND (LOWER(a.alias) LIKE LOWER(?) OR LOWER(e.primary_name) LIKE LOWER(?))",
+                            [f"%{q}%", f"%{q}%"]
+                        ).fetchone()
+                        rows = self.session.registry.con.execute(
+                            "SELECT DISTINCT e.id, e.primary_name FROM entities e JOIN aliases a ON a.entity_id = e.id WHERE e.type = 'venue' AND (LOWER(a.alias) LIKE LOWER(?) OR LOWER(e.primary_name) LIKE LOWER(?)) ORDER BY e.primary_name LIMIT ? OFFSET ?",
+                            [f"%{q}%", f"%{q}%", page_size, offset]
+                        ).fetchall()
+                    else:
+                        total_row = self.session.registry.con.execute(
+                            "SELECT count(*) FROM entities WHERE type = 'venue'"
+                        ).fetchone()
+                        rows = self.session.registry.con.execute(
+                            """
+                            SELECT id, primary_name
+                            FROM entities
+                            WHERE type = 'venue'
+                            ORDER BY primary_name
+                            LIMIT ? OFFSET ?
+                            """,
+                            [page_size, offset],
+                        ).fetchall()
+                    total = total_row[0] if total_row else 0
+                return {
+                    "items": [{"id": r[0], "name": r[1]} for r in rows],
+                    "total": total,
+                    "page": page,
+                    "page_size": page_size,
+                }
+            except Exception as e:
+                logger.warning("list_venues failed: %s", e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        @self.app.get("/v1/venues/{venue_id}")
+        async def get_venue(
+            venue_id: int,
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """Full detail for a single venue."""
+            try:
+                with self.session.registry._lock:
+                    row = self.session.registry.con.execute(
+                        "SELECT id, primary_name FROM entities WHERE id = ? AND type = 'venue'",
+                        [venue_id],
+                    ).fetchone()
+                if not row:
+                    raise HTTPException(status_code=404, detail="Venue not found")
+                venue_stats = self.session.registry.get_venue_stats(venue_id)
+                return {
+                    "id": row[0],
+                    "name": row[1],
+                    "stats": venue_stats.__dict__ if venue_stats else {},
+                }
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.warning("get_venue(%s) failed: %s", venue_id, e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        @self.app.get("/v1/matchup")
+        async def matchup_stats(
+            batter: str = Query(..., description="Batter name"),
+            bowler: str = Query(..., description="Bowler name"),
+            match_date: _date_type = Query(
+                ...,
+                description="ISO date for historical alias resolution (YYYY-MM-DD). "
+                            "Required for accurate historical data queries.",
+            ),
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """Return head-to-head matchup stats from the registry.
+
+            Passing ``match_date`` ensures the batter and bowler names are
+            resolved against aliases that were valid on that date.
+            """
+
+            req = MatchupRequest(batter=batter, bowler=bowler, match_date=match_date)
+            return self.get_matchup_stats(req)
+
+        @self.app.get("/v1/players/leaderboard/batting")
+        async def batting_leaderboard_endpoint(
+            sort_by: str = "runs",
+            top_n: int = 10,
+            min_balls: int = 30,
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """Batting leaderboard. sort_by: runs | average | strike_rate"""
+            from midwicket.api.player_analytics import batting_leaderboard
+            try:
+                return batting_leaderboard(sort_by=sort_by, top_n=top_n, min_balls=min_balls)
+            except Exception as e:
+                logger.warning("batting_leaderboard failed: %s", e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        @self.app.get("/v1/players/leaderboard/bowling")
+        async def bowling_leaderboard_endpoint(
+            sort_by: str = "wickets",
+            top_n: int = 10,
+            min_balls: int = 30,
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """Bowling leaderboard. sort_by: wickets | economy | bowling_average"""
+            from midwicket.api.player_analytics import bowling_leaderboard
+            try:
+                return bowling_leaderboard(sort_by=sort_by, top_n=top_n, min_balls=min_balls)
+            except Exception as e:
+                logger.warning("bowling_leaderboard failed: %s", e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        @self.app.get("/v1/players")
+        async def list_players(
+            q: Optional[str] = Query(None, description="Name prefix or substring"),
+            page: int = Query(1, ge=1),
+            page_size: int = Query(50, ge=1, le=200),
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """List or search players."""
+            try:
+                offset = (page - 1) * page_size
+                with self.session.registry._lock:
+                    if q:
+                        total_row = self.session.registry.con.execute(
+                            "SELECT count(DISTINCT e.id) FROM entities e JOIN aliases a ON a.entity_id = e.id WHERE e.type = 'player' AND (LOWER(a.alias) LIKE LOWER(?) OR LOWER(e.primary_name) LIKE LOWER(?))",
+                            [f"%{q}%", f"%{q}%"]
+                        ).fetchone()
+                        rows = self.session.registry.con.execute(
+                            "SELECT DISTINCT e.id, e.primary_name FROM entities e JOIN aliases a ON a.entity_id = e.id WHERE e.type = 'player' AND (LOWER(a.alias) LIKE LOWER(?) OR LOWER(e.primary_name) LIKE LOWER(?)) ORDER BY e.primary_name LIMIT ? OFFSET ?",
+                            [f"%{q}%", f"%{q}%", page_size, offset]
+                        ).fetchall()
+                    else:
+                        total_row = self.session.registry.con.execute(
+                            "SELECT count(*) FROM entities WHERE type = 'player'"
+                        ).fetchone()
+                        rows = self.session.registry.con.execute(
+                            "SELECT id, primary_name FROM entities WHERE type = 'player' ORDER BY primary_name LIMIT ? OFFSET ?",
+                            [page_size, offset]
+                        ).fetchall()
+                total = total_row[0] if total_row else 0
+                return {
+                    "items": [{"id": r[0], "name": r[1]} for r in rows],
+                    "total": total,
+                    "page": page,
+                    "page_size": page_size,
+                }
+            except Exception as e:
+                logger.warning("list_players failed: %s", e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        @self.app.get("/v1/players/{player_id}/stats")
+        async def get_player_stats_v1(
+            player_id: int,
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """All-in-one player stats endpoint combining PA-01 to PA-28."""
+            try:
+                row = self.session.registry.con.execute(
+                    "SELECT primary_name FROM entities WHERE id = ? AND type = 'player'", [player_id]
+                ).fetchone()
+                if not row:
+                    raise HTTPException(status_code=404, detail="Player not found")
+                
+                player_name = row[0]
+                
+                from midwicket.api.player_analytics import (
+                    career_batting, career_bowling, batting_by_phase, bowling_by_phase,
+                    batting_by_venue, bowling_by_venue, batting_by_season, bowling_by_season,
+                    batting_form, bowling_form, batting_in_chases, batting_under_pressure,
+                    death_over_specialist, batting_by_innings_number, weakness_detector,
+                    highest_score, best_bowling_figures, match_streaks, milestones_and_failures,
+                )
+
+                return {
+                    "player_id": player_id,
+                    "player_name": player_name,
+                    "career_batting": career_batting(player_name),
+                    "career_bowling": career_bowling(player_name),
+                    "batting_by_phase": batting_by_phase(player_name),
+                    "bowling_by_phase": bowling_by_phase(player_name),
+                    "batting_by_venue": batting_by_venue(player_name),
+                    "bowling_by_venue": bowling_by_venue(player_name),
+                    "batting_by_season": batting_by_season(player_name),
+                    "bowling_by_season": bowling_by_season(player_name),
+                    "batting_form": batting_form(player_name),
+                    "bowling_form": bowling_form(player_name),
+                    "batting_in_chases": batting_in_chases(player_name),
+                    "batting_under_pressure": batting_under_pressure(player_name),
+                    "death_over_specialist": death_over_specialist(player_name),
+                    "batting_by_innings": batting_by_innings_number(player_name),
+                    "weaknesses": weakness_detector(player_name),
+                    "highest_score": highest_score(player_name),
+                    "best_bowling_figures": best_bowling_figures(player_name),
+                    "streaks": match_streaks(player_name),
+                    "milestones": milestones_and_failures(player_name),
+                }
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.warning("get_player_stats_v1 failed: %s", e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        @self.app.get("/v1/venues/{name}/stats")
+        async def get_venue_stats_v1(
+            name: str,
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """Venue aggregations."""
+            try:
+                sql = """
+                SELECT 
+                    COUNT(DISTINCT match_id) AS matches,
+                    SUM(runs_batter + runs_extras) AS total_runs,
+                    SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END) AS total_wickets,
+                    AVG(runs_batter + runs_extras) * 120 AS projected_score_120_balls
+                FROM ball_events
+                WHERE LOWER(venue) = LOWER(?)
+                """
+                res = self.session.engine.execute_sql(sql, [name]).to_pydict()
+                if not res or not res.get("matches") or res["matches"][0] == 0:
+                    raise HTTPException(status_code=404, detail="Venue stats not found")
+                
+                return {
+                    "venue_name": name,
+                    "matches": res["matches"][0],
+                    "total_runs": res["total_runs"][0],
+                    "total_wickets": res["total_wickets"][0],
+                    "projected_score": res["projected_score_120_balls"][0]
+                }
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.warning("get_venue_stats_v1 failed: %s", e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        @self.app.get("/v1/matchups/{team_a}/{team_b}")
+        async def get_matchups(
+            team_a: str,
+            team_b: str,
+            match_date: Optional[_date_type] = Query(None),
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            from midwicket.api.head_to_head import head_to_head
+            try:
+                return head_to_head(team_a, team_b, date_context=match_date).as_dict()
+            except Exception as e:
+                logger.warning("matchups failed: %s", e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+        @self.app.get("/v1/matches/{match_id}/fantasy")
+        async def match_fantasy(
+            match_id: str,
+            authenticated: bool = Depends(verify_api_key),
+        ):
+            """Calculate fantasy points for a match."""
+            try:
+                sql = """
+                SELECT 
+                    batter AS player,
+                    SUM(runs_batter) AS points_from_runs
+                FROM ball_events
+                WHERE match_id = ?
+                GROUP BY batter
+                """
+                batting_res = self.session.engine.execute_sql(sql, [match_id]).to_pydict()
+                
+                sql_bowl = """
+                SELECT 
+                    bowler AS player,
+                    SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END) * 10 AS points_from_wickets
+                FROM ball_events
+                WHERE match_id = ?
+                GROUP BY bowler
+                """
+                bowling_res = self.session.engine.execute_sql(sql_bowl, [match_id]).to_pydict()
+                
+                points: Dict[str, float] = {}
+                if batting_res and "player" in batting_res:
+                    for i, player in enumerate(batting_res["player"]):
+                        if player is not None:
+                            points[player] = points.get(player, 0) + (batting_res["points_from_runs"][i] or 0)
+                
+                if bowling_res and "player" in bowling_res:
+                    for i, player in enumerate(bowling_res["player"]):
+                        if player is not None:
+                            points[player] = points.get(player, 0) + (bowling_res["points_from_wickets"][i] or 0)
+                
+                result = [{"player": p, "points": pts} for p, pts in points.items()]
+                result.sort(key=lambda x: x["points"], reverse=True)  # type: ignore
+                
+                return {"match_id": match_id, "fantasy_points": result}
+            except Exception as e:
+                logger.warning("match_fantasy failed: %s", e)
+                raise HTTPException(status_code=500, detail="Internal server error")
+
+    def run(self, host: str = "0.0.0.0", port: int = 8000, reload: bool = False):  # nosec B104
+        """Run the API server."""
+        logger.info("Starting Midwicket API server at http://%s:%d", host, port)
+        logger.info("API documentation at http://%s:%d/docs", host, port)
+
+        uvicorn.run(
+            self.app,
+            host=host,
+            port=port,
+            reload=reload
+        )
+
+def create_app(session=None, *, start_ingestor: bool = True) -> FastAPI:
+    """
+    Create and return a FastAPI application instance.
+
+    This is the main entry point for creating the Midwicket API app.
+    Useful for testing, deployment, and integration with other ASGI apps.
+    """
+    api = MidwicketAPI(session=session, start_ingestor=start_ingestor)
+    return api.app
+
+def serve(host: str = "0.0.0.0", port: int = 8000, reload: bool = False):  # nosec B104
+    """
+    One-command API deployment.
+
+    Usage:
+        from midwicket.serve import serve
+        serve()  # Starts API at http://localhost:8000
+    """
+    with MidwicketAPI() as api:
+        api.run(host=host, port=port, reload=reload)
+
+def create_dockerfile(output_dir: str = "."):
+    """
+    Generate Dockerfile for containerized deployment.
+
+    Creates a production-ready Docker setup.
+    """
+    dockerfile_content = '''
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \\
+    gcc \\
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and install
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application
+COPY . .
+
+# Expose port
+EXPOSE 8000
+
+# Run the API
+CMD ["python", "-c", "from midwicket.serve.api import serve; serve()"]
+'''
+
+    dockerignore_content = '''
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env
+venv
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+.tox
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git
+.mypy_cache
+.pytest_cache
+.hypothesis
+'''
+
+    output_path = Path(output_dir)
+
+    # Write Dockerfile
+    with open(output_path / "Dockerfile", "w") as f:
+        f.write(dockerfile_content.strip())
+
+    # Write .dockerignore
+    with open(output_path / ".dockerignore", "w") as f:
+        f.write(dockerignore_content.strip())
+
+    print(f"Docker files created in {output_path}")
+    print("Build with: docker build -t midwicket-api .")
+    print("Run with: docker run -p 8000:8000 midwicket-api")
