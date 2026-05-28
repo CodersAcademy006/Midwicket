@@ -41,6 +41,21 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+from functools import wraps
+from midwicket.api.models import MidwicketResultSet, MidwicketResultDict
+
+def _wrap_result(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        res = func(*args, **kwargs)
+        if isinstance(res, list):
+            return MidwicketResultSet(res)
+        elif isinstance(res, dict):
+            return MidwicketResultDict(res)
+        return res
+    return wrapper
+
+
 # Phase boundary constants (T20 overs, 0-indexed)
 _POWERPLAY_MAX = 5    # overs 0-5
 _MIDDLE_MAX = 14      # overs 6-14
@@ -59,10 +74,25 @@ def _r(v: Optional[float], dp: int = 2) -> Optional[float]:
     return round(v, dp) if v is not None else None
 
 
+
+def _check_player(con, player_name: str) -> None:
+    row = con.execute("SELECT 1 FROM ball_events WHERE batter = ? OR bowler = ? LIMIT 1", [player_name, player_name]).fetchone()
+    if row is None:
+        import difflib
+        all_players = con.execute("SELECT DISTINCT batter FROM ball_events UNION SELECT DISTINCT bowler FROM ball_events").fetchall()
+        all_players = [p[0] for p in all_players if p[0]]
+        matches = difflib.get_close_matches(player_name, all_players, n=1, cutoff=0.6)
+        from midwicket.exceptions import PlayerNotFoundError
+        if matches:
+            raise PlayerNotFoundError(f"Player '{player_name}' not found. Did you mean '{matches[0]}'?")
+        else:
+            raise PlayerNotFoundError(f"Player '{player_name}' not found in the database.")
+
 # ---------------------------------------------------------------------------
 # PA-01  Career batting aggregate
 # ---------------------------------------------------------------------------
 
+@_wrap_result
 def career_batting(player_name: str) -> Dict[str, Any]:
     """
     Full career batting aggregate for a player.
@@ -94,6 +124,7 @@ def career_batting(player_name: str) -> Dict[str, Any]:
         FROM ball_events
         WHERE batter = ?
         """
+        _check_player(con, player_name)
         row = con.execute(sql, [player_name]).fetchone()
         if not row or row[0] == 0:
             return {"player": player_name, "matches": 0, "message": "no data"}
@@ -146,6 +177,7 @@ def career_batting(player_name: str) -> Dict[str, Any]:
 # PA-02  Career bowling aggregate
 # ---------------------------------------------------------------------------
 
+@_wrap_result
 def career_bowling(player_name: str) -> Dict[str, Any]:
     """
     Full career bowling aggregate for a player.
@@ -166,6 +198,7 @@ def career_bowling(player_name: str) -> Dict[str, Any]:
         FROM ball_events
         WHERE bowler = ?
         """
+        _check_player(con, player_name)
         row = con.execute(sql, [player_name]).fetchone()
         if not row or row[0] == 0:
             return {"player": player_name, "matches": 0, "message": "no data"}
@@ -226,6 +259,7 @@ def career_bowling(player_name: str) -> Dict[str, Any]:
 # PA-03  Fielding (proxy from ball_events)
 # ---------------------------------------------------------------------------
 
+@_wrap_result
 def career_fielding(player_name: str) -> Dict[str, Any]:
     """
     Fielding aggregate — run-outs where bowler field = player (proxy).
@@ -244,6 +278,7 @@ def career_fielding(player_name: str) -> Dict[str, Any]:
 # PA-04  Batting by phase
 # ---------------------------------------------------------------------------
 
+@_wrap_result
 def batting_by_phase(player_name: str) -> Dict[str, Any]:
     """Batting split: Powerplay (0-5), Middle (6-14), Death (15-19)."""
     con = _get_con()
@@ -292,6 +327,7 @@ def batting_by_phase(player_name: str) -> Dict[str, Any]:
 # PA-05  Bowling by phase
 # ---------------------------------------------------------------------------
 
+@_wrap_result
 def bowling_by_phase(player_name: str) -> Dict[str, Any]:
     """Bowling split by phase."""
     con = _get_con()
@@ -338,6 +374,7 @@ def bowling_by_phase(player_name: str) -> Dict[str, Any]:
 # PA-06  Batting by venue
 # ---------------------------------------------------------------------------
 
+@_wrap_result
 def batting_by_venue(player_name: str) -> List[Dict[str, Any]]:
     """Batting stats split by venue, sorted by runs desc."""
     con = _get_con()
@@ -382,6 +419,7 @@ def batting_by_venue(player_name: str) -> List[Dict[str, Any]]:
 # PA-07  Bowling by venue
 # ---------------------------------------------------------------------------
 
+@_wrap_result
 def bowling_by_venue(player_name: str) -> List[Dict[str, Any]]:
     """Bowling stats split by venue, sorted by wickets desc."""
     con = _get_con()
@@ -424,6 +462,7 @@ def bowling_by_venue(player_name: str) -> List[Dict[str, Any]]:
 # PA-08  Best / worst venue
 # ---------------------------------------------------------------------------
 
+@_wrap_result
 def best_worst_venues(player_name: str, role: str = "batting", top_n: int = 3) -> Dict[str, Any]:
     """
     Top-N and bottom-N venues for a player.
@@ -456,6 +495,7 @@ def best_worst_venues(player_name: str, role: str = "batting", top_n: int = 3) -
 # PA-09  Season-by-season batting
 # ---------------------------------------------------------------------------
 
+@_wrap_result
 def batting_by_season(player_name: str) -> List[Dict[str, Any]]:
     """Season-by-season batting split."""
     con = _get_con()
@@ -496,6 +536,7 @@ def batting_by_season(player_name: str) -> List[Dict[str, Any]]:
 # PA-10  Season-by-season bowling
 # ---------------------------------------------------------------------------
 
+@_wrap_result
 def bowling_by_season(player_name: str) -> List[Dict[str, Any]]:
     """Season-by-season bowling split."""
     con = _get_con()
@@ -538,6 +579,7 @@ def bowling_by_season(player_name: str) -> List[Dict[str, Any]]:
 # PA-11  Form tracker — last N matches batting
 # ---------------------------------------------------------------------------
 
+@_wrap_result
 def batting_form(player_name: str, last_n: int = 5) -> Dict[str, Any]:
     """Last N matches batting performance, most recent first."""
     con = _get_con()
@@ -590,6 +632,7 @@ def batting_form(player_name: str, last_n: int = 5) -> Dict[str, Any]:
 # PA-12  Form tracker — last N matches bowling
 # ---------------------------------------------------------------------------
 
+@_wrap_result
 def bowling_form(player_name: str, last_n: int = 5) -> Dict[str, Any]:
     """Last N matches bowling performance, most recent first."""
     con = _get_con()
@@ -642,6 +685,7 @@ def bowling_form(player_name: str, last_n: int = 5) -> Dict[str, Any]:
 # PA-13  Batting vs each opposition team
 # ---------------------------------------------------------------------------
 
+@_wrap_result
 def batting_vs_teams(player_name: str) -> List[Dict[str, Any]]:
     """
     Batting split by opposition.
@@ -689,6 +733,7 @@ def batting_vs_teams(player_name: str) -> List[Dict[str, Any]]:
 # PA-14  Bowling vs each opposition (by competition proxy)
 # ---------------------------------------------------------------------------
 
+@_wrap_result
 def bowling_vs_teams(player_name: str) -> List[Dict[str, Any]]:
     """Bowling split by opposition (competition proxy)."""
     con = _get_con()
@@ -731,6 +776,7 @@ def bowling_vs_teams(player_name: str) -> List[Dict[str, Any]]:
 # PA-15  Weakness detector
 # ---------------------------------------------------------------------------
 
+@_wrap_result
 def weakness_detector(player_name: str, drop_threshold: float = 0.30) -> Dict[str, Any]:
     """
     Find phases / venues where batting avg or SR drops >threshold vs career.
@@ -784,6 +830,7 @@ def weakness_detector(player_name: str, drop_threshold: float = 0.30) -> Dict[st
 # PA-16  Batting by innings (1st vs 2nd)
 # ---------------------------------------------------------------------------
 
+@_wrap_result
 def batting_by_innings_number(player_name: str) -> Dict[str, Any]:
     """Batting split: 1st innings vs 2nd innings."""
     con = _get_con()
@@ -824,6 +871,7 @@ def batting_by_innings_number(player_name: str) -> Dict[str, Any]:
 # PA-17  Batting in chases (2nd innings, target > 0)
 # ---------------------------------------------------------------------------
 
+@_wrap_result
 def batting_in_chases(player_name: str) -> Dict[str, Any]:
     """Batting stats when chasing (inning=2, target > 0)."""
     con = _get_con()
@@ -839,6 +887,7 @@ def batting_in_chases(player_name: str) -> Dict[str, Any]:
         FROM ball_events
         WHERE batter = ? AND inning = 2 AND target > 0
         """
+        _check_player(con, player_name)
         row = con.execute(sql, [player_name]).fetchone()
         if not row or row[0] == 0:
             return {"player": player_name, "matches": 0, "message": "no chase data"}
@@ -866,6 +915,7 @@ def batting_in_chases(player_name: str) -> Dict[str, Any]:
 # PA-18  High-pressure batting (wickets_fallen >= threshold)
 # ---------------------------------------------------------------------------
 
+@_wrap_result
 def batting_under_pressure(player_name: str, wickets_threshold: int = 5) -> Dict[str, Any]:
     """
     Batting when wickets_fallen >= threshold at time of delivery.
@@ -907,6 +957,7 @@ def batting_under_pressure(player_name: str, wickets_threshold: int = 5) -> Dict
 # PA-19  Death-over specialist score
 # ---------------------------------------------------------------------------
 
+@_wrap_result
 def death_over_specialist(player_name: str) -> Dict[str, Any]:
     """
     Death-over batting SR (overs 15-19) vs career SR.
@@ -921,6 +972,7 @@ def death_over_specialist(player_name: str) -> Dict[str, Any]:
         FROM ball_events
         WHERE batter = ? AND over >= 15
         """
+        _check_player(con, player_name)
         row = con.execute(sql, [player_name]).fetchone()
         if not row or row[0] == 0:
             return {"player": player_name, "message": "no death-over data"}
@@ -949,6 +1001,7 @@ def death_over_specialist(player_name: str) -> Dict[str, Any]:
 # PA-20  Highest individual score in a single match
 # ---------------------------------------------------------------------------
 
+@_wrap_result
 def highest_score(player_name: str, top_n: int = 5) -> Dict[str, Any]:
     """Top-N individual match scores."""
     con = _get_con()
@@ -992,6 +1045,7 @@ def highest_score(player_name: str, top_n: int = 5) -> Dict[str, Any]:
 # PA-21  Best bowling figures in a single innings
 # ---------------------------------------------------------------------------
 
+@_wrap_result
 def best_bowling_figures(player_name: str, top_n: int = 5) -> Dict[str, Any]:
     """Top-N bowling spells by wickets (then runs ascending)."""
     con = _get_con()
@@ -1034,6 +1088,7 @@ def best_bowling_figures(player_name: str, top_n: int = 5) -> Dict[str, Any]:
 # PA-22  Consecutive match streaks
 # ---------------------------------------------------------------------------
 
+@_wrap_result
 def match_streaks(player_name: str, runs_threshold: int = 20, wickets_threshold: int = 1) -> Dict[str, Any]:
     """
     Find longest consecutive match streak:
@@ -1092,6 +1147,7 @@ def match_streaks(player_name: str, runs_threshold: int = 20, wickets_threshold:
 # PA-23  Duck count and economy breaks
 # ---------------------------------------------------------------------------
 
+@_wrap_result
 def milestones_and_failures(player_name: str) -> Dict[str, Any]:
     """
     Batting: duck count (out for 0).
@@ -1137,6 +1193,7 @@ def milestones_and_failures(player_name: str) -> Dict[str, Any]:
 # PA-24  Player comparison
 # ---------------------------------------------------------------------------
 
+@_wrap_result
 def compare_players(player1: str, player2: str) -> Dict[str, Any]:
     """Side-by-side career batting + bowling comparison."""
     return {
@@ -1160,6 +1217,7 @@ def compare_players(player1: str, player2: str) -> Dict[str, Any]:
 _MAX_LEADERBOARD_N = 100  # M7: cap unbounded top_n to prevent full-sort DOS
 
 
+@_wrap_result
 def batting_leaderboard(
     sort_by: str = "runs",
     top_n: int = 10,
@@ -1202,6 +1260,7 @@ def batting_leaderboard(
 # PA-26  Bowling leaderboard
 # ---------------------------------------------------------------------------
 
+@_wrap_result
 def bowling_leaderboard(
     sort_by: str = "wickets",
     top_n: int = 10,
@@ -1249,6 +1308,7 @@ def bowling_leaderboard(
 # PA-27  Batting vs bowler hand (best-effort)
 # ---------------------------------------------------------------------------
 
+@_wrap_result
 def batting_vs_bowler_hand(player_name: str) -> Dict[str, Any]:
     """
     Batting split vs left-arm vs right-arm.
@@ -1269,6 +1329,7 @@ def batting_vs_bowler_hand(player_name: str) -> Dict[str, Any]:
 # PA-28  Bowling vs batter hand (best-effort)
 # ---------------------------------------------------------------------------
 
+@_wrap_result
 def bowling_vs_batter_hand(player_name: str) -> Dict[str, Any]:
     """
     Bowling split vs left-hand vs right-hand batters.

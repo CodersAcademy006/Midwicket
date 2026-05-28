@@ -109,16 +109,30 @@ class MidwicketSession:
         Downloads all Cricsheet data and ingests every match into the DuckDB engine.
         Also triggers registry rebuild.
         """
-        print("\n[Midwicket] First run detected: Downloading full historical dataset...")
+        try:
+            from rich.console import Console
+            console = Console()
+            console.print("\n[bold green][Midwicket] First run detected: Downloading full historical dataset...[/bold green]")
+        except ImportError:
+            print("\n[Midwicket] First run detected: Downloading full historical dataset...")
+            console = None
+            
         self.download_data(force=False)
         
         matches = list(self.loader.iter_matches())
         if not matches:
-            print("[Midwicket] No data to bootstrap.")
+            if console:
+                console.print("[bold red][Midwicket] No data to bootstrap.[/bold red]")
+            else:
+                print("[Midwicket] No data to bootstrap.")
             return
 
-        print(f"\n[Midwicket] Building database. Ingesting {len(matches)} matches (takes ~3 minutes)...")
-        from tqdm import tqdm
+        if console:
+            console.print(f"\n[bold blue][Midwicket] Building database. Ingesting {len(matches)} matches (takes ~3 minutes)...[/bold blue]")
+        else:
+            print(f"\n[Midwicket] Building database. Ingesting {len(matches)} matches (takes ~3 minutes)...")
+            
+        from tqdm.auto import tqdm
         for match_data in tqdm(matches, desc="Ingesting"):
             match_id = match_data.get("info", {}).get("registry", {}).get("people", {}).get("match_id")
             if not match_id:
@@ -132,9 +146,14 @@ class MidwicketSession:
             except Exception as e:
                 logger.debug(f"Failed to ingest match {match_id}: {e}")
 
-        print("\n[Midwicket] Building registry stats...")
-        build_registry_stats(self.loader, self.registry)
-        print("\n[Midwicket] Bootstrap complete! Ready for analytics.\n")
+        if console:
+            console.print("\n[bold blue][Midwicket] Building registry stats...[/bold blue]")
+            build_registry_stats(self.loader, self.registry)
+            console.print("\n[bold green][Midwicket] Bootstrap complete! Ready for analytics.[/bold green]\n")
+        else:
+            print("\n[Midwicket] Building registry stats...")
+            build_registry_stats(self.loader, self.registry)
+            print("\n[Midwicket] Bootstrap complete! Ready for analytics.\n")
 
     def get_player_stats(self, player_id: str) -> Optional[PlayerStats]:
         """Get player statistics by ID or name."""

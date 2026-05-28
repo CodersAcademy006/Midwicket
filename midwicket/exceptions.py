@@ -97,6 +97,14 @@ class LiveError(MidwicketError):
     """Base class for live data errors."""
     pass
 
+class QueryTimeoutError(MidwicketError):
+    """Query execution took too long"""
+    pass
+
+class PlayerNotFoundError(MidwicketError):
+    """Player not found in database, includes suggestions."""
+    pass
+
 class StreamError(LiveError):
     """Raised when streaming operations fail."""
     pass

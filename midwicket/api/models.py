@@ -92,3 +92,119 @@ class VenueStats(BaseModel):
     matches: int = Field(..., ge=0, description="Total matches")
     average_first_innings: Optional[float] = Field(None, ge=0, description="Average first innings score")
     average_total: Optional[float] = Field(None, ge=0, description="Average total score")
+
+class MidwicketResultSet(list):
+    """
+    A custom list class for Midwicket query results.
+    Renders as a styled HTML table in Jupyter Notebooks.
+    """
+    def _repr_html_(self) -> str:
+        if not self:
+            return "<p><em>No results found</em></p>"
+        
+        # Get headers from first dict
+        first = self[0]
+        if not isinstance(first, dict):
+            return super().__repr__()
+            
+        keys = list(first.keys())
+        
+        # Build HTML table
+        html = ["<table style='border-collapse: collapse; width: 100%; border: 1px solid #ddd; font-family: sans-serif;'>"]
+        
+        # Header row
+        html.append("<thead><tr style='background-color: #f2f2f2;'>")
+        for key in keys:
+            html.append(f"<th style='padding: 8px; text-align: left; border-bottom: 2px solid #ddd;'>{str(key).replace('_', ' ').title()}</th>")
+        html.append("</tr></thead>")
+        
+        # Data rows
+        html.append("<tbody>")
+        for row in self:
+            html.append("<tr>")
+            for key in keys:
+                val = row.get(key, "")
+                if isinstance(val, float):
+                    val = f"{val:.2f}"
+                html.append(f"<td style='padding: 8px; border-bottom: 1px solid #ddd;'>{val}</td>")
+            html.append("</tr>")
+        html.append("</tbody></table>")
+        
+        return "".join(html)
+
+    def __repr__(self) -> str:
+        """Fallback to standard representation, or rich if available."""
+        try:
+            from rich.console import Console
+            from rich.table import Table
+            import sys
+            
+            # Check if running interactively
+            if hasattr(sys, 'ps1') or sys.stdout.isatty():
+                if not self:
+                    return "[]"
+                
+                table = Table(show_header=True, header_style="bold magenta")
+                first = self[0]
+                if isinstance(first, dict):
+                    for k in first.keys():
+                        table.add_column(str(k).replace('_', ' ').title())
+                        
+                    for row in self:
+                        table.add_row(*[f"{v:.2f}" if isinstance(v, float) else str(v) for v in row.values()])
+                        
+                    Console().print(table)
+                    return ""
+        except ImportError:
+            pass
+            
+        return super().__repr__()
+
+class MidwicketResultDict(dict):
+    """
+    A custom dict class for single-row Midwicket query results.
+    Renders as a styled HTML table in Jupyter Notebooks.
+    """
+    def _repr_html_(self) -> str:
+        if not self:
+            return "<p><em>No results found</em></p>"
+            
+        # Build HTML table (vertical key-value)
+        html = ["<table style='border-collapse: collapse; border: 1px solid #ddd; font-family: sans-serif;'>"]
+        html.append("<tbody>")
+        for k, v in self.items():
+            html.append("<tr>")
+            html.append(f"<th style='padding: 8px; text-align: left; border-bottom: 1px solid #ddd; background-color: #f9f9f9; width: 150px;'>{str(k).replace('_', ' ').title()}</th>")
+            if isinstance(v, float):
+                v = f"{v:.2f}"
+            html.append(f"<td style='padding: 8px; border-bottom: 1px solid #ddd;'>{v}</td>")
+            html.append("</tr>")
+        html.append("</tbody></table>")
+        
+        return "".join(html)
+
+    def __repr__(self) -> str:
+        """Fallback to standard representation, or rich if available."""
+        try:
+            from rich.console import Console
+            from rich.table import Table
+            import sys
+            
+            if hasattr(sys, 'ps1') or sys.stdout.isatty():
+                if not self:
+                    return "{}"
+                    
+                table = Table(show_header=False)
+                table.add_column("Property", style="cyan")
+                table.add_column("Value", style="magenta")
+                
+                for k, v in self.items():
+                    val = f"{v:.2f}" if isinstance(v, float) else str(v)
+                    table.add_row(str(k).replace('_', ' ').title(), val)
+                    
+                Console().print(table)
+                return ""
+        except ImportError:
+            pass
+            
+        return super().__repr__()
