@@ -124,12 +124,12 @@ def head_to_head(
     if date_context is None:
         date_context = date.today()
 
-    b_id = str(reg.resolve_player(batter, date_context))
-    bo_id = str(reg.resolve_player(bowler, date_context))
+    b_id = reg.resolve_player(batter, date_context)
+    bo_id = reg.resolve_player(bowler, date_context)
 
     v_id = None
     if venue:
-        v_id = str(reg.resolve_venue(venue, date_context))
+        v_id = reg.resolve_venue(venue, date_context)
 
     query = MatchupQuery(
         snapshot_id="latest",
@@ -139,7 +139,7 @@ def head_to_head(
     )
 
     # Fast path: registry matchup_stats (populated by build_registry_stats, no ball_events needed)
-    stats = reg.get_matchup_stats(int(b_id), int(bo_id))
+    stats = reg.get_matchup_stats(b_id, bo_id)
     if stats is not None:
         return HeadToHeadSummary(
             batter=batter,

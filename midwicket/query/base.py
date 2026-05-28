@@ -1,7 +1,7 @@
 import hashlib
 import json
 from typing import Dict, Optional, Any, List
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 class ExecutionOptions(BaseModel):
     """Runtime controls that do NOT affect the data definition."""
@@ -50,9 +50,37 @@ class BaseQuery(BaseModel):
         return hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()
 
 class MatchupQuery(BaseQuery):
-    batter_id: str
-    bowler_id: str
-    venue_id: Optional[str] = None
+    """
+    Query for batter-vs-bowler matchup analytics.
+
+    IDs must align with Schema V1 which stores actor IDs as pa.int32().
+    String-formatted IDs (e.g. from API query params) are automatically
+    coerced to int via validators so callers never produce silent type
+    mismatches in DuckDB WHERE clauses.
+    """
+    batter_id: int  # int32 in Schema V1
+    bowler_id: int  # int32 in Schema V1
+    venue_id: Optional[int] = None  # int32 in Schema V1
+
+    @field_validator("batter_id", "bowler_id", mode="before")
+    @classmethod
+    def _coerce_actor_id(cls, v: Any) -> int:
+        """Accept string representations of integer IDs (common from API layer)."""
+        try:
+            return int(v)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Actor ID must be an integer or integer-coercible string, got: {v!r}") from exc
+
+    @field_validator("venue_id", mode="before")
+    @classmethod
+    def _coerce_venue_id(cls, v: Any) -> Optional[int]:
+        """Accept string representations of venue IDs."""
+        if v is None:
+            return None
+        try:
+            return int(v)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Venue ID must be an integer or integer-coercible string, got: {v!r}") from exc
 
     @property
     def requires(self) -> Dict[str, Any]:

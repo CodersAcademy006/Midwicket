@@ -12,13 +12,13 @@ class TestArchitecturalInvariants:
         identically the same cache key.
         """
         q1 = MatchupQuery(
-            batter_id="kohli_18", 
-            bowler_id="bumrah_93", 
+            batter_id=18,   # registry int ID (Schema V1: int32)
+            bowler_id=93,
             snapshot_id="2025-01-01"
         )
         q2 = MatchupQuery(
-            batter_id="kohli_18", 
-            bowler_id="bumrah_93", 
+            batter_id=18,
+            bowler_id=93,
             snapshot_id="2025-01-01"
         )
         
@@ -33,14 +33,14 @@ class TestArchitecturalInvariants:
         If this fails, you are re-computing data just because I asked for a progress bar.
         """
         q_strict = MatchupQuery(
-            batter_id="kohli_18", 
-            bowler_id="bumrah_93",
+            batter_id=18,
+            bowler_id=93,
             snapshot_id="2025-01-01",
             execution_opts={"timeout": 10, "verbose": False}
         )
         q_debug = MatchupQuery(
-            batter_id="kohli_18", 
-            bowler_id="bumrah_93",
+            batter_id=18,
+            bowler_id=93,
             snapshot_id="2025-01-01",
             execution_opts={"timeout": 999, "verbose": True}
         )
@@ -56,8 +56,8 @@ class TestArchitecturalInvariants:
         INVARIANT 3: Explicit Context
         Changing the snapshot_id MUST change the cache key.
         """
-        q_v1 = MatchupQuery(batter_id="X", bowler_id="Y", snapshot_id="2024-12-31")
-        q_v2 = MatchupQuery(batter_id="X", bowler_id="Y", snapshot_id="2025-01-01")
+        q_v1 = MatchupQuery(batter_id=1, bowler_id=2, snapshot_id="2024-12-31")
+        q_v2 = MatchupQuery(batter_id=1, bowler_id=2, snapshot_id="2025-01-01")
         
         assert q_v1.cache_key != q_v2.cache_key, "CRITICAL: Cache collision across data versions."
 
@@ -102,16 +102,16 @@ class TestArchitecturalInvariants:
         """
         with pytest.raises(ValidationError):
             MatchupQuery(
-                batter_id="X", 
-                bowler_id="Y", 
-                magic_parameter="please_work" # Should fail
+                batter_id=1,
+                bowler_id=2,
+                magic_parameter="please_work"  # Should fail
             )
 
     def test_invariant_execution_timeout_accepts_fractional_seconds(self):
         """Execution options should support sub-second timeout precision."""
         query = MatchupQuery(
-            batter_id="kohli_18",
-            bowler_id="bumrah_93",
+            batter_id=18,
+            bowler_id=93,
             snapshot_id="2025-01-01",
             execution_opts={"timeout": 0.25},
         )
