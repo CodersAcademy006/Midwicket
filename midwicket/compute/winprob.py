@@ -83,7 +83,7 @@ def win_probability(
     """
     with _model_lock:
         model = _default_model
-    prob, conf = model.predict(target, current_runs, wickets_down, overs_done, venue)
+    prob, conf = model.predict(target, current_runs, wickets_down, overs_done, venue, balls_per_innings=balls_per_innings)
     return {"win_prob": prob, "confidence": conf}
 
 def set_win_model(model: WinPredictor) -> None:
