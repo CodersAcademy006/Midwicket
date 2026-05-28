@@ -29,6 +29,7 @@ from .api.session import MidwicketSession, init
 # Sub-packages (used via md.data.*, md.visuals.*, etc.)
 from . import data
 from . import visuals
+from . import plot
 
 # Top-level convenience modules
 from . import api
@@ -44,6 +45,9 @@ from .query.matchups import MatchupQuery
 
 # Debug / mode helpers
 from .runtime.modes import set_debug_mode
+
+# Interactive exploration (Jupyter)
+from .explore import explore_player
 
 # Head-to-head analysis (new convenience API)
 from .api.head_to_head import head_to_head, HeadToHeadSummary
@@ -169,6 +173,12 @@ __all__ = [
 ]
 
 # Auto-Bootstrap Hook
+try:
+    from rich.traceback import install
+    install(show_locals=False)
+except ImportError:
+    pass
+
 try:
     _session = init()
     if _session.is_empty():
