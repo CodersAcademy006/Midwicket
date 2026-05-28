@@ -163,8 +163,8 @@ def get_matchup(batter: str, bowler: str, data_dir: Optional[str] = None) -> Opt
     from midwicket.query.base import MatchupQuery
     try:
         query = MatchupQuery(
-            batter_id=str(batter_id),
-            bowler_id=str(bowler_id),
+            batter_id=batter_id,
+            bowler_id=bowler_id,
             snapshot_id="latest",
         )
         result = session.executor.execute(query)

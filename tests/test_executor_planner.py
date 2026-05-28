@@ -48,7 +48,7 @@ def _make_engine(
 
 
 def _matchup_query(**kw) -> MatchupQuery:
-    defaults = dict(snapshot_id="snap-1", batter_id="101", bowler_id="202")
+    defaults = dict(snapshot_id="snap-1", batter_id=101, bowler_id=202)
     defaults.update(kw)
     return MatchupQuery(**defaults)
 
@@ -570,7 +570,7 @@ class TestQueryPlannerLegacy:
     def test_sql_contains_batter_and_bowler_placeholders(self):
         engine = _make_engine()
         planner = QueryPlanner(engine)
-        query = _matchup_query(batter_id="501", bowler_id="601")
+        query = _matchup_query(batter_id=501, bowler_id=601)
 
         plan = planner.create_legacy_plan(query)
         assert "?" in plan["sql"]  # Parameters are placeholders, not inlined
@@ -584,25 +584,25 @@ class TestPlannerWhereClause:
     def test_where_clause_with_matchup_query(self):
         engine = _make_engine()
         planner = QueryPlanner(engine)
-        query = _matchup_query(batter_id="101", bowler_id="202")
+        query = _matchup_query(batter_id=101, bowler_id=202)
         where, params = planner._build_where_clause(query)
         assert "batter_id = ?" in where
         assert "bowler_id = ?" in where
-        assert "101" in params
-        assert "202" in params
+        assert 101 in params
+        assert 202 in params
 
     def test_where_clause_with_venue_id(self):
         engine = _make_engine()
         planner = QueryPlanner(engine)
-        query = MatchupQuery(snapshot_id="s", batter_id="1", bowler_id="2", venue_id="V1")
+        query = MatchupQuery(snapshot_id="s", batter_id=1, bowler_id=2, venue_id=99)
         where, params = planner._build_where_clause(query)
         assert "venue_id = ?" in where
-        assert "V1" in params
+        assert 99 in params
 
     def test_where_clause_without_venue_id(self):
         engine = _make_engine()
         planner = QueryPlanner(engine)
-        query = MatchupQuery(snapshot_id="s", batter_id="1", bowler_id="2")
+        query = MatchupQuery(snapshot_id="s", batter_id=1, bowler_id=2)
         where, params = planner._build_where_clause(query)
         assert "venue_id" not in where
 
@@ -645,17 +645,17 @@ class TestPlannerGenerateSQL:
     def test_matchup_query_generates_sql(self):
         engine = _make_engine()
         planner = QueryPlanner(engine)
-        query = _matchup_query(batter_id="101", bowler_id="202")
+        query = _matchup_query(batter_id=101, bowler_id=202)
         sql, params = planner._generate_sql(query, "ball_events")
         assert "batter_id" in sql
         assert "bowler_id" in sql
-        assert "101" in params
-        assert "202" in params
+        assert 101 in params
+        assert 202 in params
 
     def test_matchup_materialized_sql_uses_derived_schema(self):
         engine = _make_engine()
         planner = QueryPlanner(engine)
-        query = _matchup_query(batter_id="101", bowler_id="202")
+        query = _matchup_query(batter_id=101, bowler_id=202)
         sql, _ = planner._generate_sql(query, "matchup_stats")
         assert "FROM derived.matchup_stats" in sql
 

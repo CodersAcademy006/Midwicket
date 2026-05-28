@@ -29,12 +29,12 @@ def matchup(
     exc = get_executor()
 
     today = date.today()
-    b_id = str(reg.resolve_player(batter, today))
-    bo_id = str(reg.resolve_player(bowler, today))
+    b_id = reg.resolve_player(batter, today)
+    bo_id = reg.resolve_player(bowler, today)
 
     v_id = None
     if venue:
-        v_id = str(reg.resolve_venue(venue, today))
+        v_id = reg.resolve_venue(venue, today)
 
     q = MatchupQuery(
         snapshot_id="latest",
