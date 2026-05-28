@@ -1,4 +1,4 @@
-name: CI
+name: Strict CI Pipeline
 
 on:
   push:
@@ -7,67 +7,85 @@ on:
     branches: [ main ]
 
 jobs:
-  test:
+  lint:
+    name: Lint & Format
     runs-on: ubuntu-latest
-    env:
-      PYPITCH_ENV: testing
-      PYPITCH_API_KEY_REQUIRED: "false"
-      PYPITCH_DATA_DIR: /tmp/pypitch_test_data
-      PYPITCH_SECRET_KEY: ci-test-secret-key-not-for-production
-
     steps:
-    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Ruff
+        run: pip install ruff
+      - name: Check Formatting
+        run: ruff format --check midwicket tests
+      - name: Lint Codebase
+        run: ruff check midwicket tests
 
-    - name: Set up Python
-      uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2f  # v5.3.0
-      with:
-        python-version: '3.11'
-        cache: pip
-
-    - name: Install core dependencies
-      run: |
-        python -m pip install --upgrade pip pip-tools
-        # Install from pinned lock file when present; fall back to floating requirements.
-        if [ -f requirements-lock.txt ]; then
-          pip install -r requirements-lock.txt
-        else
+  typecheck:
+    name: Static Type Checking
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
           pip install -r requirements.txt
-        fi
+          pip install mypy
+      - name: Run Mypy
+        run: mypy midwicket --ignore-missing-imports
 
-    - name: Install dev dependencies
-      run: |
-        pip install -r requirements-dev.txt
-        pip install pytest pytest-cov coverage
-        pip install fastapi uvicorn httpx  # needed for serve tests
-        pip install bandit pip-audit
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install bandit pip-audit
+      - name: Run Bandit
+        run: bandit -r midwicket -ll
+      - name: Run Pip-Audit
+        run: pip-audit -r requirements.txt --desc
 
-    - name: Security scan — bandit
-      run: |
-        bandit -r pypitch/ -ll -x pypitch/sources/retrosheet_adapter.py
-      continue-on-error: false
-
-    - name: Security scan — pip-audit
-      run: |
-        pip-audit -r requirements.txt --desc
-      continue-on-error: false  # blocks CI on any known vulnerability
-
-    - name: Type check — mypy
-      run: |
-        mypy pypitch/ --ignore-missing-imports
-      continue-on-error: false
-
-    - name: Run tests with coverage
-      run: |
-        pytest tests/ -v \
-          --cov=pypitch \
-          --cov-report=xml \
-          --cov-report=term-missing \
-          --cov-fail-under=70 \
-          -m "not integration"
-
-    - name: Upload coverage report
-      uses: actions/upload-artifact@65c4c4a1ddee5b72f698d9d415dfb99d6e1a387c  # v4.6.0
-      if: always()
-      with:
-        name: coverage-report
-        path: coverage.xml
+  test:
+    name: Test Suite & Coverage
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12']
+    env:
+      MIDWICKET_ENV: testing
+      MIDWICKET_API_KEY_REQUIRED: "false"
+      MIDWICKET_DATA_DIR: /tmp/midwicket_test_data
+      MIDWICKET_SECRET_KEY: ci-test-secret-key-not-for-production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+          pip install pytest pytest-cov coverage fastapi uvicorn httpx
+      - name: Run Tests
+        run: |
+          pytest tests/ -v \
+            --cov=midwicket \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --cov-fail-under=70
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report-${{ matrix.python-version }}
+          path: coverage.xml
