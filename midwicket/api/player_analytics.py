@@ -575,11 +575,17 @@ def batting_form(player_name: str, last_n: int = 5) -> Dict[str, Any]:
             })
         total_runs = sum(m["runs"] for m in matches)
         avg_sr = _r(sum(m["strike_rate"] or 0 for m in matches) / len(matches)) if matches else None
+        
+        # Exponentially Weighted Form Index (more recent matches have higher weight)
+        # Matches are sorted descending (newest first). 0.8 decay factor.
+        form_index = sum(m["runs"] * (0.8 ** i) for i, m in enumerate(matches)) if matches else 0.0
+        
         return {
             "player": player_name,
             "last_n": last_n,
             "total_runs": total_runs,
             "average_sr": avg_sr,
+            "form_index": _r(form_index),
             "matches": matches,
         }
     finally:
@@ -627,11 +633,16 @@ def bowling_form(player_name: str, last_n: int = 5) -> Dict[str, Any]:
         avg_econ = _r(
             sum(m["economy"] or 0 for m in matches) / len(matches)
         ) if matches else None
+        
+        # Exponentially Weighted Form Index for Bowling (recent wickets have higher weight)
+        form_index = sum(m["wickets"] * (0.8 ** i) for i, m in enumerate(matches)) if matches else 0.0
+
         return {
             "player": player_name,
             "last_n": last_n,
             "total_wickets": total_wkts,
             "average_economy": avg_econ,
+            "form_index": _r(form_index),
             "matches": matches,
         }
     finally:
