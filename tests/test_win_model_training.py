@@ -5,9 +5,14 @@ from importlib import reload
 import hashlib
 import pickle
 
+import pytest
 import pandas as pd
-from sklearn.linear_model import LogisticRegression
-from sklearn.preprocessing import StandardScaler
+
+# scikit-learn is an optional dependency; skip all tests in this module
+# when it is not installed (e.g. the build-import CI job).
+sklearn = pytest.importorskip("sklearn")
+from sklearn.linear_model import LogisticRegression  # noqa: E402
+from sklearn.preprocessing import StandardScaler  # noqa: E402
 
 from midwicket.models.win_predictor import WinPredictor
 from midwicket.models.train import WinProbabilityTrainer
