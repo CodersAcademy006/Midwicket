@@ -72,7 +72,8 @@ def fantasy_score(
     """
     weights = {**_DEFAULT_SCORING, **(scoring or {})}
 
-    season_clause = "AND season = ?" if season else ""
+    # v1 schema has 'date' not 'season'; derive season from year
+    season_clause = "AND CAST(EXTRACT(YEAR FROM date) AS VARCHAR) = ?" if season else ""
     params_bat = [player_name] + ([season] if season else [])
     params_bowl = [player_name] + ([season] if season else [])
 

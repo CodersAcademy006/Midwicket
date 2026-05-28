@@ -26,82 +26,104 @@ BATTER2 = "RG Sharma"
 
 _SCHEMA = """
 CREATE TABLE ball_events (
-    match_id  VARCHAR,
-    inning    INTEGER,
-    over      INTEGER,
-    ball      INTEGER,
-    runs_total    INTEGER DEFAULT 0,
-    wickets_fallen INTEGER DEFAULT 0,
-    target    INTEGER DEFAULT 0,
-    venue     VARCHAR DEFAULT '',
-    timestamp DOUBLE DEFAULT 0,
-    runs_batter   INTEGER DEFAULT 0,
-    runs_extras   INTEGER DEFAULT 0,
-    is_wicket BOOLEAN DEFAULT FALSE,
-    batter    VARCHAR DEFAULT '',
-    bowler    VARCHAR DEFAULT '',
-    competition VARCHAR DEFAULT '',
-    season    VARCHAR DEFAULT ''
+    match_id        VARCHAR,
+    date            DATE DEFAULT '2023-01-01',
+    venue_id        INTEGER DEFAULT 0,
+    inning          INTEGER,
+    over            INTEGER,
+    ball            INTEGER,
+    batter_id       INTEGER DEFAULT 0,
+    bowler_id       INTEGER DEFAULT 0,
+    non_striker_id  INTEGER DEFAULT 0,
+    batting_team_id SMALLINT DEFAULT 0,
+    bowling_team_id SMALLINT DEFAULT 0,
+    runs_batter     INTEGER DEFAULT 0,
+    runs_extras     INTEGER DEFAULT 0,
+    is_wicket       BOOLEAN DEFAULT FALSE,
+    wicket_type     VARCHAR DEFAULT NULL,
+    phase           VARCHAR DEFAULT 'Middle',
+    batter          VARCHAR DEFAULT '',
+    bowler          VARCHAR DEFAULT '',
+    venue           VARCHAR DEFAULT ''
 )
 """
 
 
 def _seed(con: duckdb.DuckDBPyConnection) -> None:
-    """Insert synthetic ball data for two batters and one bowler."""
+    """Insert synthetic ball data for two batters and one bowler.
+
+    Schema matches v1 + denormalized names (no legacy runs_total/season/etc.).
+    """
     con.execute(_SCHEMA)
 
     rows = []
-    # Match 1 — Kohli bats, Bumrah bowls, Wankhede, IPL 2023
+    # Match 1 — Kohli bats, Bumrah bowls, Wankhede, 2023-05-21
     for over in range(20):
+        phase = "Powerplay" if over < 6 else ("Middle" if over < 15 else "Death")
         for ball in range(6):
             runs_b = 4 if (over + ball) % 5 == 0 else (1 if ball % 2 == 0 else 0)
             is_w = (over == 15 and ball == 5)
             rows.append((
-                "M001", 1, over, ball,
-                runs_b, 1 if is_w else 0, 0,
-                "Wankhede", float(1000 + over * 6 + ball),
+                "M001", "2023-05-21", 1,  # match_id, date, venue_id
+                1, over, ball,
+                10, 20, 11,  # batter_id, bowler_id, non_striker_id
+                1, 2,  # batting_team_id, bowling_team_id
                 runs_b, 0, is_w,
-                BATTER, BOWLER, "IPL", "2023",
+                "BOWLED" if is_w else None,
+                phase,
+                BATTER, BOWLER, "Wankhede",
             ))
 
-    # Match 2 — Kohli bats again, Eden Gardens, IPL 2022
+    # Match 2 — Kohli bats again, Eden Gardens, 2022-04-10
     for over in range(10):
+        phase = "Powerplay" if over < 6 else "Middle"
         for ball in range(6):
             runs_b = 6 if ball == 5 else 2
             rows.append((
-                "M002", 2, over, ball,
-                runs_b, 0, 150,
-                "Eden Gardens", float(2000 + over * 6 + ball),
+                "M002", "2022-04-10", 2,  # match_id, date, venue_id
+                2, over, ball,
+                10, 30, 11,  # batter_id, bowler_id (different), non_striker_id
+                1, 3,  # batting_team_id, bowling_team_id (different)
                 runs_b, 0, False,
-                BATTER, "Another Bowler", "IPL", "2022",
+                None,
+                phase,
+                BATTER, "Another Bowler", "Eden Gardens",
             ))
 
     # Match 3 — Sharma bats
     for over in range(8):
+        phase = "Powerplay" if over < 6 else "Middle"
         for ball in range(6):
             rows.append((
-                "M003", 1, over, ball,
-                3, 0, 0,
-                "Wankhede", float(3000 + over * 6 + ball),
+                "M003", "2023-06-15", 1,  # match_id, date, venue_id
+                1, over, ball,
+                12, 20, 13,  # batter_id (Sharma), bowler_id (Bumrah), non_striker_id
+                3, 1,  # batting_team_id, bowling_team_id
                 3, 0, False,
-                BATTER2, BOWLER, "IPL", "2023",
+                None,
+                phase,
+                BATTER2, BOWLER, "Wankhede",
             ))
 
-    # Bumrah bowls in M003 — add bowling rows
+    # Bumrah bowls in M003 — add bowling rows (different batter facing)
     for over in range(4):
+        phase = "Powerplay" if over < 6 else "Middle"
         for ball in range(6):
             is_w = (over == 3 and ball == 3)
             rows.append((
-                "M003", 1, over, ball,
-                8, 1 if is_w else 0, 0,
-                "Wankhede", float(3000 + over * 6 + ball),
+                "M003", "2023-06-15", 1,  # match_id, date, venue_id
+                1, over, ball,
+                14, 20, 15,  # batter_id, bowler_id (Bumrah), non_striker_id
+                3, 1,  # batting_team_id, bowling_team_id
                 6, 2, is_w,
-                "Other Batter", BOWLER, "IPL", "2023",
+                "CAUGHT" if is_w else None,
+                phase,
+                "Other Batter", BOWLER, "Wankhede",
             ))
 
     con.executemany("""
         INSERT INTO ball_events VALUES (
-            ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+            ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
         )
     """, rows)
 

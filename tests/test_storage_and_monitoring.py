@@ -49,6 +49,10 @@ def _make_valid_ball_event_table(n: int = 2) -> pa.Table:
                 ["powerplay"] * n,
                 type=pa.dictionary(pa.int8(), pa.string())
             ),
+            # Denormalized name columns (convenience for analytics queries)
+            "batter": pa.array(["Test Batter"] * n, type=pa.string()),
+            "bowler": pa.array(["Test Bowler"] * n, type=pa.string()),
+            "venue": pa.array(["Test Venue"] * n, type=pa.string()),
         }
     )
 

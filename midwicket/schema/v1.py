@@ -96,4 +96,13 @@ BALL_EVENT_SCHEMA = pa.schema([
     
     # --- Derived Context (Materialized) ---
     ('phase', pa.string()), # 'Powerplay', 'Middle', 'Death'
+
+    # --- Denormalized Names (convenience for analytics queries) ---
+    # These mirror the registry-resolved IDs above. They are populated
+    # during canonicalization from the raw source data and allow SQL
+    # queries to filter/group by human-readable names without needing
+    # cross-database JOINs against the identity registry.
+    ('batter', pa.string()),
+    ('bowler', pa.string()),
+    ('venue', pa.string()),
 ], metadata=SCHEMA_META)

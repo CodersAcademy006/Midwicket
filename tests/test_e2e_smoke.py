@@ -18,7 +18,6 @@ from midwicket.schema.v1 import BALL_EVENT_SCHEMA
 from midwicket.storage.engine import QueryEngine
 from midwicket.storage.registry import IdentityRegistry
 from midwicket.compute.winprob import win_probability
-from midwicket.serve.sql_guard import validate_read_only_query, SQLValidationError
 
 
 def _sample_match() -> dict:
@@ -80,6 +79,12 @@ def test_win_probability_returns_bounded_values():
 
 
 def test_sql_guard_blocks_dangerous_queries_but_allows_allowlisted():
+    # sql_guard depends on serve extras (fastapi/uvicorn) which may not be
+    # installed in core-deps-only CI environments.
+    sql_guard = pytest.importorskip("midwicket.serve.sql_guard")
+    validate_read_only_query = sql_guard.validate_read_only_query
+    SQLValidationError = sql_guard.SQLValidationError
+
     with pytest.raises(SQLValidationError):
         validate_read_only_query("SELECT * FROM ball_events; DROP TABLE ball_events")
     with pytest.raises(SQLValidationError):

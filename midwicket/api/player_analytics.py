@@ -162,7 +162,7 @@ def career_bowling(player_name: str) -> Dict[str, Any]:
             COUNT(DISTINCT match_id || '_' || inning)         AS innings,
             SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END)        AS wickets,
             COUNT(*)                                           AS balls_bowled,
-            COALESCE(SUM(runs_total - runs_extras), 0)        AS runs_conceded
+            COALESCE(SUM(runs_batter), 0)                     AS runs_conceded
         FROM ball_events
         WHERE bowler = ?
         """
@@ -191,7 +191,7 @@ def career_bowling(player_name: str) -> Dict[str, Any]:
         FROM (
             SELECT match_id, inning,
                 SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END)         AS inning_wkts,
-                COALESCE(SUM(runs_total - runs_extras), 0)          AS inning_runs
+                COALESCE(SUM(runs_batter), 0)                      AS inning_runs
             FROM ball_events
             WHERE bowler = ?
             GROUP BY match_id, inning
@@ -250,11 +250,7 @@ def batting_by_phase(player_name: str) -> Dict[str, Any]:
     try:
         sql = """  -- nosec B608
         SELECT
-            CASE
-                WHEN over <= 5  THEN 'Powerplay'
-                WHEN over <= 14 THEN 'Middle'
-                ELSE                 'Death'
-            END                                               AS phase,
+            phase,
             COUNT(*)                                          AS balls,
             COALESCE(SUM(runs_batter), 0)                    AS runs,
             SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END)        AS dismissals,
@@ -264,7 +260,7 @@ def batting_by_phase(player_name: str) -> Dict[str, Any]:
         FROM ball_events
         WHERE batter = ?
         GROUP BY phase
-        ORDER BY MIN(over)
+        ORDER BY CASE phase WHEN 'Powerplay' THEN 1 WHEN 'Middle' THEN 2 ELSE 3 END
         """
         rows = con.execute(sql, [player_name]).fetchall()
         phases = []
@@ -298,18 +294,14 @@ def bowling_by_phase(player_name: str) -> Dict[str, Any]:
     try:
         sql = """  -- nosec B608
         SELECT
-            CASE
-                WHEN over <= 5  THEN 'Powerplay'
-                WHEN over <= 14 THEN 'Middle'
-                ELSE                 'Death'
-            END                                                      AS phase,
+            phase,
             COUNT(*)                                                   AS balls,
             SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END)                AS wickets,
-            COALESCE(SUM(runs_total - runs_extras), 0)                AS runs_conceded
+            COALESCE(SUM(runs_batter), 0)                            AS runs_conceded
         FROM ball_events
         WHERE bowler = ?
         GROUP BY phase
-        ORDER BY MIN(over)
+        ORDER BY CASE phase WHEN 'Powerplay' THEN 1 WHEN 'Middle' THEN 2 ELSE 3 END
         """
         rows = con.execute(sql, [player_name]).fetchall()
         phases = []
@@ -392,7 +384,7 @@ def bowling_by_venue(player_name: str) -> List[Dict[str, Any]]:
             COUNT(DISTINCT match_id)                          AS matches,
             COUNT(*)                                          AS balls,
             SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END)        AS wickets,
-            COALESCE(SUM(runs_total - runs_extras), 0)        AS runs_conceded
+            COALESCE(SUM(runs_batter), 0)                     AS runs_conceded
         FROM ball_events
         WHERE bowler = ? AND venue IS NOT NULL AND venue != ''
         GROUP BY venue
@@ -462,7 +454,7 @@ def batting_by_season(player_name: str) -> List[Dict[str, Any]]:
     try:
         sql = """  -- nosec B608
         SELECT
-            COALESCE(NULLIF(season, ''), 'unknown')            AS season,
+            COALESCE(CAST(EXTRACT(YEAR FROM date) AS VARCHAR), 'unknown') AS season,
             COUNT(DISTINCT match_id)                           AS matches,
             COUNT(*)                                           AS balls,
             COALESCE(SUM(runs_batter), 0)                     AS runs,
@@ -502,11 +494,11 @@ def bowling_by_season(player_name: str) -> List[Dict[str, Any]]:
     try:
         sql = """  -- nosec B608
         SELECT
-            COALESCE(NULLIF(season, ''), 'unknown')            AS season,
+            COALESCE(CAST(EXTRACT(YEAR FROM date) AS VARCHAR), 'unknown') AS season,
             COUNT(DISTINCT match_id)                           AS matches,
             COUNT(*)                                           AS balls,
             SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END)         AS wickets,
-            COALESCE(SUM(runs_total - runs_extras), 0)         AS runs_conceded
+            COALESCE(SUM(runs_batter), 0)                      AS runs_conceded
         FROM ball_events
         WHERE bowler = ?
         GROUP BY season
@@ -551,7 +543,7 @@ def batting_form(player_name: str, last_n: int = 5) -> Dict[str, Any]:
             MAX(CASE WHEN is_wicket THEN 1 ELSE 0 END)         AS got_out,
             SUM(CASE WHEN runs_batter = 4 THEN 1 ELSE 0 END)  AS fours,
             SUM(CASE WHEN runs_batter = 6 THEN 1 ELSE 0 END)  AS sixes,
-            MAX(timestamp)                                     AS match_ts
+            MAX(date)                                          AS match_ts
         FROM ball_events
         WHERE batter = ?
         GROUP BY match_id, inning
@@ -606,8 +598,8 @@ def bowling_form(player_name: str, last_n: int = 5) -> Dict[str, Any]:
             inning,
             COUNT(*)                                           AS balls,
             SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END)         AS wickets,
-            COALESCE(SUM(runs_total - runs_extras), 0)         AS runs_conceded,
-            MAX(timestamp)                                     AS match_ts
+            COALESCE(SUM(runs_batter), 0)                      AS runs_conceded,
+            MAX(date)                                          AS match_ts
         FROM ball_events
         WHERE bowler = ?
         GROUP BY match_id, inning
@@ -663,10 +655,10 @@ def batting_vs_teams(player_name: str) -> List[Dict[str, Any]]:
     """
     con = _get_con()
     try:
-        # ball_events has no explicit team column — group by competition as proxy
+        # v1 has bowling_team_id — use it as opposition grouping for batting
         sql = """  -- nosec B608
         SELECT
-            COALESCE(NULLIF(competition, ''), 'unknown')       AS opposition_proxy,
+            CAST(bowling_team_id AS VARCHAR)                   AS opposition_proxy,
             COUNT(DISTINCT match_id)                           AS matches,
             COUNT(*)                                           AS balls,
             COALESCE(SUM(runs_batter), 0)                     AS runs,
@@ -706,11 +698,11 @@ def bowling_vs_teams(player_name: str) -> List[Dict[str, Any]]:
     try:
         sql = """  -- nosec B608
         SELECT
-            COALESCE(NULLIF(competition, ''), 'unknown')       AS opposition_proxy,
+            CAST(batting_team_id AS VARCHAR)                   AS opposition_proxy,
             COUNT(DISTINCT match_id)                           AS matches,
             COUNT(*)                                           AS balls,
             SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END)         AS wickets,
-            COALESCE(SUM(runs_total - runs_extras), 0)         AS runs_conceded
+            COALESCE(SUM(runs_batter), 0)                      AS runs_conceded
         FROM ball_events
         WHERE bowler = ?
         GROUP BY opposition_proxy
@@ -848,7 +840,7 @@ def batting_in_chases(player_name: str) -> Dict[str, Any]:
             SUM(CASE WHEN runs_batter = 4 THEN 1 ELSE 0 END)  AS fours,
             SUM(CASE WHEN runs_batter = 6 THEN 1 ELSE 0 END)  AS sixes
         FROM ball_events
-        WHERE batter = ? AND inning = 2 AND target > 0
+        WHERE batter = ? AND inning = 2
         """
         row = con.execute(sql, [player_name]).fetchone()
         if not row or row[0] == 0:
@@ -882,36 +874,13 @@ def batting_under_pressure(player_name: str, wickets_threshold: int = 5) -> Dict
     Batting when wickets_fallen >= threshold at time of delivery.
     Proxy for crisis situations / lower-order contributions.
     """
-    con = _get_con()
-    try:
-        sql = """  -- nosec B608
-        SELECT
-            COUNT(DISTINCT match_id)                           AS matches,
-            COUNT(*)                                           AS balls,
-            COALESCE(SUM(runs_batter), 0)                     AS runs,
-            SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END)         AS dismissals
-        FROM ball_events
-        WHERE batter = ? AND wickets_fallen >= ?
-        """
-        row = con.execute(sql, [player_name, wickets_threshold]).fetchone()
-        if not row or row[0] == 0:
-            return {"player": player_name, "matches": 0, "message": "no high-pressure data"}
-
-        matches, balls, runs, dis = row
-        avg = _r(runs / dis) if dis else None
-        sr = _r((runs / balls) * 100) if balls else None
-        return {
-            "player": player_name,
-            "wickets_fallen_threshold": wickets_threshold,
-            "matches": matches,
-            "balls": balls,
-            "runs": runs,
-            "dismissals": dis,
-            "average": avg,
-            "strike_rate": sr,
-        }
-    finally:
-        con.close()
+    # wickets_fallen is cumulative per-ball state not available in v1 ball_events.
+    # This feature requires match-level context enrichment (future PR).
+    return {
+        "player": player_name,
+        "matches": 0,
+        "message": "no high-pressure data (wickets_fallen not in v1 schema)",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1012,7 +981,7 @@ def best_bowling_figures(player_name: str, top_n: int = 5) -> Dict[str, Any]:
             match_id,
             inning,
             SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END)         AS wickets,
-            COALESCE(SUM(runs_total - runs_extras), 0)         AS runs_conceded,
+            COALESCE(SUM(runs_batter), 0)                      AS runs_conceded,
             COUNT(*)                                           AS balls
         FROM ball_events
         WHERE bowler = ?
@@ -1056,12 +1025,12 @@ def match_streaks(player_name: str, runs_threshold: int = 20, wickets_threshold:
     con = _get_con()
     try:
         bat_sql = """  -- nosec B608
-        SELECT match_id, SUM(runs_batter) AS runs, MAX(timestamp) AS ts
+        SELECT match_id, SUM(runs_batter) AS runs, MAX(date) AS ts
         FROM ball_events WHERE batter = ?
         GROUP BY match_id ORDER BY ts ASC
         """
         bowl_sql = """  -- nosec B608
-        SELECT match_id, SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END) AS wkts, MAX(timestamp) AS ts
+        SELECT match_id, SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END) AS wkts, MAX(date) AS ts
         FROM ball_events WHERE bowler = ?
         GROUP BY match_id ORDER BY ts ASC
         """
@@ -1125,7 +1094,7 @@ def milestones_and_failures(player_name: str) -> Dict[str, Any]:
         SELECT COUNT(*) AS economy_breaks
         FROM (
             SELECT match_id, inning,
-                COALESCE(SUM(runs_total - runs_extras), 0)      AS runs_conceded,
+                COALESCE(SUM(runs_batter), 0)                   AS runs_conceded,
                 COUNT(*)                                         AS balls
             FROM ball_events WHERE bowler = ?
             GROUP BY match_id, inning
@@ -1243,7 +1212,7 @@ def bowling_leaderboard(
             COUNT(DISTINCT match_id)                           AS matches,
             COUNT(*)                                           AS balls,
             SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END)         AS wickets,
-            COALESCE(SUM(runs_total - runs_extras), 0)         AS runs_conceded
+            COALESCE(SUM(runs_batter), 0)                      AS runs_conceded
         FROM ball_events
         WHERE bowler != ''
         GROUP BY bowler
