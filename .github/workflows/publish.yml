@@ -1,0 +1,37 @@
+name: Publish Python Package to PyPI
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build-and-publish:
+    name: Build and publish to PyPI
+    runs-on: ubuntu-latest
+    
+    # These permissions are required for Trusted Publishing via OIDC
+    permissions:
+      id-token: write
+      contents: read
+      
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+        
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          
+      - name: Install pypa/build
+        run: >-
+          python -m pip install build --user
+          
+      - name: Build a binary wheel and a source tarball
+        run: >-
+          python -m build
+          
+      - name: Publish package to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        # No password or API token is required.
+        # This will use OIDC authentication configured via PyPI Trusted Publishers.
