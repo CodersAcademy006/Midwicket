@@ -167,3 +167,12 @@ __all__ = [
     # Meta
     "__version__",
 ]
+
+# Auto-Bootstrap Hook
+try:
+    _session = init()
+    if _session.is_empty():
+        _session.bootstrap_all()
+except Exception as e:
+    import logging
+    logging.getLogger(__name__).warning("Failed to auto-bootstrap Midwicket data: %s", e)
