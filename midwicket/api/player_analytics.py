@@ -48,10 +48,10 @@ _MIDDLE_MAX = 14      # overs 6-14
 
 
 def _get_con() -> Any:
-    """Return live DuckDB connection from the active storage engine."""
+    """Return a plain DuckDB connection to the active engine's database."""
+    import duckdb as _duckdb
     from midwicket.api.session import MidwicketSession
-    session = MidwicketSession.get()
-    return session.engine.raw_connection()
+    return _duckdb.connect(MidwicketSession.get().engine.pool.connect_path)
 
 
 def _r(v: Optional[float], dp: int = 2) -> Optional[float]:
@@ -1166,47 +1166,36 @@ def batting_leaderboard(
     min_balls: int = 30,
 ) -> List[Dict[str, Any]]:
     """
-    Top-N batters across all players in ball_events.
-
-    sort_by: 'runs' | 'average' | 'strike_rate'
-    min_balls: minimum balls faced to qualify
+    Top-N batters by runs / average / strike_rate.
+    Queries the pre-aggregated registry player_stats table.
     """
-    con = _get_con()
-    try:
-        sql = """  -- nosec B608
-        SELECT
-            batter,
-            COUNT(DISTINCT match_id)                           AS matches,
-            COUNT(*)                                           AS balls,
-            COALESCE(SUM(runs_batter), 0)                     AS runs,
-            SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END)         AS dismissals
-        FROM ball_events
-        WHERE batter != ''
-        GROUP BY batter
-        HAVING COUNT(*) >= ?
-        """
-        rows = con.execute(sql, [min_balls]).fetchall()
-        result = []
-        for r in rows:
-            player, matches, balls, runs, dis = r
-            avg = _r(runs / dis) if dis else None
-            sr = _r((runs / balls) * 100) if balls else None
-            result.append({
-                "player": player,
-                "matches": matches,
-                "balls": balls,
-                "runs": runs,
-                "dismissals": dis,
-                "average": avg,
-                "strike_rate": sr,
-            })
+    from midwicket.api.session import MidwicketSession
+    reg_con = MidwicketSession.get().registry.con
+    sql = """  -- nosec B608
+    SELECT
+        e.primary_name                                        AS player,
+        ps.matches,
+        ps.balls_faced                                        AS balls,
+        ps.runs,
+        ROUND(ps.runs * 100.0 / NULLIF(ps.balls_faced, 0), 1) AS strike_rate
+    FROM player_stats ps
+    JOIN entities e ON e.id = ps.entity_id
+    WHERE ps.balls_faced >= ?
+    ORDER BY ps.runs DESC
+    LIMIT ?
+    """
+    rows = reg_con.execute(sql, [min_balls, min(top_n, _MAX_LEADERBOARD_N)]).fetchall()
+    result = []
+    for player, matches, balls, runs, sr in rows:
+        avg = _r(runs / matches) if matches else None
+        result.append({"player": player, "matches": matches,
+                       "balls": balls, "runs": runs,
+                       "average": avg, "strike_rate": sr})
 
-        key_map = {"runs": "runs", "average": "average", "strike_rate": "strike_rate"}
-        sort_key = key_map.get(sort_by, "runs")
-        result.sort(key=lambda x: x[sort_key] or 0, reverse=True)
-        return result[:min(top_n, _MAX_LEADERBOARD_N)]
-    finally:
-        con.close()
+    key_map = {"runs": "runs", "average": "average", "strike_rate": "strike_rate"}
+    sort_key = key_map.get(sort_by, "runs")
+    result.sort(key=lambda x: x[sort_key] or 0, reverse=True)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -1219,52 +1208,41 @@ def bowling_leaderboard(
     min_balls: int = 30,
 ) -> List[Dict[str, Any]]:
     """
-    Top-N bowlers across all players in ball_events.
-
-    sort_by: 'wickets' | 'economy' | 'bowling_average'
-    min_balls: minimum balls bowled to qualify
+    Top-N bowlers by wickets / economy / bowling_average.
+    Queries the pre-aggregated registry player_stats table.
     """
-    con = _get_con()
-    try:
-        sql = """  -- nosec B608
-        SELECT
-            bowler,
-            COUNT(DISTINCT match_id)                           AS matches,
-            COUNT(*)                                           AS balls,
-            SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END)         AS wickets,
-            COALESCE(SUM(runs_total - runs_extras), 0)         AS runs_conceded
-        FROM ball_events
-        WHERE bowler != ''
-        GROUP BY bowler
-        HAVING COUNT(*) >= ?
-        """
-        rows = con.execute(sql, [min_balls]).fetchall()
-        result = []
-        for r in rows:
-            player, matches, balls, wkts, runs = r
-            overs = balls / 6.0
-            economy = _r(runs / overs) if overs else None
-            bowl_avg = _r(runs / wkts) if wkts else None
-            result.append({
-                "player": player,
-                "matches": matches,
-                "balls": balls,
-                "overs": _r(overs),
-                "wickets": wkts,
-                "runs_conceded": runs,
-                "economy": economy,
-                "bowling_average": bowl_avg,
-            })
+    from midwicket.api.session import MidwicketSession
+    reg_con = MidwicketSession.get().registry.con
+    sql = """  -- nosec B608
+    SELECT
+        e.primary_name                                               AS player,
+        ps.matches,
+        ps.balls_bowled,
+        ps.wickets,
+        ps.runs_conceded,
+        ROUND(ps.runs_conceded * 6.0 / NULLIF(ps.balls_bowled, 0), 2) AS economy,
+        ROUND(ps.runs_conceded * 1.0 / NULLIF(ps.wickets, 0), 1)      AS bowling_average
+    FROM player_stats ps
+    JOIN entities e ON e.id = ps.entity_id
+    WHERE ps.balls_bowled >= ? AND ps.wickets > 0
+    ORDER BY ps.wickets DESC
+    LIMIT ?
+    """
+    rows = reg_con.execute(sql, [min_balls, min(top_n, _MAX_LEADERBOARD_N)]).fetchall()
+    result = []
+    for player, matches, balls, wkts, runs, econ, avg in rows:
+        result.append({"player": player, "matches": matches,
+                       "balls": balls, "overs": _r(balls / 6.0),
+                       "wickets": wkts, "runs_conceded": runs,
+                       "economy": econ, "bowling_average": avg})
 
-        if sort_by == "economy":
-            result.sort(key=lambda x: x["economy"] or 99)
-        elif sort_by == "bowling_average":
-            result.sort(key=lambda x: x["bowling_average"] or 99)
-        else:
-            result.sort(key=lambda x: x["wickets"], reverse=True)
-        return result[:min(top_n, _MAX_LEADERBOARD_N)]
-    finally:
-        con.close()
+    if sort_by == "economy":
+        result.sort(key=lambda x: x["economy"] or 99)
+    elif sort_by == "bowling_average":
+        result.sort(key=lambda x: x["bowling_average"] or 99)
+    else:
+        result.sort(key=lambda x: x["wickets"], reverse=True)
+    return result
 
 
 # ---------------------------------------------------------------------------

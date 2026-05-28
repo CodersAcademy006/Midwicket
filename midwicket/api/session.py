@@ -96,6 +96,46 @@ class MidwicketSession:
         except (FileNotFoundError, ValueError, RuntimeError) as e:
             logger.error("Failed to load match %s: %s", match_id, e)
 
+    def is_empty(self) -> bool:
+        """Returns True if the database has no match events loaded."""
+        try:
+            count = self.engine.execute_sql("SELECT count(*) FROM ball_events").fetchone()[0]
+            return count == 0
+        except Exception:
+            return True
+
+    def bootstrap_all(self) -> None:
+        """
+        Downloads all Cricsheet data and ingests every match into the DuckDB engine.
+        Also triggers registry rebuild.
+        """
+        print("\n[Midwicket] First run detected: Downloading full historical dataset...")
+        self.download_data(force=False)
+        
+        matches = list(self.loader.iter_matches())
+        if not matches:
+            print("[Midwicket] No data to bootstrap.")
+            return
+
+        print(f"\n[Midwicket] Building database. Ingesting {len(matches)} matches (takes ~3 minutes)...")
+        from tqdm import tqdm
+        for match_data in tqdm(matches, desc="Ingesting"):
+            match_id = match_data.get("info", {}).get("registry", {}).get("people", {}).get("match_id")
+            if not match_id:
+                # Fallback to generating an ID from dates and teams if match_id isn't in JSON
+                teams = "-".join(match_data.get("info", {}).get("teams", ["A", "B"]))
+                date = match_data.get("info", {}).get("dates", ["1970-01-01"])[0]
+                match_id = f"{date}_{teams}".replace(" ", "")
+            try:
+                table = canonicalize_match(match_data, self.registry, match_id)
+                self.engine.ingest_events(table, snapshot_tag=f"match_{match_id}", append=True)
+            except Exception as e:
+                logger.debug(f"Failed to ingest match {match_id}: {e}")
+
+        print("\n[Midwicket] Building registry stats...")
+        build_registry_stats(self.loader, self.registry)
+        print("\n[Midwicket] Bootstrap complete! Ready for analytics.\n")
+
     def get_player_stats(self, player_id: str) -> Optional[PlayerStats]:
         """Get player statistics by ID or name."""
         # Try to resolve as name first, then as ID
