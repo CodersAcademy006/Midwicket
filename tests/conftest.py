@@ -37,3 +37,27 @@ def isolated_data_dir(tmp_path, monkeypatch):
             MidwicketSession._instance = None
     except Exception:
         pass
+
+
+# ── Known-failure backlog (bug remediation campaign) ──────────────────────────
+# Tests that fail because of a *documented* bug we have not fixed yet. Each entry
+# is marked xfail(strict=False) so CI stays green while the bug is tracked. As a
+# remediation PR lands its fix, DELETE the corresponding entry here — the test
+# will then be required to pass and will fail CI if it regresses.
+#
+# This is the single source of truth for "known broken, scheduled to fix".
+# Keyed by a unique nodeid fragment → reason (bug id + owning PR).
+KNOWN_FAILURES = {
+    # All PR3 entries resolved — /analyze EXPLAIN parsing fixed, audit table
+    # mock updated, timeout mapping verified.
+}
+
+
+def pytest_collection_modifyitems(config, items):
+    """Apply xfail markers to the documented known-failure backlog above."""
+    import pytest
+    for item in items:
+        for fragment, reason in KNOWN_FAILURES.items():
+            if fragment in item.nodeid:
+                item.add_marker(pytest.mark.xfail(reason=reason, strict=False))
+                break

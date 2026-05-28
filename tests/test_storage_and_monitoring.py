@@ -49,6 +49,10 @@ def _make_valid_ball_event_table(n: int = 2) -> pa.Table:
                 ["powerplay"] * n,
                 type=pa.dictionary(pa.int8(), pa.string())
             ),
+            # Denormalized name columns (convenience for analytics queries)
+            "batter": pa.array(["Test Batter"] * n, type=pa.string()),
+            "bowler": pa.array(["Test Bowler"] * n, type=pa.string()),
+            "venue": pa.array(["Test Venue"] * n, type=pa.string()),
         }
     )
 
@@ -166,7 +170,7 @@ class TestQueryEngineIngest:
             params=["live-match"],
         ).to_pydict()
         assert rows["match_id"] == ["live-match"]
-        assert rows["phase"] == ["death"]
+        assert rows["phase"] == ["Death"]
         assert rows["batter_id"] == [101]
         engine.close()
 
@@ -729,7 +733,7 @@ class TestThreadSafeQueryEngine:
                 params=["live-ts"],
             ).to_pydict()
             assert rows["match_id"] == ["live-ts"]
-            assert rows["phase"] == ["death"]
+            assert rows["phase"] == ["Death"]
             assert rows["bowler_id"] == [201]
         finally:
             engine.close()

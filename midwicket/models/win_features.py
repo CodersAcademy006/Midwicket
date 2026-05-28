@@ -36,6 +36,7 @@ def compute_chase_features(
     wickets_down: float,
     overs_done: float,
     venue_adjustment: float,
+    balls_per_innings: float = 120.0,
 ) -> Dict[str, float]:
     """Build model features from a current chase state.
 
@@ -44,7 +45,7 @@ def compute_chase_features(
     """
     runs_remaining = max(0.0, float(target) - float(current_runs))
     balls_bowled = int(max(0.0, float(overs_done) * 6.0))
-    balls_remaining = max(1.0, 120.0 - float(balls_bowled))
+    balls_remaining = max(1.0, float(balls_per_innings) - float(balls_bowled))
     wickets_remaining = max(0.0, 10.0 - float(wickets_down))
     overs_remaining = max(balls_remaining / 6.0, 1.0 / 6.0)
 
@@ -61,9 +62,9 @@ def compute_chase_features(
     wickets_per_over_remaining = wickets_remaining / overs_remaining
     wickets_in_hand_ratio = wickets_remaining / 10.0
     runs_per_ball_required = runs_remaining / balls_remaining
-    target_runs_per_ball = float(target) / 120.0
-    chase_progress = min(max(float(overs_done) / 20.0, 0.0), 1.0)
-    death_overs = 1.0 if overs_done >= 15.0 else 0.0
+    target_runs_per_ball = float(target) / float(balls_per_innings)
+    chase_progress = min(max(float(overs_done) / (float(balls_per_innings) / 6.0), 0.0), 1.0)
+    death_overs = 1.0 if float(overs_done) >= (float(balls_per_innings) / 6.0) * 0.75 else 0.0
     pressure_index = rr_gap * (1.0 + wickets_pressure + death_overs)
 
     return {

@@ -1,4 +1,5 @@
-"""Tests for trainable win model and deployment loading paths."""
+import pytest
+pytest.importorskip("sklearn")
 
 from importlib import reload
 import hashlib
