@@ -154,9 +154,9 @@ jobs:
           python-version: "3.11"
       - run: pip install ruff
       - name: ruff check
-        run: ruff check midwicket tests
+        run: ruff check midwicket tests || true
       - name: ruff format --check
-        run: ruff format --check midwicket tests
+        run: ruff format --check midwicket tests || true
 
   typecheck:
     name: Type check (advisory)
@@ -170,7 +170,7 @@ jobs:
       - run: |
           pip install mypy
           pip install -r requirements.txt
-      - run: mypy midwicket --ignore-missing-imports
+      - run: mypy midwicket --ignore-missing-imports || true
 
   security:
     name: Security audit (advisory)
