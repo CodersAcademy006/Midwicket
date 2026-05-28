@@ -9,7 +9,7 @@ from midwicket.query.defs import WinProbQuery, FantasyQuery, Phase, Role
 
 
 class TestPhaseLiteral:
-    VALID = ["powerplay", "middle", "death", "all"]
+    VALID = ["Powerplay", "Middle", "Death", "all"]
 
     def test_all_phases_valid(self):
         for p in self.VALID:

@@ -5,7 +5,7 @@ from midwicket.query.base import BaseQuery, MatchupQuery
 __all__ = ["FantasyQuery", "WinProbQuery", "MatchupQuery"]
 
 # Type aliases for consistency
-Phase = Literal["powerplay", "middle", "death", "all"]
+Phase = Literal["Powerplay", "Middle", "Death", "all"]
 Role = Literal["batter", "bowler", "all-rounder", "all"]
 
 class FantasyQuery(BaseQuery):

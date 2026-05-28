@@ -49,7 +49,9 @@ def canonicalize_match(match_data: Dict[str, Any], registry: IdentityRegistry, m
         'batting_team_id': [], 'bowling_team_id': [],
         'runs_batter': [], 'runs_extras': [],
         'is_wicket': [], 'wicket_type': [],
-        'phase': []
+        'phase': [],
+        # Denormalized names for analytics convenience (mirror IDs above)
+        'batter': [], 'bowler': [], 'venue': [],
     }
 
     # --- 3. Iterate & Flatten ---
@@ -75,7 +77,7 @@ def canonicalize_match(match_data: Dict[str, Any], registry: IdentityRegistry, m
                 bo_id = registry.resolve_player(delivery['bowler'], match_date_obj, auto_ingest=True)
                 ns_id = registry.resolve_player(delivery['non_striker'], match_date_obj, auto_ingest=True)
 
-                # --- B. Fill Buffers ---
+                # --- B. Fill Buffers (IDs + denormalized names) ---
                 buffers['match_id'].append(match_id)
                 buffers['date'].append(match_date_obj)
                 buffers['venue_id'].append(venue_id)
@@ -142,6 +144,11 @@ def canonicalize_match(match_data: Dict[str, Any], registry: IdentityRegistry, m
                     buffers['wicket_type'].append(None)
                 
                 buffers['phase'].append(phase)
+
+                # Denormalized name columns
+                buffers['batter'].append(delivery['batter'])
+                buffers['bowler'].append(delivery['bowler'])
+                buffers['venue'].append(venue_name)
 
     # --- 4. Build Arrow Table ---
     table = pa.Table.from_pydict(buffers)

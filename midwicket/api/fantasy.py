@@ -72,7 +72,8 @@ def fantasy_score(
     """
     weights = {**_DEFAULT_SCORING, **(scoring or {})}
 
-    season_clause = "AND season = ?" if season else ""
+    # v1 schema has 'date' not 'season'; derive season from year
+    season_clause = "AND CAST(EXTRACT(YEAR FROM date) AS VARCHAR) = ?" if season else ""
     params_bat = [player_name] + ([season] if season else [])
     params_bowl = [player_name] + ([season] if season else [])
 
@@ -137,7 +138,7 @@ def fantasy_score(
             SELECT
                 COUNT(DISTINCT match_id)                                  AS matches,
                 COUNT(*)                                                  AS balls,
-                SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END)               AS wickets,
+                SUM(CASE WHEN is_wicket AND wicket_type NOT IN ('RUN_OUT', 'OBSTRUCTING_THE_FIELD', 'RETIRED_HURT', 'RETIRED_OUT', 'RETIRED_NOT_OUT') THEN 1 ELSE 0 END)               AS wickets,
                 SUM(runs_batter + runs_extras)                            AS runs_conceded
             FROM ball_events
             WHERE bowler = ? {season_clause}
