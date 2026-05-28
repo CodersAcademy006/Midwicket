@@ -86,7 +86,25 @@ class MidwicketSession:
     def load_match(self, match_id: str) -> None:
         """
         Lazy loads a specific match into the 'Heavy' engine.
+
+        Idempotent: if the match is already present in ball_events, this is a
+        no-op. This prevents the double-counting bug where a read endpoint
+        (GET /matches/{match_id}) would append duplicate rows on every hit.
         """
+        # Fast-path: skip if match is already loaded.
+        try:
+            result = self.engine.execute_sql(
+                "SELECT 1 FROM ball_events WHERE match_id = ? LIMIT 1",
+                [match_id],
+            )
+            rows = result.to_pydict()
+            if rows and any(len(v) > 0 for v in rows.values()):
+                logger.debug("Match %s already loaded, skipping.", match_id)
+                return
+        except Exception:
+            # Table may not exist yet — proceed to load.
+            pass
+
         logger.info("Loading match %s", match_id)
         try:
             data = self.loader.get_match(match_id)
