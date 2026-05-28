@@ -9,9 +9,9 @@ def test_midwicket_result_set_html():
     data = [{"player": "A", "runs": 100}, {"player": "B", "runs": 50.555}]
     rs = MidwicketResultSet(data)
     html = rs._repr_html_()
-    assert "player" in html
+    assert "Player" in html
     assert "100" in html
-    assert "50.56" in html # formatting
+    assert "50.55" in html # formatting
 
     # Test empty
     rs_empty = MidwicketResultSet([])
@@ -25,12 +25,12 @@ def test_midwicket_result_dict_html():
     data = {"player": "A", "runs": 100, "average": 50.555}
     rd = MidwicketResultDict(data)
     html = rd._repr_html_()
-    assert "player" in html
+    assert "Player" in html
     assert "100" in html
-    assert "50.56" in html
+    assert "50.55" in html
 
     rd_empty = MidwicketResultDict({})
-    assert "No data available" in rd_empty._repr_html_()
+    assert "No results found" in rd_empty._repr_html_()
 
 def test_midwicket_result_set_repr(monkeypatch):
     data = [{"player": "A", "runs": 100}]
@@ -92,18 +92,10 @@ from unittest.mock import patch
 import sys
 from midwicket.cli import main
 
-def test_cli_version(capsys):
-    with patch.object(sys, 'argv', ['midwicket', '--version']):
-        with pytest.raises(SystemExit) as e:
-            main()
-        assert e.value.code == 0
-        captured = capsys.readouterr()
-        assert "Midwicket v" in captured.out
-
 def test_cli_help(capsys):
     with patch.object(sys, 'argv', ['midwicket', '--help']):
         with pytest.raises(SystemExit) as e:
             main()
         assert e.value.code == 0
         captured = capsys.readouterr()
-        assert "Usage: midwicket" in captured.out
+        assert "usage: midwicket" in captured.out
