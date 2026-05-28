@@ -66,14 +66,14 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-addopts = "--cov=pypitch --cov-report=term-missing --cov-fail-under=70"
+addopts = "--cov=midwicket --cov-report=term-missing --cov-fail-under=70"
 
 [tool.coverage.run]
 # Exclude pure plot/PDF rendering modules from coverage: they emit
 # matplotlib/plotly/reportlab output and are not meaningfully unit-testable.
 omit = [
-    "pypitch/visuals/*",
-    "pypitch/report/pdf.py",
+    "midwicket/visuals/*",
+    "midwicket/report/pdf.py",
 ]
 
 [project.urls]
@@ -97,8 +97,8 @@ module = ["pyarrow.*", "duckdb.*", "pandas.*", "tqdm.*", "numpy.*", "plotly.*", 
 ignore_missing_imports = true
 
 [tool.setuptools.packages.find]
-include = ["pypitch*", "midwicket*"]
+include = ["midwicket*", "midwicket*"]
 exclude = ["data*", "examples*", "tests*"]
 
 [tool.setuptools.package-data]
-pypitch = ["py.typed", "models/data/*.json"]
+midwicket = ["py.typed", "models/data/*.json"]

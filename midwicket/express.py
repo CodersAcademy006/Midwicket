@@ -1,0 +1,225 @@
+"""
+Midwicket Express: Simplified API for Beginners
+
+Inspired by Plotly Express, this module provides one-liner access to Midwicket features
+with sensible defaults. Hides complexity while keeping power features available for pros.
+
+Usage:
+    import midwicket.express as px
+    ipl = px.load_competition("ipl", 2023)
+    stats = px.get_player_stats("V Kohli")
+"""
+
+import os
+from pathlib import Path
+from typing import Optional, Any, Dict
+from midwicket.api.session import MidwicketSession
+from midwicket.data.loader import DataLoader
+from midwicket.storage.engine import QueryEngine
+from midwicket.runtime.executor import RuntimeExecutor
+from midwicket.runtime.cache_duckdb import DuckDBCache
+from midwicket.core.match_config import MatchConfig
+from midwicket.sources.cricsheet_loader import CricsheetLoader
+
+# Global debug mode — protected by lock (M3)
+import threading as _threading
+_DEBUG_MODE = False
+_debug_lock = _threading.Lock()
+
+# Global session cache for quick_load
+_cached_session: Optional[MidwicketSession] = None
+_cached_session_dir: Optional[str] = None
+_session_lock = _threading.Lock()
+
+
+def set_debug_mode(enabled: bool = True) -> None:
+    """Enable debug mode for eager execution and verbose logging."""
+    global _DEBUG_MODE
+    with _debug_lock:
+        _DEBUG_MODE = enabled
+    if enabled:
+        print("[Midwicket] Debug mode enabled: Queries will execute eagerly for immediate error feedback.")
+
+def _get_default_data_dir() -> Path:
+    """Get default data directory (~/.midwicket_data)."""
+    return Path.home() / ".midwicket_data"
+
+def _ensure_data_dir(data_dir: Optional[str] = None) -> Path:
+    """Ensure data directory exists."""
+    if data_dir:
+        path = Path(data_dir)
+    else:
+        path = _get_default_data_dir()
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+def _auto_setup_session(data_dir: Optional[str] = None) -> MidwicketSession:
+    """Auto-setup session with defaults and caching."""
+    global _cached_session, _cached_session_dir
+
+    resolved = str(_ensure_data_dir(data_dir))
+    with _session_lock:
+        # Return cached session only if the data dir matches
+        if _cached_session is not None and _cached_session_dir == resolved:
+            return _cached_session
+
+        data_path = Path(resolved)
+
+        # Download data on first run if not already present
+        loader = DataLoader(str(data_path))
+        raw_present = loader.raw_dir.exists() and bool(list(loader.raw_dir.glob("*.json")))
+
+        if not raw_present:
+            if _DEBUG_MODE:
+                print("No local data found. Downloading IPL dataset (~50 MB)...")
+            try:
+                loader.download()
+            except Exception as exc:
+                if _DEBUG_MODE:
+                    print(f"Download failed: {exc}. Continuing without data.")
+
+        _cached_session = MidwicketSession(str(data_path))
+        _cached_session_dir = resolved
+        return _cached_session
+
+def load_competition(competition: str, season: int, data_dir: str = "./data") -> CricsheetLoader:
+    """
+    Returns a CricsheetLoader filtered to a specific competition and season.
+
+    Example::
+
+        ipl = px.load_competition("ipl", 2023)
+        match_ids = ipl.get_match_ids()
+    """
+    return CricsheetLoader(data_dir, competition=competition, season=season)
+
+def get_player_stats(player_name: str, data_dir: Optional[str] = None) -> Optional[Any]:
+    """
+    Get player statistics by name.
+
+    Args:
+        player_name: Player name (fuzzy matched)
+        data_dir: Optional custom data directory
+
+    Returns:
+        PlayerStats dataclass or None
+
+    Example:
+        stats = px.get_player_stats("Virat Kohli")
+        print(f"Matches: {stats.matches}, Runs: {stats.runs}")
+    """
+    session = _auto_setup_session(data_dir)
+    return session.get_player_stats(player_name)
+
+def get_matchup(batter: str, bowler: str, data_dir: Optional[str] = None) -> Optional[Any]:
+    """
+    Get head-to-head matchup statistics.
+
+    Args:
+        batter: Batter name
+        bowler: Bowler name
+        data_dir: Optional custom data directory
+
+    Returns:
+        MatchupResult dataclass or None
+
+    Example:
+        result = px.get_matchup("V Kohli", "JJ Bumrah")
+        print(f"Matches: {result.matches}, Avg: {result.average}")
+    """
+    from datetime import date
+
+    session = _auto_setup_session(data_dir)
+    registry = session.registry
+
+    # Resolve names to entity IDs
+    dates_to_try = [date.today(), date(2024, 1, 1), date(2023, 1, 1), date(2022, 1, 1)]
+
+    import logging as _log
+    _express_logger = _log.getLogger(__name__)
+
+    def _resolve(name: str) -> Optional[int]:
+        for d in dates_to_try:
+            try:
+                eid = registry.resolve_player(name, d)
+                if eid:
+                    return eid
+            except Exception as _exc:  # nosec B112
+                _express_logger.debug("resolve_player(%r, %s) failed: %s", name, d, _exc)
+                continue
+        return None
+
+    batter_id = _resolve(batter)
+    bowler_id = _resolve(bowler)
+    if batter_id is None or bowler_id is None:
+        return None
+
+    # Fast path: query registry matchup_stats (populated by build_registry_stats)
+    stats = registry.get_matchup_stats(batter_id, bowler_id)
+    if stats is not None:
+        return stats
+
+    # Slow path: fall back to ball_events engine (requires explicit match loading)
+    from midwicket.query.base import MatchupQuery
+    try:
+        query = MatchupQuery(
+            batter_id=str(batter_id),
+            bowler_id=str(bowler_id),
+            snapshot_id="latest",
+        )
+        result = session.executor.execute(query)
+        return result.data
+    except Exception:
+        return None
+
+def predict_win(venue: str, target: int, current_score: int, wickets_down: int, overs_done: float, data_dir: Optional[str] = None) -> Dict[str, float]:
+    """
+    Predict win probability.
+
+    Args:
+        venue: Venue name
+        target: Target score
+        current_score: Current score
+        wickets_down: Wickets fallen
+        overs_done: Overs completed (so overs_remaining = 20 - overs_done)
+        data_dir: Optional custom data directory
+
+    Returns:
+        Dict with 'win_prob' and 'confidence' keys containing probability (0.0 to 1.0) and confidence score
+
+    Example:
+        prob = px.predict_win("Wankhede", 180, 120, 5, 15.0)
+        print(f"Win probability: {prob['win_prob']:.2%}, Confidence: {prob['confidence']:.1%}")
+    """
+    # Use the compute win probability function directly for express API
+    from midwicket.compute.winprob import win_probability
+    return win_probability(target, current_score, wickets_down, overs_done, venue)
+
+def quick_load(data_dir: Optional[str] = None) -> MidwicketSession:
+    """
+    Return a ready-to-use MidwicketSession, downloading data automatically
+    on first call if no local data is found (~50 MB IPL dataset).
+
+    Subsequent calls return the cached session instantly.
+
+    Args:
+        data_dir: Optional custom data directory (default: ~/.midwicket_data)
+
+    Returns:
+        Initialised MidwicketSession.
+
+    Example:
+        session = px.quick_load()
+        session.load_match("1234567")
+    """
+    return _auto_setup_session(data_dir)
+
+# Export convenience functions
+__all__ = [
+    'load_competition',
+    'get_player_stats',
+    'get_matchup',
+    'predict_win',
+    'quick_load',
+    'set_debug_mode'
+]

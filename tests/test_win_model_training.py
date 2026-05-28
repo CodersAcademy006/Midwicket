@@ -8,8 +8,8 @@ import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 
-from pypitch.models.win_predictor import WinPredictor
-from pypitch.models.train import WinProbabilityTrainer
+from midwicket.models.win_predictor import WinPredictor
+from midwicket.models.train import WinProbabilityTrainer
 
 
 def _synthetic_match_df(matches: int = 8, balls_per_match: int = 24) -> pd.DataFrame:
@@ -112,12 +112,12 @@ def test_compute_winprob_loads_model_from_path(monkeypatch, tmp_path):
 
     digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
 
-    monkeypatch.setenv("PYPITCH_WIN_MODEL_MODE", "path")
-    monkeypatch.setenv("PYPITCH_WIN_MODEL_PATH", str(artifact))
-    monkeypatch.setenv("PYPITCH_WIN_MODEL_SHA256", digest)
+    monkeypatch.setenv("MIDWICKET_WIN_MODEL_MODE", "path")
+    monkeypatch.setenv("MIDWICKET_WIN_MODEL_PATH", str(artifact))
+    monkeypatch.setenv("MIDWICKET_WIN_MODEL_SHA256", digest)
 
-    import pypitch.config as config_mod
-    import pypitch.compute.winprob as winprob_mod
+    import midwicket.config as config_mod
+    import midwicket.compute.winprob as winprob_mod
 
     reload(config_mod)
     reload(winprob_mod)
@@ -143,12 +143,12 @@ def test_load_default_uses_bundled_model_metadata():
 
 
 def test_winprob_module_initializes_bundled_default_model(monkeypatch):
-    monkeypatch.delenv("PYPITCH_WIN_MODEL_MODE", raising=False)
-    monkeypatch.delenv("PYPITCH_WIN_MODEL_PATH", raising=False)
-    monkeypatch.delenv("PYPITCH_WIN_MODEL_SHA256", raising=False)
+    monkeypatch.delenv("MIDWICKET_WIN_MODEL_MODE", raising=False)
+    monkeypatch.delenv("MIDWICKET_WIN_MODEL_PATH", raising=False)
+    monkeypatch.delenv("MIDWICKET_WIN_MODEL_SHA256", raising=False)
 
-    import pypitch.config as config_mod
-    import pypitch.compute.winprob as winprob_mod
+    import midwicket.config as config_mod
+    import midwicket.compute.winprob as winprob_mod
 
     reload(config_mod)
     reload(winprob_mod)

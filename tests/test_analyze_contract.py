@@ -2,11 +2,11 @@
 
 from fastapi.testclient import TestClient
 
-from pypitch.serve.api import create_app
-from pypitch.storage.engine import QueryEngine
-from pypitch.storage.registry import IdentityRegistry
-from pypitch.runtime.cache_duckdb import DuckDBCache
-from pypitch.runtime.executor import RuntimeExecutor
+from midwicket.serve.api import create_app
+from midwicket.storage.engine import QueryEngine
+from midwicket.storage.registry import IdentityRegistry
+from midwicket.runtime.cache_duckdb import DuckDBCache
+from midwicket.runtime.executor import RuntimeExecutor
 
 
 class _MockSession:
@@ -42,8 +42,8 @@ class _StrictSession:
 
 
 def test_analyze_accepts_sql_key(monkeypatch):
-    monkeypatch.setattr("pypitch.serve.auth.API_KEY_REQUIRED", False)
-    monkeypatch.setenv("PYPITCH_ANALYZE_ENABLED", "true")
+    monkeypatch.setattr("midwicket.serve.auth.API_KEY_REQUIRED", False)
+    monkeypatch.setenv("MIDWICKET_ANALYZE_ENABLED", "true")
     app = create_app(session=_MockSession(), start_ingestor=False)
 
     with TestClient(app) as client:
@@ -55,8 +55,8 @@ def test_analyze_accepts_sql_key(monkeypatch):
 
 
 def test_analyze_accepts_legacy_query_key(monkeypatch):
-    monkeypatch.setattr("pypitch.serve.auth.API_KEY_REQUIRED", False)
-    monkeypatch.setenv("PYPITCH_ANALYZE_ENABLED", "true")
+    monkeypatch.setattr("midwicket.serve.auth.API_KEY_REQUIRED", False)
+    monkeypatch.setenv("MIDWICKET_ANALYZE_ENABLED", "true")
     app = create_app(session=_MockSession(), start_ingestor=False)
 
     with TestClient(app) as client:
@@ -68,8 +68,8 @@ def test_analyze_accepts_legacy_query_key(monkeypatch):
 
 
 def test_analyze_binds_positional_params(monkeypatch):
-    monkeypatch.setattr("pypitch.serve.auth.API_KEY_REQUIRED", False)
-    monkeypatch.setenv("PYPITCH_ANALYZE_ENABLED", "true")
+    monkeypatch.setattr("midwicket.serve.auth.API_KEY_REQUIRED", False)
+    monkeypatch.setenv("MIDWICKET_ANALYZE_ENABLED", "true")
     app = create_app(session=_MockSession(), start_ingestor=False)
 
     with TestClient(app) as client:
@@ -81,8 +81,8 @@ def test_analyze_binds_positional_params(monkeypatch):
 
 
 def test_analyze_rejects_non_list_params(monkeypatch):
-    monkeypatch.setattr("pypitch.serve.auth.API_KEY_REQUIRED", False)
-    monkeypatch.setenv("PYPITCH_ANALYZE_ENABLED", "true")
+    monkeypatch.setattr("midwicket.serve.auth.API_KEY_REQUIRED", False)
+    monkeypatch.setenv("MIDWICKET_ANALYZE_ENABLED", "true")
     app = create_app(session=_MockSession(), start_ingestor=False)
 
     with TestClient(app) as client:
@@ -92,8 +92,8 @@ def test_analyze_rejects_non_list_params(monkeypatch):
 
 
 def test_analyze_rejects_comment_injection(monkeypatch):
-    monkeypatch.setattr("pypitch.serve.auth.API_KEY_REQUIRED", False)
-    monkeypatch.setenv("PYPITCH_ANALYZE_ENABLED", "true")
+    monkeypatch.setattr("midwicket.serve.auth.API_KEY_REQUIRED", False)
+    monkeypatch.setenv("MIDWICKET_ANALYZE_ENABLED", "true")
     app = create_app(session=_MockSession(), start_ingestor=False)
 
     with TestClient(app) as client:
@@ -103,8 +103,8 @@ def test_analyze_rejects_comment_injection(monkeypatch):
 
 
 def test_analyze_persists_audit_log_entry(monkeypatch):
-    monkeypatch.setattr("pypitch.serve.auth.API_KEY_REQUIRED", False)
-    monkeypatch.setenv("PYPITCH_ANALYZE_ENABLED", "true")
+    monkeypatch.setattr("midwicket.serve.auth.API_KEY_REQUIRED", False)
+    monkeypatch.setenv("MIDWICKET_ANALYZE_ENABLED", "true")
     session = _MockSession()
     app = create_app(session=session, start_ingestor=False)
 
@@ -119,8 +119,8 @@ def test_analyze_persists_audit_log_entry(monkeypatch):
 
 
 def test_analyze_audit_write_paths_use_write_mode(monkeypatch):
-    monkeypatch.setattr("pypitch.serve.auth.API_KEY_REQUIRED", False)
-    monkeypatch.setenv("PYPITCH_ANALYZE_ENABLED", "true")
+    monkeypatch.setattr("midwicket.serve.auth.API_KEY_REQUIRED", False)
+    monkeypatch.setenv("MIDWICKET_ANALYZE_ENABLED", "true")
     session = _StrictSession()
     app = create_app(session=session, start_ingestor=False)
 
@@ -136,8 +136,8 @@ def test_analyze_audit_write_paths_use_write_mode(monkeypatch):
 
 def test_analyze_audit_row_has_usable_id(monkeypatch):
     """Each audit row gets a non-null, identifiable id from the sequence."""
-    monkeypatch.setattr("pypitch.serve.auth.API_KEY_REQUIRED", False)
-    monkeypatch.setenv("PYPITCH_ANALYZE_ENABLED", "true")
+    monkeypatch.setattr("midwicket.serve.auth.API_KEY_REQUIRED", False)
+    monkeypatch.setenv("MIDWICKET_ANALYZE_ENABLED", "true")
     session = _MockSession()
     app = create_app(session=session, start_ingestor=False)
 
@@ -156,8 +156,8 @@ def test_analyze_audit_row_has_usable_id(monkeypatch):
 
 def test_analyze_audit_write_failure_is_observable(monkeypatch, caplog):
     """A failed audit write must be logged + metered but must not fail /analyze."""
-    monkeypatch.setattr("pypitch.serve.auth.API_KEY_REQUIRED", False)
-    monkeypatch.setenv("PYPITCH_ANALYZE_ENABLED", "true")
+    monkeypatch.setattr("midwicket.serve.auth.API_KEY_REQUIRED", False)
+    monkeypatch.setenv("MIDWICKET_ANALYZE_ENABLED", "true")
     session = _MockSession()
     app = create_app(session=session, start_ingestor=False)
 
@@ -170,7 +170,7 @@ def test_analyze_audit_write_failure_is_observable(monkeypatch, caplog):
 
     recorded = []
     monkeypatch.setattr(
-        "pypitch.serve.api.record_error_metrics",
+        "midwicket.serve.api.record_error_metrics",
         lambda kind, detail: recorded.append((kind, detail)),
     )
 

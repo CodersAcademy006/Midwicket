@@ -9,9 +9,9 @@ import os
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-import pypitch as pp
-from pypitch.data.loader import DataLoader
-from pypitch.data.pipeline import build_registry_stats
+import midwicket as md
+from midwicket.data.loader import DataLoader
+from midwicket.data.pipeline import build_registry_stats
 
 
 def main():
@@ -29,7 +29,7 @@ def main():
         return
 
     # 2. Initialize session
-    session = pp.init(source=data_dir)
+    session = md.init(source=data_dir)
 
     # 3. Populate registry (player/venue identity resolution)
     print("Building registry from raw match data...")

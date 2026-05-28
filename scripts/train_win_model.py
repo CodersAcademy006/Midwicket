@@ -1,7 +1,7 @@
 """Train and register a production win-probability model from DuckDB events.
 
 Usage:
-    e:/Srijan/PyPitch/.venv/Scripts/python.exe scripts/train_win_model.py --db-path ./data/pypitch.duckdb
+    e:/Srijan/Midwicket/.venv/Scripts/python.exe scripts/train_win_model.py --db-path ./data/midwicket.duckdb
 """
 
 from __future__ import annotations
@@ -10,8 +10,8 @@ import argparse
 import sys
 from pathlib import Path
 
-from pypitch.models.train import WinProbabilityTrainer
-from pypitch.storage.engine import QueryEngine
+from midwicket.models.train import WinProbabilityTrainer
+from midwicket.storage.engine import QueryEngine
 
 
 def parse_args() -> argparse.Namespace:
@@ -19,7 +19,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--db-path",
         required=True,
-        help="Path to pypitch DuckDB file containing ball_events",
+        help="Path to midwicket DuckDB file containing ball_events",
     )
     parser.add_argument(
         "--model-name",
@@ -64,8 +64,8 @@ def main() -> int:
         version = trainer.train_and_register(events, model_name=args.model_name)
         print(f"Model trained and registered: {version}")
         print("Deploy with:")
-        print("  PYPITCH_WIN_MODEL_MODE=registry")
-        print(f"  PYPITCH_WIN_MODEL_VERSION={version}")
+        print("  MIDWICKET_WIN_MODEL_MODE=registry")
+        print(f"  MIDWICKET_WIN_MODEL_VERSION={version}")
         return 0
     finally:
         engine.close()

@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
-from pypitch.query.base import BaseQuery
-from pypitch.query.defs import MatchupQuery
+from midwicket.query.base import BaseQuery
+from midwicket.query.defs import MatchupQuery
 
 class TestArchitecturalInvariants:
     

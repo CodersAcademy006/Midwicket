@@ -1,4 +1,4 @@
 include README.md
 include LICENSE
-recursive-include pypitch *.py *.typed
+recursive-include midwicket *.py *.typed
 

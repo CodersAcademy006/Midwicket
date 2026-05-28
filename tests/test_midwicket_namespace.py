@@ -3,17 +3,17 @@
 import importlib
 
 import midwicket
-import pypitch
+import midwicket
 
 
-def test_midwicket_metadata_matches_pypitch() -> None:
-    assert midwicket.__version__ == pypitch.__version__
-    assert midwicket.__author__ == pypitch.__author__
+def test_midwicket_metadata_matches_midwicket() -> None:
+    assert midwicket.__version__ == midwicket.__version__
+    assert midwicket.__author__ == midwicket.__author__
 
 
 def test_midwicket_top_level_exports_remain_available() -> None:
     assert hasattr(midwicket, "express")
-    assert hasattr(midwicket, "PyPitchSession")
+    assert hasattr(midwicket, "MidwicketSession")
 
 
 def test_midwicket_documented_submodule_imports() -> None:

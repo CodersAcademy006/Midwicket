@@ -1,4 +1,4 @@
-PyPitch Core
+Midwicket Core
 
 
 Lazy Loading for loading of the match data:-
@@ -39,7 +39,7 @@ A .pre-commit-config.yaml file runs automatically before you can even git commit
 
 Parameterized queries ALWAYS. Never f-string a database query
 
-pypitch.exceptions.MatchDataMissing: Match ID 12345 does not have ball-by-ball data
+midwicket.exceptions.MatchDataMissing: Match ID 12345 does not have ball-by-ball data
 
 Docstrings are mandatory. If you get hit by a bus tomorrow, can someone else understand why you used a Geometric Meaninstead of an Arithmetic Mean? If not, the code is useless
 
@@ -114,7 +114,7 @@ The goal here is "Stability." If this changes, you break the user's code.
     Python
 
     # User types this:
-    pypitch.get_stats(venue="Bangalore")
+    midwicket.get_stats(venue="Bangalore")
 
     # Your Library does this internally:
     venue_id = registry.resolve_venue("Bangalore") # Returns 'ven_8291' (M. Chinnaswamy)
@@ -140,7 +140,7 @@ The goal here is "Stability." If this changes, you break the user's code.
 
 7. DO: Implement "Lazy Evaluation" (Elasticity)
 
-    The Problem: A user loads pypitch.load_history(). It tries to load 1.5GB of data into RAM. The kernel crashes.
+    The Problem: A user loads midwicket.load_history(). It tries to load 1.5GB of data into RAM. The kernel crashes.
     The Fix: Use DuckDB's Lazy Execution.
         The library prepares the query but executes it only when the user asks for the result (.collect() or .show()).
         This allows a user to query a 100GB dataset on a 8GB RAM laptop.
@@ -247,7 +247,7 @@ Counterpoint A: The "Configuration Hell" (The Adapter Risk)
     Your Assumption: Users will happily plug in their own data sources using the Adapter system.
     The Skeptic's View: Writing an adapter is hard. If I am a Junior Analyst, I don't know how to map a JSON field runs_off_bat to your specific AtomicBallSchema.
     The Risk: If you don't ship with pre-built, perfect adapters for the top 3 free sources (Cricsheet, Retrosheet, CricAPI), users will stare at an empty "MatchLoader" and quit.
-    Correction: The library must ship with pypitch.sources.CricsheetLoader working out of the box. The interface exists for custom sources, but the default must be zero-configuration.
+    Correction: The library must ship with midwicket.sources.CricsheetLoader working out of the box. The interface exists for custom sources, but the default must be zero-configuration.
 
 Counterpoint B: The "Lazy Evaluation" Debugging Nightmare
 
@@ -260,7 +260,7 @@ Counterpoint C: The "Empty Box" Problem (Models)
 
     Your Assumption: Users want to bring their own Machine Learning models (BYO Model).
     The Skeptic's View: 95% of your users are Cricket Analysts, not Data Scientists. They don't have a pre-trained XGBoost model lying around. They want your model.
-    The Risk: If pypitch.models.WinPredictor requires me to upload a .json model file that I don't have, the feature is dead on arrival.
+    The Risk: If midwicket.models.WinPredictor requires me to upload a .json model file that I don't have, the feature is dead on arrival.
     Correction: You must provide a "Baseline Model" (e.g., a pre-trained logistic regression) included in the library. Let experts swap it out, but give beginners a default that works.
 
 
@@ -284,7 +284,7 @@ Q1: Is the API stable?
 
 Official Answer:
 
-"As of version 0.1.0, the Core Engine APIs (pypitch.engine, pypitch.session) are structurally stable. We do not anticipate changing the fundamental 'Session -> Match -> Delivery' hierarchy. However, until the v1.0.0release, high-level helper functions in pypitch.stats may be renamed or refactored for clarity based on user feedback."
+"As of version 0.1.0, the Core Engine APIs (midwicket.engine, midwicket.session) are structurally stable. We do not anticipate changing the fundamental 'Session -> Match -> Delivery' hierarchy. However, until the v1.0.0release, high-level helper functions in midwicket.stats may be renamed or refactored for clarity based on user feedback."
 
 Q2: What breaks between versions?
 
@@ -315,7 +315,7 @@ Q4: What happens if data is missing?
 
 Official Answer:
 
-"PyPitch prefers silence over guessing.
+"Midwicket prefers silence over guessing.
 
     Queries: If a requested attribute (e.g., control_percentage) is missing from the source, the query returns null (or NaN in DataFrames). We do not interpolate or impute values implicitly.
     Aggregations: Missing data is excluded from averages (standard SQL behavior). If a player has 'unknown' dismissal data, they are not counted in the average, rather than treated as 'not out'.
@@ -338,7 +338,7 @@ Q6: Does ingestion mutate existing data?
 
 Official Answer:
 
-"No. PyPitch uses an Append-Only / Immutable write strategy.
+"No. Midwicket uses an Append-Only / Immutable write strategy.
 
     Parquet Storage: When you run engine.ingest(), we do not modify existing Parquet files. We write new partitions.
     Identity Resolution: If a player is renamed (e.g., SCD Type 2 update), we insert a new row in the entity_registry with a new effective date range. We never overwrite the old row. This ensures that a report generated for 2015 remains historically accurate to 2015, even if the data is re-ingested in 2025."
@@ -358,7 +358,7 @@ When you present this to a quant, say this:
 "We treat data ingestion as a deterministic process. Our CI pipeline runs property-based tests to ensure that edge cases—like 0-ball innings or DLS revisions—don't produce NaN values in your downstream models."
 
 
-When you open a Pull Request in PyPitch, here is what happens automatically:
+When you open a Pull Request in Midwicket, here is what happens automatically:
 
     Pre-Commit (Local): Formats your code. If you forgot to format, the commit fails.
     Lint (Cloud): Checks for unused imports, bad variables, and complexity.
@@ -384,7 +384,7 @@ Introduce a FeatureGenerator class. This standardized calculation logic.
 Python
 
 
-# pypitch/features.py
+# midwicket/features.py
 
 
 class RollingFeature:
@@ -414,7 +414,7 @@ class RollingFeature:
 
         """)
 
-Why this sells: "PyPitch provides a Standardized Feature Store, ensuring that 'Rolling Average' means the exact same thing to the Strategy Team as it does to the Backtesting Team."
+Why this sells: "Midwicket provides a Standardized Feature Store, ensuring that 'Rolling Average' means the exact same thing to the Strategy Team as it does to the Backtesting Team."
 
 
 Gap 2: Schema Evolution Strategy
@@ -434,7 +434,7 @@ You need a Schema Migration Utility.
     Automatic: When engine.connect() is called, check the Parquet metadata.
     Action: If the schema is old, trigger a "Heal" operation (Add missing columns with null values).
 
-Add to README: "PyPitch includes Auto-Schema Migration. Update the library without fear; your existing local data lake is automatically patched to match the new schema version."
+Add to README: "Midwicket includes Auto-Schema Migration. Update the library without fear; your existing local data lake is automatically patched to match the new schema version."
 
 
 Gap 3: Performance Regression Testing
@@ -553,7 +553,7 @@ Risk management for enterprise users.
 
 ⭐
 
-The "Broadcaster" Plugin: pypitch.live (or .obs)
+The "Broadcaster" Plugin: midwicket.live (or .obs)
 
 Target Audience: Local Leagues, YouTubers, Streamers.
 
@@ -566,7 +566,7 @@ The Solution: A plugin that outputs a real-time JSON/HTML file that OBS (Open Br
         Overlay Generation: Generates a transparent .png or HTML page for "Current Run Rate" or "Batter Comparison."
         Usage:
 
-        from pypitch.live import OverlayServer
+        from midwicket.live import OverlayServer
 
         # Starts a local webserver at localhost:8000/overlay
         # OBS Browser Source points to this URL.
@@ -575,26 +575,26 @@ The Solution: A plugin that outputs a real-time JSON/HTML file that OBS (Open Br
 
 
 
-The "Deployment" Plugin: pypitch.serve
+The "Deployment" Plugin: midwicket.serve
 
 Target Audience: Enterprise Engineers, Startups.
 
 The Problem: You built a great model in a Jupyter Notebook. Now your boss says: "Put it in the API so the mobile app can use it." Analysts struggle to wrap their code in FastAPI/Docker.
 
-The Solution: A one-line command to expose the PyPitch engine as a REST API.
+The Solution: A one-line command to expose the Midwicket engine as a REST API.
 
     Features:
         FastAPI Wrapper: Automatically creates endpoints like /stats/player/{id}.
         Usage:
         Bash
         # Command Line Interface
-        pypitch serve --port 8080 --model ./my_win_predictor.json
+        midwicket serve --port 8080 --model ./my_win_predictor.json
         Result: A Swagger UI documentation page is instantly live.
-    Senior Engineer Review: 🟢 Green Light. This is "Infrastructure as Code." It makes PyPitch "Production-Ready" out of the box.
+    Senior Engineer Review: 🟢 Green Light. This is "Infrastructure as Code." It makes Midwicket "Production-Ready" out of the box.
 
 
 
-The "Manager" Plugin: pypitch.report
+The "Manager" Plugin: midwicket.report
 
 Target Audience: Performance Analysts, Scouts, Coaches.
 
@@ -607,7 +607,7 @@ The Solution: A Jinja2-based report generator that turns DataFrames/Plots into p
         Usage:
         Python
 
-        from pypitch.report import PDFGenerator
+        from midwicket.report import PDFGenerator
         # Generates a 2-page PDF with Wagon Wheels and Stats
         PDFGenerator.create_scouting_report(
             player_id="p_123", 
@@ -619,14 +619,14 @@ The Solution: A Jinja2-based report generator that turns DataFrames/Plots into p
 
 How to implement the facade:
 
-    Auto-Detect Cache: If user doesn't provide a cache_dir, default to ~/.pypitch_data.
+    Auto-Detect Cache: If user doesn't provide a cache_dir, default to ~/.midwicket_data.
     Bundled Data: Ship the library with a tiny SQLite/Parquet file containing just the last World Cup, so quick_loadworks instantly without downloading 500MB.
-    Eager Debugging: When pypitch.debug_mode(True) is set, force every query to execute immediately so beginners see errors instantly.
+    Eager Debugging: When midwicket.debug_mode(True) is set, force every query to execute immediately so beginners see errors instantly.
 
 
 Part 3: The New Custom Graphs (The "Wow" Factor)
 
-Standard libraries (Matplotlib/Seaborn) have Bar Charts and Line Charts. Cricket has specific charts that don't exist in standard libraries. If PyPitch provides these out-of-the-box, it becomes indispensable.
+Standard libraries (Matplotlib/Seaborn) have Bar Charts and Line Charts. Cricket has specific charts that don't exist in standard libraries. If Midwicket provides these out-of-the-box, it becomes indispensable.
 
 Here are the 4 Custom Graphs you must build:
 
@@ -697,7 +697,7 @@ Part 1: Fixing the Loading Complexity ("So now what?")
 
 You admitted: We made it complex to load. The fix is not to change the architecture. The architecture (DuckDB + Loader) is correct for scale. The fix is to hide it behind a "Facade" for beginners.
 
-We will introduce a new module: pypitch.express (inspired by Plotly Express).
+We will introduce a new module: midwicket.express (inspired by Plotly Express).
 
 The "One-Liner" Solution
 
@@ -712,7 +712,7 @@ New (Express User)
 Import Loader → Create Engine → Ingest → Connect
 	
 
-import pypitch.express as px
+import midwicket.express as px
 
 4 lines of setup code
 	

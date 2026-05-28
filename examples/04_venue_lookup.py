@@ -5,7 +5,7 @@ This script demonstrates how to resolve venue names to IDs.
 """
 
 from datetime import date
-from pypitch.api.session import get_registry
+from midwicket.api.session import get_registry
 
 def main():
     registry = get_registry()

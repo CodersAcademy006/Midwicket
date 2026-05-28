@@ -1,5 +1,5 @@
 """
-Test that all pypitch modules can be imported without errors.
+Test that all midwicket modules can be imported without errors.
 Moved from repo root to tests/ for correct pytest discovery.
 """
 import importlib
@@ -8,14 +8,14 @@ from pathlib import Path
 
 
 def test_all_imports():
-    """Test importing all pypitch modules — catches SyntaxError and ImportError."""
+    """Test importing all midwicket modules — catches SyntaxError and ImportError."""
     # Resolve relative to the repo root (one level above this tests/ directory)
-    pypitch_path = Path(__file__).parent.parent / "pypitch"
+    midwicket_path = Path(__file__).parent.parent / "midwicket"
 
     modules_to_test = [
         modname
         for _importer, modname, _ispkg in pkgutil.walk_packages(
-            [str(pypitch_path)], prefix="pypitch."
+            [str(midwicket_path)], prefix="midwicket."
         )
     ]
 

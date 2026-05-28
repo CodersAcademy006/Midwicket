@@ -1,22 +1,22 @@
 version: '3.8'
 
 services:
-  pypitch-api:
+  midwicket-api:
     build: .
     ports:
       - "8000:8000"
     environment:
-      - PYPITCH_ENV=production
-      - PYPITCH_SECRET_KEY=${SECRET_KEY:?SECRET_KEY is required}
-      - PYPITCH_API_KEY_REQUIRED=true
-      - PYPITCH_API_KEYS=${PYPITCH_API_KEYS:?PYPITCH_API_KEYS is required}
-      - PYPITCH_CORS_ORIGINS=${PYPITCH_CORS_ORIGINS:-}
-      - PYPITCH_ALLOWED_HOSTS=${PYPITCH_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      - MIDWICKET_ENV=production
+      - MIDWICKET_SECRET_KEY=${SECRET_KEY:?SECRET_KEY is required}
+      - MIDWICKET_API_KEY_REQUIRED=true
+      - MIDWICKET_API_KEYS=${MIDWICKET_API_KEYS:?MIDWICKET_API_KEYS is required}
+      - MIDWICKET_CORS_ORIGINS=${MIDWICKET_CORS_ORIGINS:-}
+      - MIDWICKET_ALLOWED_HOSTS=${MIDWICKET_ALLOWED_HOSTS:-localhost,127.0.0.1}
     volumes:
       - ./data:/app/data
     healthcheck:
       # Uses the unauthenticated internal liveness probe — no API key required.
-      # This avoids 401 failures when PYPITCH_API_KEY_REQUIRED=true (the default).
+      # This avoids 401 failures when MIDWICKET_API_KEY_REQUIRED=true (the default).
       test: ["CMD", "python", "-c",
              "import http.client, sys; c=http.client.HTTPConnection('localhost',8000,timeout=5); c.request('GET','/_internal/health'); r=c.getresponse(); sys.exit(0 if r.status==200 else 1)"]
       interval: 30s

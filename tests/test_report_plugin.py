@@ -1,5 +1,5 @@
 """
-Tests for PyPitch Report Plugin
+Tests for Midwicket Report Plugin
 
 Tests PDF generation, chart creation, and template rendering.
 
@@ -10,7 +10,7 @@ dependency is not installed.  Install it with::
 
 or::
 
-    pip install 'pypitch[report]'
+    pip install 'midwicket[report]'
 """
 
 import pytest
@@ -26,8 +26,8 @@ from datetime import datetime
 reportlab = pytest.importorskip("reportlab", reason="reportlab not installed; skipping PDF tests")
 from reportlab.lib.pagesizes import A4  # noqa: E402 — after importorskip guard
 
-from pypitch.report.pdf import PDFGenerator, ChartConfig, create_scouting_report, create_match_report
-from pypitch.api.session import PyPitchSession
+from midwicket.report.pdf import PDFGenerator, ChartConfig, create_scouting_report, create_match_report
+from midwicket.api.session import MidwicketSession
 
 
 # Mock classes for testing
@@ -125,7 +125,7 @@ class TestPDFGenerator:
     @pytest.fixture
     def mock_session(self):
         """Create mock session."""
-        session = Mock(spec=PyPitchSession)
+        session = Mock(spec=MidwicketSession)
         return session
 
     @pytest.fixture
@@ -154,11 +154,11 @@ class TestPDFGenerator:
         # Clean up
         os.unlink(result)
 
-    @patch('pypitch.report.pdf.SimpleDocTemplate')
+    @patch('midwicket.report.pdf.SimpleDocTemplate')
     def test_create_scouting_report(self, mock_doc, generator, mock_session):
         """Test scouting report creation."""
         # Mock player stats using the actual PlayerStats model
-        from pypitch.api.models import PlayerStats
+        from midwicket.api.models import PlayerStats
         player_stats = PlayerStats(
             name="Test Player",
             matches=50,
@@ -181,8 +181,8 @@ class TestPDFGenerator:
         mock_doc.assert_called_once_with("output.pdf", pagesize=A4)
         mock_doc_instance.build.assert_called_once()
 
-    @patch('pypitch.report.pdf.PDFGenerator._create_match_comparison_chart')
-    @patch('pypitch.report.pdf.SimpleDocTemplate')
+    @patch('midwicket.report.pdf.PDFGenerator._create_match_comparison_chart')
+    @patch('midwicket.report.pdf.SimpleDocTemplate')
     @patch('os.unlink')
     def test_create_match_report(self, mock_unlink, mock_doc, mock_chart, generator, mock_session):
         """Test match report creation."""
@@ -232,7 +232,7 @@ class TestPDFGenerator:
 class TestConvenienceFunctions:
     """Test convenience functions."""
 
-    @patch('pypitch.report.pdf.PDFGenerator')
+    @patch('midwicket.report.pdf.PDFGenerator')
     def test_create_scouting_report_func(self, mock_generator_class):
         """Test create_scouting_report convenience function."""
         mock_session = Mock()
@@ -244,7 +244,7 @@ class TestConvenienceFunctions:
         mock_generator_class.assert_called_once_with(mock_session)
         mock_generator.create_scouting_report.assert_called_once_with("player_123", "output.pdf")
 
-    @patch('pypitch.report.pdf.PDFGenerator')
+    @patch('midwicket.report.pdf.PDFGenerator')
     def test_create_match_report_func(self, mock_generator_class):
         """Test create_match_report convenience function."""
         mock_session = Mock()
@@ -263,7 +263,7 @@ class TestIntegration:
     @pytest.fixture
     def sample_player_stats(self):
         """Create sample player statistics."""
-        from pypitch.api.models import PlayerStats
+        from midwicket.api.models import PlayerStats
         
         return PlayerStats(
             name="Virat Kohli",
@@ -275,10 +275,10 @@ class TestIntegration:
             runs_conceded=1800
         )
 
-    @patch('pypitch.report.pdf.SimpleDocTemplate')
+    @patch('midwicket.report.pdf.SimpleDocTemplate')
     def test_full_scouting_report_generation(self, mock_doc, sample_player_stats):
         """Test full scouting report generation with real data."""
-        mock_session = Mock(spec=PyPitchSession)
+        mock_session = Mock(spec=MidwicketSession)
         mock_session.get_player_stats = Mock(return_value=sample_player_stats)
 
         generator = PDFGenerator(mock_session)

@@ -1,4 +1,4 @@
-# Ensure the pypitch module is included in the Python path
+# Ensure the midwicket module is included in the Python path
 import sys
 from pathlib import Path
 

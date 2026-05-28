@@ -1,0 +1,572 @@
+# Midwicket API Documentation
+
+This comprehensive API reference provides detailed documentation for all Midwicket functions, classes, and modules. The API is organized into multiple layers to support different use cases, from quick prototyping to production-grade applications.
+
+## Table of Contents
+
+1. [Quick Start](#quick-start)
+2. [Express API](#express-api)
+3. [Core API](#core-api)
+4. [Data Management](#data-management)
+5. [Analytics & Statistics](#analytics--statistics)
+6. [Simulation & Prediction](#simulation--prediction)
+7. [Visualization](#visualization)
+8. [Configuration](#configuration)
+9. [Error Handling](#error-handling)
+10. [Advanced Usage](#advanced-usage)
+
+## Overview
+
+Midwicket provides three API levels:
+
+- **Express API** (`midwicket.express`): Simplified one-liner functions with automatic setup
+- **Core API** (`midwicket.api`): Full-featured session-based API for production use
+- **Direct Engine Access** (`midwicket.storage`, `midwicket.compute`): Low-level access for custom analytics
+
+## Quick Start
+
+### Installation
+
+```bash
+pip install midwicket
+```
+
+### Basic Usage
+
+```python
+import midwicket.express as px
+
+# Quick load with bundled sample data
+session = px.quick_load()
+
+# Get player statistics
+stats = px.get_player_stats("Virat Kohli")
+print(f"Matches: {stats.matches}, Runs: {stats.runs}")
+
+# Predict win probability
+prob = px.predict_win("Wankhede", 180, 120, 5, 15.0)
+print(f"Win probability: {prob['win_prob']:.2%}")
+```
+
+## Express API
+
+The Express API provides one-liner access to Midwicket features with sensible defaults.
+
+### `midwicket.express`
+
+#### `quick_load() -> MidwicketSession`
+
+Load Midwicket with bundled sample data instantly (no download required).
+
+**Returns:** `MidwicketSession` with sample cricket data ready for analysis.
+
+**Example:**
+```python
+import midwicket.express as px
+
+session = px.quick_load()
+# Instantly ready for analysis
+```
+
+#### `get_player_stats(player_name: str, data_dir: Optional[str] = None) -> Optional[PlayerStats]`
+
+Get comprehensive player statistics by name.
+
+**Parameters:**
+- `player_name` (str): Player name (fuzzy matched)
+- `data_dir` (Optional[str]): Custom data directory path
+
+**Returns:** `PlayerStats` dataclass or `None` if player not found.
+
+**Example:**
+```python
+stats = px.get_player_stats("Virat Kohli")
+print(f"Matches: {stats.matches}, Runs: {stats.runs}, Average: {stats.runs/stats.matches:.1f}")
+```
+
+#### `predict_win(venue: str, target: int, current_score: int, wickets_down: int, overs_done: float, data_dir: Optional[str] = None) -> Dict[str, float]`
+
+Predict win probability for a cricket match.
+
+**Parameters:**
+- `venue` (str): Venue name
+- `target` (int): Target score to chase
+- `current_score` (int): Current team score
+- `wickets_down` (int): Number of wickets fallen
+- `overs_done` (float): Overs completed (0-20)
+- `data_dir` (Optional[str]): Custom data directory path
+
+**Returns:** Dictionary with `'win_prob'` key containing probability (0.0 to 1.0).
+
+**Example:**
+```python
+prob = px.predict_win("Wankhede", 180, 120, 5, 15.0)
+print(f"Win probability: {prob['win_prob']:.2%}")
+```
+
+#### `set_debug_mode(enabled: bool = True)`
+
+Enable debug mode for detailed logging and eager execution.
+
+**Parameters:**
+- `enabled` (bool): Whether to enable debug mode
+
+**Example:**
+```python
+px.set_debug_mode(True)  # Enable verbose logging
+```
+
+## Core API
+
+### Session Management
+
+#### `MidwicketSession`
+
+The main entry point for Midwicket operations.
+
+**Initialization:**
+```python
+from midwicket.api.session import MidwicketSession
+
+# With bundled data
+session = MidwicketSession("./data", skip_registry_build=True)
+
+# With downloaded data
+session = MidwicketSession("./data")
+```
+
+**Methods:**
+
+##### `get_player_stats(player_name: str) -> Optional[PlayerStats]`
+
+Get player statistics by name.
+
+##### `load_match(match_id: str) -> Optional[MatchData]`
+
+Load match data by ID.
+
+##### `close()`
+
+Clean up database connections and resources.
+
+**Example:**
+```python
+with MidwicketSession("./data") as session:
+    stats = session.get_player_stats("V Kohli")
+    match = session.load_match("980959")
+```
+
+### Data Classes
+
+#### `PlayerStats`
+
+```python
+@dataclass
+class PlayerStats:
+    name: str
+    matches: int
+    runs: int
+    balls_faced: int
+    wickets: int
+    balls_bowled: int
+    runs_conceded: int
+```
+
+#### `MatchData`
+
+Contains ball-by-ball match information.
+
+## Data Management
+
+### Data Loading
+
+#### `DataLoader`
+
+Handles downloading and processing cricket data.
+
+```python
+from midwicket.data.loader import DataLoader
+
+loader = DataLoader("./data")
+loader.download()  # Download IPL 2023 data
+```
+
+### Storage Engine
+
+#### `QueryEngine`
+
+Executes analytical queries on cricket data.
+
+```python
+from midwicket.storage.engine import QueryEngine
+
+engine = QueryEngine("./data/midwicket.duckdb")
+results = engine.execute_sql("SELECT * FROM balls WHERE batsman = 'V Kohli'")
+```
+
+## Analytics & Statistics
+
+### Cheat Sheet / Venue Bias
+
+#### `cheat_sheet(venue: str, last_n_years: int = 3) -> pd.DataFrame`
+
+Generates a Fantasy Cheat Sheet for a specific venue.
+Includes average score, pace vs spin wickets, and top fantasy-point scorers.
+
+**Parameters:**
+- `venue` (str): Venue name (fuzzy matched via the Identity Registry)
+- `last_n_years` (int): How many recent years of data to consider (default: 3)
+
+**Returns:** `pd.DataFrame` of top-20 players sorted by avg fantasy points at that venue.
+
+**Example:**
+```python
+from midwicket.api.fantasy import cheat_sheet, venue_bias
+
+# Top fantasy picks at Wankhede
+df = cheat_sheet("Wankhede")
+print(df.head())
+
+# Check toss-decision bias for a venue
+bias = venue_bias("Chinnaswamy")
+print(f"Win batting first: {bias['win_bat_first_pct']}%")
+print(f"Win chasing: {bias['win_chase_pct']}%")
+print(f"Verdict: {bias['verdict']}")
+```
+
+### Matchup Analysis
+
+#### `matchup(batter: str, bowler: str) -> pd.DataFrame`
+
+Analyze head-to-head statistics between batter and bowler.
+
+**Parameters:**
+- `batter` (str): Batter name
+- `bowler` (str): Bowler name
+
+**Returns:** DataFrame with matchup statistics.
+
+**Example:**
+```python
+from midwicket.api.stats import matchup
+
+df = matchup("V Kohli", "JJ Bumrah")
+print(df[['matches', 'runs', 'balls', 'dismissals']])
+```
+
+## Simulation & Prediction
+
+### Win Probability Model
+
+#### `predict_win(venue: str, target: int, current_score: int, wickets_down: int, overs_done: float) -> Dict[str, float]`
+
+Predict match win probability using machine learning.
+
+**Parameters:**
+- `venue` (str): Match venue
+- `target` (int): Target score
+- `current_score` (int): Current score
+- `wickets_down` (int): Wickets fallen
+- `overs_done` (float): Overs completed
+
+**Returns:** Dictionary with win probability and confidence.
+
+**Example:**
+```python
+from midwicket.api.sim import predict_win
+
+result = predict_win("Wankhede", 180, 120, 5, 15.0)
+print(f"Win prob: {result['win_prob']:.3f}, Confidence: {result['confidence']:.3f}")
+```
+
+## Visualization
+
+### Charts and Plots
+
+#### `plot_career_runs(player_name: str) -> matplotlib.figure.Figure`
+
+Plot player's career runs progression.
+
+#### `plot_match_timeline(match_id: str) -> matplotlib.figure.Figure`
+
+Plot run rate and wicket timeline for a match.
+
+**Example:**
+```python
+from midwicket.visuals.charts import plot_career_runs
+
+fig = plot_career_runs("Virat Kohli")
+fig.savefig("kohli_career.png")
+```
+
+### Report Generation
+
+#### `create_match_report(match_id: str) -> PDFReport`
+
+Generate comprehensive match analysis report.
+
+**Example:**
+```python
+from midwicket.report.pdf import create_match_report
+
+report = create_match_report("980959")
+report.save("match_report.pdf")
+```
+
+## Configuration
+
+Midwicket can be configured using environment variables or a configuration file.
+
+### Environment Variables
+
+Configure Midwicket behavior using the following environment variables:
+
+| Variable | Description | Default Value |
+|----------|-------------|---------------|
+| `MIDWICKET_DATA_DIR` | Default data directory path | `~/.midwicket_data` |
+| `MIDWICKET_DEBUG` | Enable debug mode with verbose logging | `false` |
+| `MIDWICKET_CACHE_SIZE` | Cache size in megabytes | `100` |
+
+**Example:**
+```bash
+export MIDWICKET_DATA_DIR="/path/to/data"
+export MIDWICKET_DEBUG="true"
+export MIDWICKET_CACHE_SIZE="200"
+```
+
+### Configuration File
+
+Create a `midwicket.toml` file in your project root for persistent configuration:
+
+```toml
+[general]
+data_dir = "./data"
+debug = false
+cache_size = 100
+
+[database]
+pool_size = 5
+timeout = 30
+
+[api]
+rate_limit = 100
+timeout = 10
+```
+
+**Configuration Precedence:**
+1. Explicit function parameters (highest priority)
+2. Environment variables
+3. Configuration file
+4. Default values (lowest priority)
+
+## Error Handling
+
+Midwicket provides specific exception types for different error conditions, enabling precise error handling in your applications.
+
+### Exception Types
+
+| Exception | Description | When Raised |
+|-----------|-------------|-------------|
+| `DataNotFoundError` | Requested data is not available | Player/match not found in database |
+| `InvalidQueryError` | Query parameters are invalid | Malformed query or invalid parameters |
+| `ConnectionError` | Database connection failed | Cannot connect to DuckDB |
+| `SchemaValidationError` | Data schema mismatch | Data doesn't match Schema V1 contract |
+
+### Best Practices
+
+**Handle specific exceptions:**
+```python
+from midwicket.exceptions import DataNotFoundError, InvalidQueryError
+
+try:
+    stats = session.get_player_stats("Unknown Player")
+except DataNotFoundError as e:
+    print(f"Player not found: {e}")
+except InvalidQueryError as e:
+    print(f"Invalid query: {e}")
+```
+
+**Use context managers for automatic cleanup:**
+```python
+from midwicket.api.session import MidwicketSession
+
+try:
+    with MidwicketSession("./data") as session:
+        stats = session.get_player_stats("V Kohli")
+except Exception as e:
+    print(f"An error occurred: {e}")
+    # Session is automatically closed
+```
+
+## Performance Tips
+
+Optimize your Midwicket usage with these performance recommendations:
+
+1. **Use Express API for Simple Operations**: The Express API is optimized for common use cases and handles setup automatically
+   ```python
+   # Preferred for simple queries
+   stats = px.get_player_stats("V Kohli")
+   ```
+
+2. **Cache Sessions for Multiple Calls**: Reuse session objects instead of creating new ones
+   ```python
+   session = px.quick_load()
+   # Reuse session for multiple queries
+   stats1 = session.get_player_stats("V Kohli")
+   stats2 = session.get_player_stats("R Sharma")
+   ```
+
+3. **Use Bundled Data for Development**: Avoid download overhead during development
+   ```python
+   session = px.quick_load()  # Instant setup
+   ```
+
+4. **Close Sessions Explicitly**: Use context managers or explicit cleanup
+   ```python
+   with MidwicketSession("./data") as session:
+       # Session automatically closed
+       pass
+   ```
+
+5. **Enable Debug Mode Only When Troubleshooting**: Debug mode adds overhead
+   ```python
+   px.set_debug_mode(False)  # Disable in production
+   ```
+
+6. **Leverage Query Caching**: Identical queries are automatically cached
+   ```python
+   # First call hits database
+   stats1 = px.get_player_stats("V Kohli")
+   # Second call uses cache
+   stats2 = px.get_player_stats("V Kohli")
+   ```
+
+## Advanced Usage
+
+For advanced users who need more control or custom analytics capabilities.
+
+### Custom SQL Queries
+
+Execute custom SQL queries directly against the DuckDB database:
+
+```python
+from midwicket.storage.engine import QueryEngine
+
+# Initialize query engine
+engine = QueryEngine("./data/midwicket.duckdb")
+
+# Execute custom SQL with parameters
+query = """
+    SELECT batsman, SUM(batsman_runs) as runs
+    FROM balls
+    WHERE match_id = ?
+    GROUP BY batsman
+    ORDER BY runs DESC
+    LIMIT 10
+"""
+results = engine.execute_sql(query, [match_id])
+```
+
+### Plugin System
+
+Extend Midwicket functionality with custom plugins:
+
+```python
+from midwicket.api.plugins import register_plugin
+
+@register_plugin("custom_analytics")
+class CustomAnalytics:
+    """Custom analytics plugin for specialized analysis."""
+    
+    def analyze_match(self, match_data):
+        """
+        Perform custom match analysis.
+        
+        Args:
+            match_data: Match data object
+            
+        Returns:
+            Custom analysis results
+        """
+        # Your custom analysis logic
+        return analysis_results
+
+# Use the plugin
+from midwicket.api.plugins import get_plugin
+
+analytics = get_plugin("custom_analytics")
+results = analytics.analyze_match(match_data)
+```
+
+### Direct PyArrow Access
+
+Work directly with PyArrow tables for maximum performance:
+
+```python
+from midwicket.storage.engine import QueryEngine
+
+engine = QueryEngine("./data/midwicket.duckdb")
+
+# Get PyArrow table directly
+arrow_table = engine.execute_arrow_query("""
+    SELECT * FROM balls WHERE match_id = ?
+""", [match_id])
+
+# Perform custom PyArrow operations
+import pyarrow.compute as pc
+
+# Filter and compute
+filtered = arrow_table.filter(pc.field('batsman_runs') >= 4)
+boundary_count = len(filtered)
+```
+
+## Migration Guide
+
+### Future Version Planning
+
+Midwicket is currently at version 0.1.0. When v1.0 is released, the following changes are planned:
+
+#### Planned Changes for v1.0
+
+1. **Express API Enhancement**: The Express API (`midwicket.express`) will become the primary recommended interface
+   ```python
+   # Current (v0.1.0)
+   from midwicket.api.session import MidwicketSession
+   session = MidwicketSession("./data")
+   
+   # Planned (v1.0)
+   import midwicket.express as px
+   session = px.quick_load()  # Enhanced features
+   ```
+
+2. **Session Management**: Enhanced session lifecycle management
+   ```python
+   # Recommended approach (already supported)
+   with MidwicketSession("./data") as session:
+       stats = session.get_player_stats("V Kohli")
+   # Session automatically closed
+   ```
+
+3. **Bundled Sample Data**: Currently available, will be expanded in v1.0
+   ```python
+   # Already available in v0.1.0
+   session = px.quick_load()
+   ```
+
+4. **Function Signature Improvements**: Some functions may have updated signatures for consistency
+   - `get_player_stats()` returns `Optional[PlayerStats]` (current behavior)
+   - `predict_win()` returns dictionary with `win_prob` and `confidence` (current behavior)
+
+#### Current Features (v0.1.0)
+
+- ✅ Express API available and functional
+- ✅ Bundled sample data support
+- ✅ Win probability ML model
+- ✅ Enhanced caching system
+- ✅ Comprehensive error messages
+
+For migration assistance when v1.0 is released, refer to the release notes and updated documentation.
+
+---
+
+**Note**: This API documentation is for Midwicket v0.1.0. For the latest documentation, visit the [Midwicket repository](https://github.com/CodersAcademy006/Midwicket).

@@ -1,5 +1,5 @@
 """
-Tests for pypitch.api.fantasy — fantasy_score, cheat_sheet, venue_bias.
+Tests for midwicket.api.fantasy — fantasy_score, cheat_sheet, venue_bias.
 
 All tests use a mocked session/engine so no real DuckDB data is needed.
 Covers:
@@ -83,8 +83,8 @@ class TestFantasyScoreMilestones:
         engine.execute_sql.side_effect = [bat_res, bowl_res]
 
         session = _session_with(engine)
-        with patch("pypitch.api.fantasy.get_session", return_value=session):
-            from pypitch.api.fantasy import fantasy_score
+        with patch("midwicket.api.fantasy.get_session", return_value=session):
+            from midwicket.api.fantasy import fantasy_score
             result = fantasy_score("Test Player")
 
         # batting: 500*1 + 40*1 + 20*2 + 5*30 + 2*50 = 500+40+40+150+100 = 830
@@ -106,8 +106,8 @@ class TestFantasyScoreMilestones:
         engine.execute_sql.side_effect = [bat_res, bowl_res]
 
         session = _session_with(engine)
-        with patch("pypitch.api.fantasy.get_session", return_value=session):
-            from pypitch.api.fantasy import fantasy_score
+        with patch("midwicket.api.fantasy.get_session", return_value=session):
+            from midwicket.api.fantasy import fantasy_score
             result = fantasy_score("Batter X")
 
         breakdown = result["batting_breakdown"]
@@ -131,8 +131,8 @@ class TestFantasyScoreMilestones:
         engine.execute_sql.side_effect = [bat_res, bowl_res]
 
         session = _session_with(engine)
-        with patch("pypitch.api.fantasy.get_session", return_value=session):
-            from pypitch.api.fantasy import fantasy_score
+        with patch("midwicket.api.fantasy.get_session", return_value=session):
+            from midwicket.api.fantasy import fantasy_score
             result = fantasy_score("Steady Player")
 
         assert result["batting_breakdown"]["fifties"] == 0
@@ -158,16 +158,16 @@ class TestFantasyScoreEconomyBonus:
         engine.execute_sql.side_effect = [bat_res, bowl_res]
 
         session = _session_with(engine)
-        with patch("pypitch.api.fantasy.get_session", return_value=session):
-            from pypitch.api.fantasy import fantasy_score
+        with patch("midwicket.api.fantasy.get_session", return_value=session):
+            from midwicket.api.fantasy import fantasy_score
             import importlib
-            import pypitch.api.fantasy as _m
+            import midwicket.api.fantasy as _m
             importlib.reload(_m)
             return _m.fantasy_score("Economy Bowler")
 
     def test_economy_lt7_gives_bonus_10(self):
         # 6 overs, 36 runs → economy = 6.0 < 7 → +10
-        from pypitch.api.fantasy import _DEFAULT_SCORING
+        from midwicket.api.fantasy import _DEFAULT_SCORING
         engine = MagicMock()
         bat_res = MagicMock()
         bat_res.to_pydict.return_value = _pydict(
@@ -179,14 +179,14 @@ class TestFantasyScoreEconomyBonus:
         )
         engine.execute_sql.side_effect = [bat_res, bowl_res]
         session = _session_with(engine)
-        with patch("pypitch.api.fantasy.get_session", return_value=session):
-            from pypitch.api.fantasy import fantasy_score
+        with patch("midwicket.api.fantasy.get_session", return_value=session):
+            from midwicket.api.fantasy import fantasy_score
             result = fantasy_score("Econ Bowler A")
         # economy = 36/(36/6) = 36/6 = 6.0 < 7 → bonus 10
         assert result["bowling_breakdown"]["economy_bonus"] == _DEFAULT_SCORING["economy_bonus_lt7"]
 
     def test_economy_lt8_gives_bonus_5(self):
-        from pypitch.api.fantasy import _DEFAULT_SCORING
+        from midwicket.api.fantasy import _DEFAULT_SCORING
         engine = MagicMock()
         bat_res = MagicMock()
         bat_res.to_pydict.return_value = _pydict(
@@ -198,8 +198,8 @@ class TestFantasyScoreEconomyBonus:
         )
         engine.execute_sql.side_effect = [bat_res, bowl_res]
         session = _session_with(engine)
-        with patch("pypitch.api.fantasy.get_session", return_value=session):
-            from pypitch.api.fantasy import fantasy_score
+        with patch("midwicket.api.fantasy.get_session", return_value=session):
+            from midwicket.api.fantasy import fantasy_score
             result = fantasy_score("Econ Bowler B")
         # economy = 42/6 = 7.0 → not < 7, is < 8 → bonus 5
         assert result["bowling_breakdown"]["economy_bonus"] == _DEFAULT_SCORING["economy_bonus_lt8"]
@@ -216,8 +216,8 @@ class TestFantasyScoreEconomyBonus:
         )
         engine.execute_sql.side_effect = [bat_res, bowl_res]
         session = _session_with(engine)
-        with patch("pypitch.api.fantasy.get_session", return_value=session):
-            from pypitch.api.fantasy import fantasy_score
+        with patch("midwicket.api.fantasy.get_session", return_value=session):
+            from midwicket.api.fantasy import fantasy_score
             result = fantasy_score("Expensive Bowler")
         # economy = 54/6 = 9.0 → no bonus
         assert result["bowling_breakdown"]["economy_bonus"] == 0
@@ -235,8 +235,8 @@ class TestFantasyScoreEconomyBonus:
         )
         engine.execute_sql.side_effect = [bat_res, bowl_res]
         session = _session_with(engine)
-        with patch("pypitch.api.fantasy.get_session", return_value=session):
-            from pypitch.api.fantasy import fantasy_score
+        with patch("midwicket.api.fantasy.get_session", return_value=session):
+            from midwicket.api.fantasy import fantasy_score
             result = fantasy_score("Part Timer")
         assert result["bowling_breakdown"]["economy"] is None
         assert result["bowling_breakdown"]["economy_bonus"] == 0
@@ -254,8 +254,8 @@ class TestFantasyScoreEmptyData:
         engine.execute_sql.side_effect = RuntimeError("table does not exist")
 
         session = _session_with(engine)
-        with patch("pypitch.api.fantasy.get_session", return_value=session):
-            from pypitch.api.fantasy import fantasy_score
+        with patch("midwicket.api.fantasy.get_session", return_value=session):
+            from midwicket.api.fantasy import fantasy_score
             result = fantasy_score("Ghost Player")
 
         assert result["player"] == "Ghost Player"
@@ -275,8 +275,8 @@ class TestFantasyScoreEmptyData:
         )
         engine.execute_sql.side_effect = [bat_res, bowl_res]
         session = _session_with(engine)
-        with patch("pypitch.api.fantasy.get_session", return_value=session):
-            from pypitch.api.fantasy import fantasy_score
+        with patch("midwicket.api.fantasy.get_session", return_value=session):
+            from midwicket.api.fantasy import fantasy_score
             result = fantasy_score("New Player")
 
         assert result["per_match_avg"] == 0.0
@@ -304,8 +304,8 @@ class TestFantasyScoreCustomWeights:
 
         custom = {"run": 2, "six": 5, "wicket": 20, "fifty": 40, "hundred": 80,
                   "four": 0, "economy_bonus_lt7": 0, "economy_bonus_lt8": 0}
-        with patch("pypitch.api.fantasy.get_session", return_value=session):
-            from pypitch.api.fantasy import fantasy_score
+        with patch("midwicket.api.fantasy.get_session", return_value=session):
+            from midwicket.api.fantasy import fantasy_score
             result = fantasy_score("Power Hitter", scoring=custom)
 
         # batting: 200*2 + 10*0 + 5*5 + 2*40 + 0*80 = 400+0+25+80 = 505
@@ -341,8 +341,8 @@ class TestVenueBias:
             total_runs=[180, 150, 170, 160],
         )
         session = self._make_session(inning_rows, run_rows)
-        with patch("pypitch.api.fantasy.get_session", return_value=session):
-            from pypitch.api.fantasy import venue_bias
+        with patch("midwicket.api.fantasy.get_session", return_value=session):
+            from midwicket.api.fantasy import venue_bias
             result = venue_bias("Wankhede")
 
         assert result["verdict"] == "BAT FIRST"
@@ -357,8 +357,8 @@ class TestVenueBias:
             total_runs=[140, 145, 130, 160],
         )
         session = self._make_session(inning_rows, run_rows)
-        with patch("pypitch.api.fantasy.get_session", return_value=session):
-            from pypitch.api.fantasy import venue_bias
+        with patch("midwicket.api.fantasy.get_session", return_value=session):
+            from midwicket.api.fantasy import venue_bias
             result = venue_bias("Eden Gardens")
 
         assert result["verdict"] == "CHASE"
@@ -368,8 +368,8 @@ class TestVenueBias:
         engine = MagicMock()
         engine.execute_sql.side_effect = RuntimeError("no data")
         session = _session_with(engine)
-        with patch("pypitch.api.fantasy.get_session", return_value=session):
-            from pypitch.api.fantasy import venue_bias
+        with patch("midwicket.api.fantasy.get_session", return_value=session):
+            from midwicket.api.fantasy import venue_bias
             result = venue_bias("Unknown Venue")
 
         assert result["verdict"] == "INSUFFICIENT DATA"
@@ -384,8 +384,8 @@ class TestVenueBias:
             total_runs=[160, 155],
         )
         session = self._make_session(inning_rows, run_rows)
-        with patch("pypitch.api.fantasy.get_session", return_value=session):
-            from pypitch.api.fantasy import venue_bias
+        with patch("midwicket.api.fantasy.get_session", return_value=session):
+            from midwicket.api.fantasy import venue_bias
             result = venue_bias("Chinnaswamy")
 
         for key in ("venue", "total_matches_analysed", "win_bat_first_pct",
@@ -406,10 +406,10 @@ class TestCheatSheet:
         engine.execute_sql.side_effect = RuntimeError("no data")
         session = _session_with(engine)
 
-        with patch("pypitch.api.fantasy.get_executor", side_effect=RuntimeError("no exec")), \
-             patch("pypitch.api.fantasy.get_registry", side_effect=RuntimeError("no reg")), \
-             patch("pypitch.api.fantasy.get_session", return_value=session):
-            from pypitch.api.fantasy import cheat_sheet
+        with patch("midwicket.api.fantasy.get_executor", side_effect=RuntimeError("no exec")), \
+             patch("midwicket.api.fantasy.get_registry", side_effect=RuntimeError("no reg")), \
+             patch("midwicket.api.fantasy.get_session", return_value=session):
+            from midwicket.api.fantasy import cheat_sheet
             df = cheat_sheet("Nowhere Stadium")
 
         assert isinstance(df, pd.DataFrame)
@@ -429,10 +429,10 @@ class TestCheatSheet:
         engine.execute_sql.return_value = result_mock
         session = _session_with(engine)
 
-        with patch("pypitch.api.fantasy.get_executor", side_effect=RuntimeError), \
-             patch("pypitch.api.fantasy.get_registry", side_effect=RuntimeError), \
-             patch("pypitch.api.fantasy.get_session", return_value=session):
-            from pypitch.api.fantasy import cheat_sheet
+        with patch("midwicket.api.fantasy.get_executor", side_effect=RuntimeError), \
+             patch("midwicket.api.fantasy.get_registry", side_effect=RuntimeError), \
+             patch("midwicket.api.fantasy.get_session", return_value=session):
+            from midwicket.api.fantasy import cheat_sheet
             df = cheat_sheet("Test Venue")
 
         assert isinstance(df, pd.DataFrame)

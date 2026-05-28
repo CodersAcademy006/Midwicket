@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-PyPitch Report Plugin Demo
+Midwicket Report Plugin Demo
 
 Demonstrates professional PDF report generation for cricket analytics.
 Shows how to create scouting reports and match summaries with charts.
@@ -14,14 +14,14 @@ from pathlib import Path
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
 
-# Add pypitch to path
+# Add midwicket to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from pypitch.api.session import PyPitchSession
+from midwicket.api.session import MidwicketSession
 try:
-    from pypitch.report import create_scouting_report, create_match_report
+    from midwicket.report import create_scouting_report, create_match_report
 except ImportError:
-    print("[INFO] reportlab is not installed — install with 'pip install pypitch[report]' to run this demo.")
+    print("[INFO] reportlab is not installed — install with 'pip install midwicket[report]' to run this demo.")
     sys.exit(0)
 
 
@@ -30,7 +30,7 @@ def demo_scouting_report():
     print("[Search] Generating Scouting Report...")
 
     # Initialize session
-    session = PyPitchSession()
+    session = MidwicketSession()
 
     # Example player ID (you would get this from your data)
     player_id = "virat_kohli"  # This would be a real player ID from your registry
@@ -51,7 +51,7 @@ def demo_match_report():
     print("\n[Cricket] Generating Match Report...")
 
     # Initialize session
-    session = PyPitchSession()
+    session = MidwicketSession()
 
     # Example match ID (you would get this from your data)
     match_id = "ipl_2024_final"  # This would be a real match ID
@@ -71,7 +71,7 @@ def demo_custom_styling():
     """Demonstrate custom chart styling."""
     print("\n[Style] Custom Styling Demo...")
 
-    from pypitch.report.pdf import PDFGenerator, ChartConfig
+    from midwicket.report.pdf import PDFGenerator, ChartConfig
 
     # Custom color scheme
     custom_colors = {
@@ -88,7 +88,7 @@ def demo_custom_styling():
         colors=custom_colors
     )
 
-    session = PyPitchSession()
+    session = MidwicketSession()
     generator = PDFGenerator(session, config)
 
     print("[OK] Custom chart configuration created")
@@ -101,7 +101,7 @@ def demo_batch_reports():
     """Demonstrate batch report generation."""
     print("\n[Batch] Batch Report Generation...")
 
-    session = PyPitchSession()
+    session = MidwicketSession()
 
     # Example player IDs (in real usage, you'd get these from your data)
     players = ["virat_kohli", "rohit_sharma", "jasprit_bumrah"]
@@ -130,12 +130,12 @@ def demo_batch_reports():
 
 def main():
     """Main demo function."""
-    print("[Start] PyPitch Report Plugin Demo")
+    print("[Start] Midwicket Report Plugin Demo")
     print("=" * 50)
 
     # Check if we have data
     try:
-        session = PyPitchSession()
+        session = MidwicketSession()
         # Try to access some data to see if it's loaded
         session.get_player_stats("test")
     except Exception:
@@ -164,11 +164,11 @@ def main():
 
     print("\n[Docs] Usage in Your Code:")
     print("""
-from pypitch.api.session import PyPitchSession
-from pypitch.report import create_scouting_report, create_match_report
+from midwicket.api.session import MidwicketSession
+from midwicket.report import create_scouting_report, create_match_report
 
 # Initialize session
-session = PyPitchSession()
+session = MidwicketSession()
 
 # Generate player scouting report
 create_scouting_report(session, "player_id", "scouting_report.pdf")

@@ -1,17 +1,17 @@
 """
-Core pypitch functionality tests — session lifecycle and cleanup.
+Core midwicket functionality tests — session lifecycle and cleanup.
 Moved from repo root to tests/ for correct pytest discovery.
-Fixes: Session → PyPitchSession, StorageEngine → QueryEngine.
+Fixes: Session → MidwicketSession, StorageEngine → QueryEngine.
 """
 import threading
 import pytest
-from pypitch.api import session as session_module
-from pypitch.api.session import PyPitchSession
+from midwicket.api import session as session_module
+from midwicket.api.session import MidwicketSession
 
 
 def test_session_initializes():
-    """PyPitchSession can be created and closed without errors."""
-    session = PyPitchSession()
+    """MidwicketSession can be created and closed without errors."""
+    session = MidwicketSession()
     try:
         assert session is not None
     finally:
@@ -19,24 +19,24 @@ def test_session_initializes():
 
 
 def test_session_context_manager():
-    """PyPitchSession works as a context manager and closes cleanly."""
-    with PyPitchSession() as session:
+    """MidwicketSession works as a context manager and closes cleanly."""
+    with MidwicketSession() as session:
         assert session is not None
 
 
 def test_session_singleton_cleared_on_close():
     """Closing a session must clear the class-level _instance reference."""
-    session = PyPitchSession()
+    session = MidwicketSession()
     session.close()
     # After close, the singleton reference should no longer point to this session
-    assert PyPitchSession._instance is not session
+    assert MidwicketSession._instance is not session
 
 
 def test_session_engine_accessible():
     """Session exposes a QueryEngine after initialisation."""
-    from pypitch.storage.engine import QueryEngine
+    from midwicket.storage.engine import QueryEngine
 
-    with PyPitchSession() as session:
+    with MidwicketSession() as session:
         assert isinstance(session.engine, QueryEngine)
 
 
@@ -45,10 +45,10 @@ def test_init_replaces_singleton_and_closes_previous(
     tmp_path,
 ):
     """init() should close any previous singleton before replacing it."""
-    first = PyPitchSession(data_dir=str(tmp_path / "first"), skip_registry_build=True)
+    first = MidwicketSession(data_dir=str(tmp_path / "first"), skip_registry_build=True)
 
-    with PyPitchSession._instance_lock:
-        PyPitchSession._instance = first
+    with MidwicketSession._instance_lock:
+        MidwicketSession._instance = first
 
     closed = {"count": 0}
     original_close = first.close
@@ -61,14 +61,14 @@ def test_init_replaces_singleton_and_closes_previous(
 
     second = session_module.init(source=str(tmp_path / "second"))
     try:
-        assert PyPitchSession._instance is second
+        assert MidwicketSession._instance is second
         assert closed["count"] == 1
     finally:
         second.close()
 
 
 def test_get_player_stats_none_input_returns_none(tmp_path) -> None:
-    with PyPitchSession(data_dir=str(tmp_path / "stats-none"), skip_registry_build=True) as session:
+    with MidwicketSession(data_dir=str(tmp_path / "stats-none"), skip_registry_build=True) as session:
         assert session.get_player_stats(None) is None  # type: ignore[arg-type]
 
 
@@ -77,10 +77,10 @@ def test_session_close_best_effort_when_component_close_fails(
     tmp_path,
 ) -> None:
     """Session close should continue cleanup and clear singleton even after one close failure."""
-    session = PyPitchSession(data_dir=str(tmp_path / "close-fail"), skip_registry_build=True)
+    session = MidwicketSession(data_dir=str(tmp_path / "close-fail"), skip_registry_build=True)
 
-    with PyPitchSession._instance_lock:
-        PyPitchSession._instance = session
+    with MidwicketSession._instance_lock:
+        MidwicketSession._instance = session
 
     call_order: list[str] = []
 
@@ -101,20 +101,20 @@ def test_session_close_best_effort_when_component_close_fails(
     session.close()
 
     assert call_order == ["registry", "engine", "cache"]
-    assert PyPitchSession._instance is None
+    assert MidwicketSession._instance is None
 
 
 def test_cleanup_does_not_deadlock_when_instance_exists(tmp_path) -> None:
     """cleanup() should not call close() while holding the singleton lock."""
-    session = PyPitchSession(data_dir=str(tmp_path / "cleanup-deadlock"), skip_registry_build=True)
+    session = MidwicketSession(data_dir=str(tmp_path / "cleanup-deadlock"), skip_registry_build=True)
 
-    with PyPitchSession._instance_lock:
-        PyPitchSession._instance = session
+    with MidwicketSession._instance_lock:
+        MidwicketSession._instance = session
 
     finished = threading.Event()
 
     def _run_cleanup() -> None:
-        PyPitchSession.cleanup()
+        MidwicketSession.cleanup()
         finished.set()
 
     t = threading.Thread(target=_run_cleanup, daemon=True)
@@ -123,7 +123,7 @@ def test_cleanup_does_not_deadlock_when_instance_exists(tmp_path) -> None:
 
     assert finished.is_set()
     assert not t.is_alive()
-    assert PyPitchSession._instance is None
+    assert MidwicketSession._instance is None
 
 
 def test_get_uses_singleton_lock_even_when_instance_exists(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -143,8 +143,8 @@ def test_get_uses_singleton_lock_even_when_instance_exists(monkeypatch: pytest.M
     sentinel_instance = object()
     spy_lock = _SpyLock()
 
-    monkeypatch.setattr(PyPitchSession, "_instance", sentinel_instance)
-    monkeypatch.setattr(PyPitchSession, "_instance_lock", spy_lock)
+    monkeypatch.setattr(MidwicketSession, "_instance", sentinel_instance)
+    monkeypatch.setattr(MidwicketSession, "_instance_lock", spy_lock)
 
-    assert PyPitchSession.get() is sentinel_instance
+    assert MidwicketSession.get() is sentinel_instance
     assert spy_lock.enter_count == 1

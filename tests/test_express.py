@@ -6,7 +6,7 @@ import threading
 import time
 from pathlib import Path
 
-import pypitch.express as px
+import midwicket.express as px
 
 
 def _seed_local_raw_data(base_dir: Path) -> None:
@@ -38,7 +38,7 @@ def test_auto_setup_session_is_thread_safe(monkeypatch, tmp_path: Path):
             self.data_dir = data_dir
 
     monkeypatch.setattr(px, "DataLoader", _FakeLoader)
-    monkeypatch.setattr(px, "PyPitchSession", _FakeSession)
+    monkeypatch.setattr(px, "MidwicketSession", _FakeSession)
     monkeypatch.setattr(px, "_cached_session", None)
     monkeypatch.setattr(px, "_cached_session_dir", None)
 
@@ -78,7 +78,7 @@ def test_auto_setup_session_rebuilds_for_different_dirs(monkeypatch, tmp_path: P
             self.data_dir = data_dir
 
     monkeypatch.setattr(px, "DataLoader", _FakeLoader)
-    monkeypatch.setattr(px, "PyPitchSession", _FakeSession)
+    monkeypatch.setattr(px, "MidwicketSession", _FakeSession)
     monkeypatch.setattr(px, "_cached_session", None)
     monkeypatch.setattr(px, "_cached_session_dir", None)
 

@@ -7,14 +7,14 @@ import pyarrow as pa
 import threading
 import time
 from unittest.mock import MagicMock, patch
-from pypitch.runtime.executor import RuntimeExecutor, ExecutionMode, ExecutionResult
-from pypitch.runtime.planner import (
+from midwicket.runtime.executor import RuntimeExecutor, ExecutionMode, ExecutionResult
+from midwicket.runtime.planner import (
     QueryPlanner,
     _validate_table,
     _table_ref,
     _QUERY_PREFERRED_TABLES,
 )
-from pypitch.query.base import MatchupQuery
+from midwicket.query.base import MatchupQuery
 
 
 # ---------------------------------------------------------------------------
@@ -59,7 +59,7 @@ def _matchup_query(**kw) -> MatchupQuery:
 
 class TestResultMetadata:
     def test_fields_populated(self):
-        from pypitch.runtime.executor import ResultMetadata
+        from midwicket.runtime.executor import ResultMetadata
         m = ResultMetadata(
             query_hash="abc123",
             snapshot_id="snap-1",
@@ -71,7 +71,7 @@ class TestResultMetadata:
         assert m.engine_version == "v1.0.0"
 
     def test_compute_source(self):
-        from pypitch.runtime.executor import ResultMetadata
+        from midwicket.runtime.executor import ResultMetadata
         m = ResultMetadata(
             query_hash="xyz",
             snapshot_id="s",
@@ -81,7 +81,7 @@ class TestResultMetadata:
         assert m.source == "compute"
 
     def test_execution_time_stored(self):
-        from pypitch.runtime.executor import ResultMetadata
+        from midwicket.runtime.executor import ResultMetadata
         m = ResultMetadata(
             query_hash="h",
             snapshot_id="s",
@@ -355,7 +355,7 @@ class TestRuntimeExecutorMetricCaching:
 
 class TestRuntimeExecutorWinProb:
     def _win_prob_query(self, snapshot_id: str = "s1"):
-        from pypitch.query.defs import WinProbQuery
+        from midwicket.query.defs import WinProbQuery
         return WinProbQuery(
             snapshot_id=snapshot_id,
             venue_id=1,
@@ -373,7 +373,7 @@ class TestRuntimeExecutorWinProb:
         # Record baseline from DerivedStore.__init__
         baseline_calls = engine.execute_sql.call_count
 
-        with patch("pypitch.compute.winprob.win_probability") as mock_wp:
+        with patch("midwicket.compute.winprob.win_probability") as mock_wp:
             mock_wp.return_value = {"win_prob": 0.55, "confidence": 0.8}
             result = executor.execute(query)
 
@@ -388,7 +388,7 @@ class TestRuntimeExecutorWinProb:
         executor = RuntimeExecutor(cache, engine)
         query = self._win_prob_query("unique-snap")
 
-        with patch("pypitch.compute.winprob.win_probability") as mock_wp:
+        with patch("midwicket.compute.winprob.win_probability") as mock_wp:
             mock_wp.return_value = {"win_prob": 0.6, "confidence": 0.7}
             executor.execute(query)
             result2 = executor.execute(query)
@@ -397,7 +397,7 @@ class TestRuntimeExecutorWinProb:
         assert mock_wp.call_count == 1  # model called once only
 
     def test_winprobquery_overs_remaining_invalid_raises(self):
-        from pypitch.query.defs import WinProbQuery
+        from midwicket.query.defs import WinProbQuery
         from pydantic import ValidationError
         with pytest.raises(ValidationError):
             WinProbQuery(
@@ -432,7 +432,7 @@ class TestExecutionModeEnforcement:
         executor = RuntimeExecutor(cache, engine)
         query = _matchup_query()
 
-        with caplog.at_level(logging.WARNING, logger="pypitch.runtime.executor"):
+        with caplog.at_level(logging.WARNING, logger="midwicket.runtime.executor"):
             result = executor.execute(query, mode=ExecutionMode.APPROX)
 
         assert result.meta.source == "compute"
@@ -617,7 +617,7 @@ class TestPlannerWhereClause:
         assert len(params) >= 1  # at minimum batter_id and bowler_id are filtered
 
     def test_where_clause_with_invalid_phase_raises(self):
-        from pypitch.query.defs import FantasyQuery
+        from midwicket.query.defs import FantasyQuery
         engine = _make_engine()
         planner = QueryPlanner(engine)
 
@@ -660,7 +660,7 @@ class TestPlannerGenerateSQL:
         assert "FROM derived.matchup_stats" in sql
 
     def test_fantasy_query_generates_sql(self):
-        from pypitch.query.defs import FantasyQuery
+        from midwicket.query.defs import FantasyQuery
         engine = _make_engine()
         planner = QueryPlanner(engine)
         q = FantasyQuery(snapshot_id="s", venue_id=99)
@@ -670,7 +670,7 @@ class TestPlannerGenerateSQL:
 
     def test_unknown_query_logs_warning(self, caplog):
         import logging
-        from pypitch.query.defs import WinProbQuery
+        from midwicket.query.defs import WinProbQuery
         engine = _make_engine()
         planner = QueryPlanner(engine)
         q = WinProbQuery(
@@ -704,7 +704,7 @@ class TestValidateTable:
             _validate_table("")
 
     def test_all_valid_tables_accepted(self):
-        from pypitch.runtime.planner import _VALID_TABLES
+        from midwicket.runtime.planner import _VALID_TABLES
         for t in _VALID_TABLES:
             assert _validate_table(t) == t
 
@@ -746,7 +746,7 @@ class TestUnifiedPlanMethod:
 
     def test_plan_falls_back_for_unregistered_query_type(self):
         """A query type not in _QUERY_PREFERRED_TABLES falls back to raw_scan."""
-        from pypitch.query.defs import WinProbQuery
+        from midwicket.query.defs import WinProbQuery
         engine = _make_engine(derived_versions={})
         planner = QueryPlanner(engine)
         q = WinProbQuery(
@@ -796,7 +796,7 @@ class TestQueryPreferredTablesRegistry:
 
     def test_all_entries_reference_valid_tables(self):
         """Every table listed in preferred tables is in _VALID_TABLES (or empty)."""
-        from pypitch.runtime.planner import _VALID_TABLES
+        from midwicket.runtime.planner import _VALID_TABLES
         for qtype, tables in _QUERY_PREFERRED_TABLES.items():
             for t in tables:
                 assert t in _VALID_TABLES, (
