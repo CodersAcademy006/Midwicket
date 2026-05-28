@@ -5,9 +5,6 @@ Provides ipywidgets-based interactive dashboards for Jupyter Notebooks.
 """
 
 from typing import Any
-import ipywidgets as widgets
-from IPython.display import display, clear_output
-
 from midwicket.api.session import MidwicketSession
 import midwicket as md
 
@@ -18,9 +15,12 @@ def explore_player() -> None:
     and wagon wheel interactively without writing code.
     """
     try:
+        from IPython.display import display, clear_output
+        import ipywidgets as widgets
         get_ipython()  # type: ignore
-    except NameError:
-        print("Interactive exploration is only available in Jupyter Notebooks/Lab.")
+    except (NameError, ImportError):
+        print("Interactive exploration is only available in Jupyter Notebooks/Lab with ipywidgets installed.")
+        print("Run `pip install midwicket[viz]` to install dependencies.")
         return
 
     session = MidwicketSession.get()
