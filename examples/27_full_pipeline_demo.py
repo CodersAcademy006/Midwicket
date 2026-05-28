@@ -2,7 +2,7 @@
 27_full_pipeline_demo.py
 
 Demonstrates the full end-to-end pipeline:
-1. Starting the PyPitch Server
+1. Starting the Midwicket Server
 2. Registering a Live Match
 3. Ingesting Delivery Data
 4. Querying Live Matches
@@ -10,18 +10,18 @@ Demonstrates the full end-to-end pipeline:
 This script runs the server in a background thread to simulate a real deployment.
 """
 
-import pypitch as pp
+import midwicket as md
 import threading
 import time
 import requests
 import sys
 
 def run_server():
-    """Start the PyPitch server."""
+    """Start the Midwicket server."""
     print("Starting server...")
-    # In a real app, you would just call pp.serve()
+    # In a real app, you would just call md.serve()
     # Here we disable reload to avoid signal issues in threads
-    pp.serve(port=8001, reload=False)
+    md.serve(port=8001, reload=False)
 
 def run_client():
     """Simulate a client interacting with the server."""
@@ -82,8 +82,8 @@ def run_client():
     sys.exit(0)
 
 if __name__ == "__main__":
-    # Initialize PyPitch
-    pp.init()
+    # Initialize Midwicket
+    md.init()
 
     # Start server in background thread
     server_thread = threading.Thread(target=run_server, daemon=True)

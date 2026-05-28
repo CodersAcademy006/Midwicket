@@ -1,5 +1,5 @@
 import unittest
-from pypitch.query.defs import MatchupQuery
+from midwicket.query.defs import MatchupQuery
 
 class TestDeterministicHashing(unittest.TestCase):
     def test_hash_stability(self):

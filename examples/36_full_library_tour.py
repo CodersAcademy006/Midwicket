@@ -1,7 +1,7 @@
 """
-36_full_library_tour.py — Complete PyPitch Library Tour
+36_full_library_tour.py — Complete Midwicket Library Tour
 
-A single script that walks through every major capability of PyPitch.
+A single script that walks through every major capability of Midwicket.
 Designed to be the canonical "show me what this library does" script.
 
 No server, no downloads needed for sections 1–4.
@@ -16,7 +16,7 @@ import os
 import pyarrow as pa
 from datetime import date
 
-os.environ.setdefault("PYPITCH_ENV", "development")
+os.environ.setdefault("MIDWICKET_ENV", "development")
 
 # Ensure UTF-8 stdout on Windows (CP1252 crashes on non-ASCII output)
 if sys.platform == "win32":
@@ -36,9 +36,9 @@ def banner(title: str) -> None:
 # ═══════════════════════════════════════════════════════════════════
 banner("1 · Package metadata")
 
-import pypitch as pp
-print(f"  pypitch v{pp.__version__}  |  author: {pp.__author__}")
-print(f"  Public API: {', '.join(pp.__all__[:8])} …")
+import midwicket as md
+print(f"  midwicket v{md.__version__}  |  author: {md.__author__}")
+print(f"  Public API: {', '.join(md.__all__[:8])} …")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -46,9 +46,9 @@ print(f"  Public API: {', '.join(pp.__all__[:8])} …")
 # ═══════════════════════════════════════════════════════════════════
 banner("2 · Pure compute metrics (no database)")
 
-from pypitch.compute.metrics.batting import calculate_strike_rate
-from pypitch.compute.metrics.bowling import calculate_economy, calculate_pressure_index
-from pypitch.compute.metrics.team    import calculate_team_win_rate
+from midwicket.compute.metrics.batting import calculate_strike_rate
+from midwicket.compute.metrics.bowling import calculate_economy, calculate_pressure_index
+from midwicket.compute.metrics.team    import calculate_team_win_rate
 
 runs  = pa.array([68, 45, 30], type=pa.int64())
 balls = pa.array([42, 38, 28], type=pa.int64())
@@ -71,7 +71,7 @@ print("  Win rates (%):", [round(wr[i].as_py(), 1) for i in range(3)])
 # ═══════════════════════════════════════════════════════════════════
 banner("3 · Win probability model")
 
-from pypitch.compute.winprob import win_probability
+from midwicket.compute.winprob import win_probability
 
 scenarios = [
     ("Easy chase",   dict(target=180, current_runs=100, wickets_down=2, overs_done=10.0)),
@@ -88,8 +88,8 @@ for label, kw in scenarios:
 # ═══════════════════════════════════════════════════════════════════
 banner("4 · QueryEngine — in-memory schema + SQL")
 
-from pypitch.schema.v1 import BALL_EVENT_SCHEMA
-from pypitch.storage.engine import QueryEngine
+from midwicket.schema.v1 import BALL_EVENT_SCHEMA
+from midwicket.storage.engine import QueryEngine
 
 n = 8
 sample = pa.table(
@@ -134,7 +134,7 @@ engine.close()
 banner("5 · IdentityRegistry — name ↔ integer ID")
 
 from datetime import date
-from pypitch.storage.registry import IdentityRegistry
+from midwicket.storage.registry import IdentityRegistry
 
 reg = IdentityRegistry(":memory:")
 d   = date(2024, 4, 1)
@@ -158,7 +158,7 @@ reg.close()
 banner("6 · Express API (requires 01_setup_data.py)")
 
 try:
-    import pypitch.express as px
+    import midwicket.express as px
     stats = px.get_player_stats("V Kohli")
     if stats:
         print(f"  V Kohli: {stats.runs} runs in {stats.matches} matches")
@@ -174,17 +174,17 @@ except Exception as exc:
 # ═══════════════════════════════════════════════════════════════════
 banner("7 · Debug mode & structured logging")
 
-from pypitch.logging_config import setup_logging, get_logger
+from midwicket.logging_config import setup_logging, get_logger
 import logging
 
 setup_logging(level=logging.WARNING)  # suppress noise for demo
 logger = get_logger(__name__)
 
-pp.set_debug_mode(True)
+md.set_debug_mode(True)
 logger.warning("Debug mode enabled — eager execution active")
-pp.set_debug_mode(False)
+md.set_debug_mode(False)
 print("  Logging + debug mode: OK")
 
 print("\n" + "═" * 60)
-print("  Tour complete. PyPitch is ready to deploy.")
+print("  Tour complete. Midwicket is ready to deploy.")
 print("═" * 60)

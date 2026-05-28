@@ -5,7 +5,7 @@ This script demonstrates how to generate a Fantasy Cheat Sheet for a specific ve
 It shows average scores and top performing players.
 """
 
-from pypitch.api.fantasy import cheat_sheet
+from midwicket.api.fantasy import cheat_sheet
 
 def main():
     venue = "Wankhede Stadium"

@@ -5,7 +5,7 @@ Removed QueryType (does not exist); tests Phase, Role literals and WinProbQuery 
 """
 import pytest
 from pydantic import ValidationError
-from pypitch.query.defs import WinProbQuery, FantasyQuery, Phase, Role
+from midwicket.query.defs import WinProbQuery, FantasyQuery, Phase, Role
 
 
 class TestPhaseLiteral:

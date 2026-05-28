@@ -1,5 +1,5 @@
 """
-End-to-end tests for the PyPitch plugin system.
+End-to-end tests for the Midwicket plugin system.
 
 Exercises the full load → call cycle:
   discover_plugins  →  load_plugin  →  get_metric / get_report
@@ -15,7 +15,7 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from pypitch.api.plugins import PluginManager, PluginSpec
+from midwicket.api.plugins import PluginManager, PluginSpec
 
 
 SAMPLE_ENTRY_POINT = "examples.plugins.sample_plugin"
@@ -24,7 +24,7 @@ SAMPLE_ENTRY_POINT = "examples.plugins.sample_plugin"
 @pytest.fixture
 def manager_with_allowlist(monkeypatch):
     """Return a PluginManager whose allowlist permits the sample plugin."""
-    monkeypatch.setenv("PYPITCH_PLUGIN_ALLOWLIST", SAMPLE_ENTRY_POINT)
+    monkeypatch.setenv("MIDWICKET_PLUGIN_ALLOWLIST", SAMPLE_ENTRY_POINT)
     return PluginManager()
 
 
@@ -38,23 +38,23 @@ def loaded_manager(manager_with_allowlist):
         description="Sample plugin for e2e testing",
     )
     success = manager_with_allowlist.load_plugin(spec)
-    assert success, "load_plugin returned False — check PYPITCH_PLUGIN_ALLOWLIST"
+    assert success, "load_plugin returned False — check MIDWICKET_PLUGIN_ALLOWLIST"
     return manager_with_allowlist
 
 
 class TestPluginDiscovery:
     def test_discover_returns_spec_when_env_set(self, manager_with_allowlist, monkeypatch):
-        monkeypatch.setenv("PYPITCH_PLUGINS", f"sample:{SAMPLE_ENTRY_POINT}")
+        monkeypatch.setenv("MIDWICKET_PLUGINS", f"sample:{SAMPLE_ENTRY_POINT}")
         specs = manager_with_allowlist.discover_plugins()
         assert any(s.entry_point == SAMPLE_ENTRY_POINT for s in specs)
 
     def test_discover_empty_when_no_plugins_env(self, manager_with_allowlist, monkeypatch):
-        monkeypatch.delenv("PYPITCH_PLUGINS", raising=False)
+        monkeypatch.delenv("MIDWICKET_PLUGINS", raising=False)
         assert manager_with_allowlist.discover_plugins() == []
 
     def test_discover_skips_blocklisted_module(self, monkeypatch):
-        monkeypatch.setenv("PYPITCH_PLUGIN_ALLOWLIST", "only_trusted")
-        monkeypatch.setenv("PYPITCH_PLUGINS", f"evil:{SAMPLE_ENTRY_POINT}")
+        monkeypatch.setenv("MIDWICKET_PLUGIN_ALLOWLIST", "only_trusted")
+        monkeypatch.setenv("MIDWICKET_PLUGINS", f"evil:{SAMPLE_ENTRY_POINT}")
         mgr = PluginManager()
         specs = mgr.discover_plugins()
         assert specs == []
@@ -69,28 +69,28 @@ class TestPluginLoad:
         assert loaded_manager.get_report("text_scorecard") is not None
 
     def test_load_rejects_module_not_in_allowlist(self, monkeypatch):
-        monkeypatch.setenv("PYPITCH_PLUGIN_ALLOWLIST", "only_trusted")
+        monkeypatch.setenv("MIDWICKET_PLUGIN_ALLOWLIST", "only_trusted")
         mgr = PluginManager()
         spec = PluginSpec(name="bad", entry_point=SAMPLE_ENTRY_POINT)
         result = mgr.load_plugin(spec)
         assert result is False
 
     def test_load_rejects_empty_allowlist(self, monkeypatch):
-        monkeypatch.delenv("PYPITCH_PLUGIN_ALLOWLIST", raising=False)
+        monkeypatch.delenv("MIDWICKET_PLUGIN_ALLOWLIST", raising=False)
         mgr = PluginManager()
         spec = PluginSpec(name="any", entry_point=SAMPLE_ENTRY_POINT)
         result = mgr.load_plugin(spec)
         assert result is False
 
     def test_load_rejects_path_traversal_in_entry_point(self, monkeypatch):
-        monkeypatch.setenv("PYPITCH_PLUGIN_ALLOWLIST", "../evil")
+        monkeypatch.setenv("MIDWICKET_PLUGIN_ALLOWLIST", "../evil")
         mgr = PluginManager()
         spec = PluginSpec(name="evil", entry_point="../evil/module")
         result = mgr.load_plugin(spec)
         assert result is False
 
     def test_load_rejects_dep_not_in_allowlist(self, monkeypatch):
-        monkeypatch.setenv("PYPITCH_PLUGIN_ALLOWLIST", SAMPLE_ENTRY_POINT)
+        monkeypatch.setenv("MIDWICKET_PLUGIN_ALLOWLIST", SAMPLE_ENTRY_POINT)
         mgr = PluginManager()
         spec = PluginSpec(
             name="sample",

@@ -5,11 +5,11 @@ from typing import Any, Dict, Optional
 import pytest
 import requests
 
-from pypitch.client import PyPitchClient, quick_health_check
+from midwicket.client import MidwicketClient, quick_health_check
 
 
 def test_list_matches_builds_expected_query_params(monkeypatch: pytest.MonkeyPatch) -> None:
-    client = PyPitchClient()
+    client = MidwicketClient()
     captured: Dict[str, Any] = {}
 
     def fake_get(endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -45,7 +45,7 @@ def test_list_matches_builds_expected_query_params(monkeypatch: pytest.MonkeyPat
 
 
 def test_analyze_custom_uses_positional_params(monkeypatch: pytest.MonkeyPatch) -> None:
-    client = PyPitchClient()
+    client = MidwicketClient()
     captured: Dict[str, Any] = {}
 
     def fake_post(endpoint: str, data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -125,7 +125,7 @@ def test_v1_wrappers_call_expected_routes(
     expected_endpoint: str,
     expected_params: Dict[str, Any],
 ) -> None:
-    client = PyPitchClient()
+    client = MidwicketClient()
     captured: Dict[str, Any] = {}
 
     def fake_get(endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -144,7 +144,7 @@ def test_v1_wrappers_call_expected_routes(
 
 
 def test_path_based_player_and_venue_wrappers(monkeypatch: pytest.MonkeyPatch) -> None:
-    client = PyPitchClient()
+    client = MidwicketClient()
     seen_endpoints: list[str] = []
     seen_params: list[Optional[Dict[str, Any]]] = []
 
@@ -187,7 +187,7 @@ def test_path_based_player_and_venue_wrappers(monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_path_wrappers_encode_reserved_characters(monkeypatch: pytest.MonkeyPatch) -> None:
-    client = PyPitchClient()
+    client = MidwicketClient()
     seen_endpoints: list[str] = []
 
     def fake_get(endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -206,7 +206,7 @@ def test_path_wrappers_encode_reserved_characters(monkeypatch: pytest.MonkeyPatc
 
 
 def test_client_context_manager_closes_session() -> None:
-    client = PyPitchClient()
+    client = MidwicketClient()
     closed = {"count": 0}
 
     class _DummySession:
@@ -222,7 +222,7 @@ def test_client_context_manager_closes_session() -> None:
 
 
 def test_client_close_is_idempotent() -> None:
-    client = PyPitchClient()
+    client = MidwicketClient()
     closed = {"count": 0}
 
     class _DummySession:
@@ -238,7 +238,7 @@ def test_client_close_is_idempotent() -> None:
 
 
 def test_client_destructor_attempts_close() -> None:
-    client = PyPitchClient()
+    client = MidwicketClient()
     closed = {"count": 0}
 
     class _DummySession:
@@ -261,8 +261,8 @@ def test_quick_health_check_closes_client_on_success(monkeypatch: pytest.MonkeyP
     def _fake_close(self) -> None:
         close_calls["count"] += 1
 
-    monkeypatch.setattr(PyPitchClient, "health_check", _fake_health)
-    monkeypatch.setattr(PyPitchClient, "close", _fake_close)
+    monkeypatch.setattr(MidwicketClient, "health_check", _fake_health)
+    monkeypatch.setattr(MidwicketClient, "close", _fake_close)
 
     assert quick_health_check(base_url="http://example.test") is True
     assert close_calls["count"] == 1
@@ -277,15 +277,15 @@ def test_quick_health_check_closes_client_on_error(monkeypatch: pytest.MonkeyPat
     def _fake_close(self) -> None:
         close_calls["count"] += 1
 
-    monkeypatch.setattr(PyPitchClient, "health_check", _fake_health)
-    monkeypatch.setattr(PyPitchClient, "close", _fake_close)
+    monkeypatch.setattr(MidwicketClient, "health_check", _fake_health)
+    monkeypatch.setattr(MidwicketClient, "close", _fake_close)
 
     assert quick_health_check(base_url="http://example.test") is False
     assert close_calls["count"] == 1
 
 
 def test_get_closes_response_on_http_error() -> None:
-    client = PyPitchClient()
+    client = MidwicketClient()
     closed = {"count": 0}
 
     class _Response:
@@ -318,7 +318,7 @@ def test_get_closes_response_on_http_error() -> None:
 
 
 def test_post_closes_response_on_success() -> None:
-    client = PyPitchClient()
+    client = MidwicketClient()
     closed = {"count": 0}
 
     class _Response:

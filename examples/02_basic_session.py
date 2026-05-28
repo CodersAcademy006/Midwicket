@@ -1,15 +1,15 @@
 """
 02_basic_session.py
 
-This script demonstrates how to access the PyPitch session singleton.
+This script demonstrates how to access the Midwicket session singleton.
 The session manages the database connection, identity registry, and cache.
 """
 
-from pypitch.api.session import PyPitchSession
+from midwicket.api.session import MidwicketSession
 
 def main():
     # Get the singleton instance
-    session = PyPitchSession.get()
+    session = MidwicketSession.get()
     
     print(f"Session initialized.")
     print(f"Data Directory: {session.data_dir}")

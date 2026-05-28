@@ -8,7 +8,7 @@ Usage:
     python examples/29_win_probability.py
 """
 
-from pypitch.compute.winprob import win_probability
+from midwicket.compute.winprob import win_probability
 
 
 def print_scenario(label: str, **kwargs) -> None:
@@ -61,7 +61,7 @@ def main() -> None:
 
     print("-" * 65)
     print("\nNote: probabilities are from the built-in Duckworth-Lewis-style")
-    print("model. Wire in a trained ML model via pp.set_win_model() for")
+    print("model. Wire in a trained ML model via md.set_win_model() for")
     print("venue-adjusted predictions.")
 
 

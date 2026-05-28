@@ -1,5 +1,5 @@
 """
-Tests for pypitch/api/player_analytics.py (PA-01 to PA-28).
+Tests for midwicket/api/player_analytics.py (PA-01 to PA-28).
 
 Uses an in-memory DuckDB session with synthetic ball_events data.
 All player_analytics functions call _get_con() → session.engine.raw_connection().
@@ -13,7 +13,7 @@ import duckdb
 import pytest
 from unittest.mock import patch
 
-import pypitch.api.player_analytics as pa
+import midwicket.api.player_analytics as pa
 
 
 # ---------------------------------------------------------------------------

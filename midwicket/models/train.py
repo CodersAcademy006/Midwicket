@@ -1,0 +1,435 @@
+"""
+Midwicket ML Training Module
+
+Provides training capabilities for win probability and other predictive models.
+Supports data preparation, model training, validation, and deployment.
+"""
+
+import pandas as pd
+import numpy as np
+from sklearn.linear_model import SGDClassifier
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.metrics import accuracy_score, log_loss, roc_auc_score
+from sklearn.preprocessing import StandardScaler
+from typing import Any, Dict, Optional, Tuple, List
+import logging
+from datetime import datetime
+import joblib
+import copy
+import os
+
+from .win_predictor import WinPredictor
+from .registry import get_model_registry
+from .win_features import FEATURE_COLUMNS, compute_chase_features
+from ..exceptions import DataValidationError
+
+logger = logging.getLogger(__name__)
+
+class WinProbabilityTrainer:
+    """
+    Trainer for win probability models.
+
+    Handles data preparation, feature engineering, model training,
+    and validation for cricket win probability prediction.
+    """
+
+    def __init__(self):
+        self.scaler = StandardScaler()
+        self.feature_columns = list(FEATURE_COLUMNS)
+
+    def prepare_training_data(self, match_data: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series]:
+        """
+        Prepare cricket match data for training.
+
+        Args:
+            match_data: DataFrame with match delivery data
+
+        Returns:
+            Tuple of (features_df, target_series)
+        """
+        if match_data.empty:
+            raise DataValidationError("Training data cannot be empty")
+
+        required_columns = ['match_id', 'inning', 'over', 'ball', 'runs_total', 'wickets_fallen', 'target', 'venue']
+        missing_cols = [col for col in required_columns if col not in match_data.columns]
+        if missing_cols:
+            raise DataValidationError(f"Missing required columns: {missing_cols}")
+
+        # Filter to second innings only (chasing team)
+        second_innings = match_data[match_data['inning'] == 2].copy()
+
+        if second_innings.empty:
+            raise DataValidationError("No second innings data found for training")
+
+        # Feature engineering
+        features = []
+
+        for _, delivery in second_innings.iterrows():
+            try:
+                overs_done = delivery['over'] + delivery['ball'] / 6.0
+                venue_adjustment = self._get_venue_adjustment(delivery.get('venue', ''))
+                features.append(
+                    compute_chase_features(
+                        target=delivery['target'],
+                        current_runs=delivery['runs_total'],
+                        wickets_down=delivery['wickets_fallen'],
+                        overs_done=overs_done,
+                        venue_adjustment=venue_adjustment,
+                    )
+                )
+
+            except Exception as e:
+                logger.warning(f"Skipping delivery due to error: {e}")
+                continue
+
+        if not features:
+            raise DataValidationError("No valid training samples generated")
+
+        features_df = pd.DataFrame(features)
+
+        # Target: whether the team eventually won
+        # Group by match and get final result
+        match_results = second_innings.groupby('match_id').agg({
+            'runs_total': 'max',
+            'target': 'first'
+        }).reset_index()
+
+        match_results['won'] = (match_results['runs_total'] >= match_results['target']).astype(int)
+
+        # For each delivery, determine if the team won
+        targets = []
+        for _, delivery in second_innings.iterrows():
+            match_result = match_results[match_results['match_id'] == delivery['match_id']]
+            if not match_result.empty:
+                targets.append(match_result['won'].iloc[0])
+            else:
+                targets.append(0)  # Default to loss if no result found
+
+        target_series = pd.Series(targets, name='won')
+
+        return features_df, target_series
+
+    def prepare_training_dataset(self, ball_events: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series, pd.Series]:
+        """Prepare a raw ball_events table for benchmark training.
+
+        This is the benchmark-friendly entrypoint used by the live training script.
+        It derives cumulative chase state from raw deliveries, then reuses the
+        same feature construction logic as ``prepare_training_data`` so train/serve
+        behavior stays aligned.
+        """
+        if ball_events.empty:
+            raise DataValidationError("Training data cannot be empty")
+
+        required_columns = ["match_id", "inning", "over", "ball", "runs_batter", "runs_extras", "is_wicket"]
+        missing_cols = [col for col in required_columns if col not in ball_events.columns]
+        if missing_cols:
+            raise DataValidationError(f"Missing required columns: {missing_cols}")
+
+        prepared = ball_events.copy().sort_values(["match_id", "inning", "over", "ball"]).reset_index(drop=True)
+        prepared["delivery_runs"] = prepared["runs_batter"].fillna(0) + prepared["runs_extras"].fillna(0)
+        prepared["runs_total"] = prepared.groupby(["match_id", "inning"])["delivery_runs"].cumsum()
+        prepared["is_wicket"] = prepared["is_wicket"].fillna(False).astype(int)
+        prepared["wickets_fallen"] = prepared.groupby(["match_id", "inning"])["is_wicket"].cumsum()
+
+        if "target" not in prepared.columns:
+            first_innings = (
+                prepared[prepared["inning"] == 1]
+                .groupby("match_id")["runs_total"]
+                .max()
+                .rename("target")
+                .reset_index()
+            )
+            first_innings["target"] = first_innings["target"] + 1
+            prepared = prepared.merge(first_innings, on="match_id", how="left")
+        else:
+            first_innings = (
+                prepared[prepared["inning"] == 1]
+                .groupby("match_id")["runs_total"]
+                .max()
+                .rename("target_derived")
+                .reset_index()
+            )
+            first_innings["target_derived"] = first_innings["target_derived"] + 1
+            prepared = prepared.merge(first_innings, on="match_id", how="left")
+            if "target_derived" in prepared.columns:
+                prepared["target"] = prepared["target"].fillna(prepared["target_derived"])
+                prepared = prepared.drop(columns=["target_derived"])
+
+        if "venue" not in prepared.columns:
+            prepared["venue"] = ""
+
+        second_innings = prepared[prepared["inning"] == 2].copy()
+        if second_innings.empty:
+            raise DataValidationError("No second innings data found for training")
+
+        if second_innings["target"].isna().all():
+            raise DataValidationError("Unable to derive targets for second innings samples")
+
+        second_innings = second_innings.dropna(subset=["target"])
+        features, target = self.prepare_training_data(
+            second_innings[
+                ["match_id", "inning", "over", "ball", "runs_total", "wickets_fallen", "target", "venue"]
+            ]
+        )
+        groups = pd.Series(second_innings["match_id"].iloc[: len(features)].values, name="match_id")
+        return features, target, groups
+
+    def _get_venue_adjustment(self, venue: str) -> float:
+        """Get venue-specific adjustment factor."""
+        venue_adjustments = {
+            'wankhede': 0.15,
+            'eden gardens': 0.12,
+            'chinnaswamy': 0.10,
+            'dyanmond park': 0.08,
+            'punjab cricket': 0.05,
+            'brabourne': 0.06
+        }
+        return venue_adjustments.get(venue.lower(), 0.0)
+
+    def train_model(self, features: pd.DataFrame, target: pd.Series,
+                   test_size: float = 0.2, random_state: int = 42,
+                   match_ids: Optional[List[str]] = None) -> Tuple[Any, Dict[str, Any]]:
+        """
+        Train a logistic regression model for win probability.
+
+        Args:
+            features: Feature DataFrame
+            target: Target series
+            test_size: Fraction of data for testing
+            random_state: Random seed
+            match_ids: Optional list of match IDs per row for grouped split
+
+        Returns:
+            Tuple of (trained_model, training_metrics)
+        """
+        if len(features) != len(target):
+            raise DataValidationError("Features and target must have same length")
+
+        if len(features) < 100:
+            raise DataValidationError("Insufficient training data (minimum 100 samples)")
+
+        # Grouped-by-match split when match_ids provided
+        split_strategy = "grouped_by_match"
+        training_matches: Optional[int] = None
+        if match_ids is not None and len(match_ids) == len(features):
+            unique_ids = list(dict.fromkeys(match_ids))  # preserve order, deduplicate
+            n_test = max(1, int(len(unique_ids) * test_size))
+            rng = np.random.RandomState(random_state)
+            rng.shuffle(unique_ids)
+            test_ids = set(unique_ids[:n_test])
+            train_ids = set(unique_ids[n_test:])
+            mask_train = pd.Series([mid not in test_ids for mid in match_ids], index=features.index)
+            X_train = features[mask_train]
+            X_test = features[~mask_train]
+            y_train = target[mask_train]
+            y_test = target[~mask_train]
+            training_matches = len(train_ids)
+        else:
+            # Split data
+            X_train, X_test, y_train, y_test = train_test_split(
+                features, target, test_size=test_size, random_state=random_state, stratify=target
+            )
+            training_matches = None
+
+        # Scale features
+        X_train_scaled = self.scaler.fit_transform(X_train)
+        X_test_scaled = self.scaler.transform(X_test)
+
+        # Grid search / hyperparameter tuning and Epochs training
+        best_loss = float('inf')
+        best_model = None
+        best_epochs = 50
+        
+        # Test a couple of params (alphas)
+        alphas = [0.0001, 0.001, 0.01]
+        
+        for alpha in alphas:
+            model = SGDClassifier(loss='log_loss', penalty='l2', alpha=alpha,
+                                  random_state=random_state, max_iter=1,
+                                  warm_start=True, learning_rate='optimal')
+            
+            for epoch in range(1, best_epochs + 1):
+                model.partial_fit(X_train_scaled, y_train, classes=np.array([0, 1]))
+                
+                # Evaluate
+                try:
+                    val_pred = model.predict_proba(X_test_scaled)[:, 1]
+                    val_loss = log_loss(y_test, val_pred, labels=[0, 1])
+                except Exception:
+                    val_loss = float('inf')
+                
+                # Checkpoints
+                os.makedirs('checkpoints', exist_ok=True)
+                joblib.dump(model, 'checkpoints/last_checkpoint.pkl')
+                
+                if val_loss < best_loss:
+                    best_loss = val_loss
+                    best_model = copy.deepcopy(model)
+                    joblib.dump(best_model, 'checkpoints/best_model.pkl')
+                    
+        # Use the best model
+        model = best_model
+        
+        # Evaluate final
+        train_pred = model.predict_proba(X_train_scaled)[:, 1]
+        test_pred = model.predict_proba(X_test_scaled)[:, 1]
+
+        # Compute metrics; guard against single-class test sets (small grouped splits)
+        def _safe_log_loss(y_true: Any, y_pred: Any) -> float:
+            try:
+                return log_loss(y_true, y_pred, labels=[0, 1])
+            except ValueError:
+                return float("nan")
+
+        def _safe_auc(y_true: Any, y_pred: Any) -> float:
+            unique_values = pd.Series(y_true).dropna().unique()
+            if len(unique_values) < 2:
+                return float("nan")
+            try:
+                return roc_auc_score(y_true, y_pred)
+            except ValueError:
+                return float("nan")
+
+        metrics = {
+            'train_accuracy': accuracy_score(y_train, train_pred > 0.5),
+            'test_accuracy': accuracy_score(y_test, test_pred > 0.5),
+            'train_log_loss': _safe_log_loss(y_train, train_pred),
+            'test_log_loss': _safe_log_loss(y_test, test_pred),
+            'train_auc': _safe_auc(y_train, train_pred),
+            'test_auc': _safe_auc(y_test, test_pred),
+            'training_samples': len(X_train),
+            'test_samples': len(X_test),
+            'feature_importance': dict(zip(features.columns, model.coef_[0])),
+            'split_strategy': split_strategy,
+            'training_matches': training_matches,
+        }
+
+        class_counts = y_train.value_counts()
+        if len(class_counts) > 1 and int(class_counts.min()) >= 2 and len(X_train) >= 4:
+            try:
+                metrics['cross_val_scores'] = cross_val_score(
+                    model,
+                    X_train_scaled,
+                    y_train,
+                    cv=min(5, len(X_train)),
+                ).tolist()
+            except ValueError:
+                metrics['cross_val_scores'] = []
+        else:
+            metrics['cross_val_scores'] = []
+
+        logger.info(f"Model trained with {metrics['training_samples']} samples")
+        logger.info(f"Test AUC: {metrics['test_auc']:.3f}, Accuracy: {metrics['test_accuracy']:.3f}")
+
+        return model, metrics
+
+    def create_win_predictor(self, trained_model: Any,
+                           training_metrics: Dict[str, Any],
+                           scaler: Optional[StandardScaler] = None) -> WinPredictor:
+        """
+        Convert trained sklearn model to WinPredictor format.
+
+        Args:
+            trained_model: Trained LogisticRegression model
+            training_metrics: Training metrics dictionary
+            scaler: Optional fitted StandardScaler; if None, uses self.scaler
+
+        Returns:
+            WinPredictor instance with trained coefficients
+        """
+        # Extract coefficients
+        if "feature_importance" in training_metrics and isinstance(training_metrics["feature_importance"], dict):
+            coefs = {
+                str(feature): float(value)
+                for feature, value in training_metrics["feature_importance"].items()
+            }
+        else:
+            coefs = dict(zip(self.feature_columns, trained_model.coef_[0]))
+        coefs['intercept'] = trained_model.intercept_[0]
+
+        # Create venue adjustments (could be learned from data in future)
+        venue_adjustments = {
+            "default": 0.0,
+            "wankhede": 0.15,
+            "eden_gardens": 0.12,
+            "chinnaswamy": 0.10,
+            "dyanmond park": 0.08,
+            "punjab cricket": 0.05,
+            "brabourne": 0.06,
+        }
+
+        predictor = WinPredictor(custom_coefs=coefs, venue_adjustments=venue_adjustments)
+
+        # Use explicit scaler if provided, else fall back to self.scaler
+        active_scaler = scaler if scaler is not None else self.scaler
+
+        # Add training metadata
+        predictor.training_metadata = {
+            'trained_at': datetime.now().isoformat(),
+            'metrics': training_metrics,
+            'scaler_mean': active_scaler.mean_.tolist(),
+            'scaler_scale': active_scaler.scale_.tolist(),
+        }
+
+        return predictor
+
+    def train_and_register(self, match_data: pd.DataFrame, model_name: str = "win_predictor") -> str:
+        """
+        Complete training pipeline: prepare data, train model, create predictor, register.
+
+        Args:
+            match_data: Raw match delivery data
+            model_name: Name for the registered model
+
+        Returns:
+            Version string of registered model
+        """
+        logger.info("Starting win probability model training...")
+
+        # Prepare data
+        if "runs_total" not in match_data.columns:
+            features, target, _ = self.prepare_training_dataset(match_data)
+        else:
+            features, target = self.prepare_training_data(match_data)
+
+        # Train model
+        model, metrics = self.train_model(features, target)
+
+        # Create predictor
+        predictor = self.create_win_predictor(model, metrics)
+
+        # Register model
+        registry = get_model_registry()
+        version = registry.register_model(
+            name=model_name,
+            model=predictor,
+            metadata={
+                'type': 'win_probability',
+                'training_date': datetime.now().isoformat(),
+                'metrics': metrics,
+                'data_samples': len(features)
+            }
+        )
+
+        logger.info(f"Successfully trained and registered model: {version}")
+        return version
+
+def retrain_win_probability_model(match_data: pd.DataFrame) -> WinPredictor:
+    """
+    Convenience function to retrain the win probability model.
+
+    Args:
+        match_data: DataFrame with match delivery data
+
+    Returns:
+        Trained WinPredictor instance
+    """
+    trainer = WinProbabilityTrainer()
+    version = trainer.train_and_register(match_data)
+    registry = get_model_registry()
+    return registry.get_model("win_predictor", version)
+
+__all__ = [
+    'WinProbabilityTrainer',
+    'retrain_win_probability_model'
+]

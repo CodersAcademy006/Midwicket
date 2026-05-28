@@ -6,11 +6,11 @@ import importlib
 import requests
 import pytest
 
-from pypitch.data.loader import DataLoader
+from midwicket.data.loader import DataLoader
 
 
 def _reload_loader_module():
-    import pypitch.data.loader as loader_mod
+    import midwicket.data.loader as loader_mod
     return importlib.reload(loader_mod)
 
 
@@ -38,7 +38,7 @@ def test_download_retries_then_succeeds(monkeypatch, tmp_path):
             raise requests.exceptions.ConnectionError("transient network error")
         return _FakeResponse([b"1234"])
 
-    monkeypatch.setattr("pypitch.data.loader.requests.get", _fake_get)
+    monkeypatch.setattr("midwicket.data.loader.requests.get", _fake_get)
     monkeypatch.setattr(DataLoader, "_extract", lambda self: None)
 
     loader = DataLoader(str(tmp_path))
@@ -53,7 +53,7 @@ def test_download_exhausted_retries_raises(monkeypatch, tmp_path):
         del url, stream, timeout
         raise requests.exceptions.Timeout("network timeout")
 
-    monkeypatch.setattr("pypitch.data.loader.requests.get", _always_fail)
+    monkeypatch.setattr("midwicket.data.loader.requests.get", _always_fail)
     monkeypatch.setattr(DataLoader, "_extract", lambda self: None)
 
     loader = DataLoader(str(tmp_path))
@@ -64,9 +64,9 @@ def test_download_exhausted_retries_raises(monkeypatch, tmp_path):
 
 
 def test_loader_invalid_int_env_values_fall_back(monkeypatch):
-    monkeypatch.setenv("PYPITCH_DOWNLOAD_TIMEOUT", "not-int")
-    monkeypatch.setenv("PYPITCH_EXTRACT_TIMEOUT", "0")
-    monkeypatch.setenv("PYPITCH_DOWNLOAD_RETRIES", "-3")
+    monkeypatch.setenv("MIDWICKET_DOWNLOAD_TIMEOUT", "not-int")
+    monkeypatch.setenv("MIDWICKET_EXTRACT_TIMEOUT", "0")
+    monkeypatch.setenv("MIDWICKET_DOWNLOAD_RETRIES", "-3")
 
     loader_mod = _reload_loader_module()
 
@@ -76,8 +76,8 @@ def test_loader_invalid_int_env_values_fall_back(monkeypatch):
 
 
 def test_loader_invalid_float_env_values_fall_back(monkeypatch):
-    monkeypatch.setenv("PYPITCH_DOWNLOAD_RETRY_BACKOFF_BASE", "not-float")
-    monkeypatch.setenv("PYPITCH_DOWNLOAD_RETRY_BACKOFF_MAX", "-1")
+    monkeypatch.setenv("MIDWICKET_DOWNLOAD_RETRY_BACKOFF_BASE", "not-float")
+    monkeypatch.setenv("MIDWICKET_DOWNLOAD_RETRY_BACKOFF_MAX", "-1")
 
     loader_mod = _reload_loader_module()
 

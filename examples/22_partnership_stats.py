@@ -5,10 +5,10 @@ This script demonstrates ADVANCED SQL Window Functions to calculate partnerships
 It identifies partnerships by tracking cumulative wickets within an inning.
 """
 
-from pypitch.api.session import PyPitchSession
+from midwicket.api.session import MidwicketSession
 
 def main():
-    session = PyPitchSession.get()
+    session = MidwicketSession.get()
     
     # 1. Calculate Partnership ID for every ball
     # 2. Aggregate by Partnership ID

@@ -1,6 +1,6 @@
 # System Agents & Actors
 
-This document defines the core **Agents** (active system components) responsible for the lifecycle of a query in `pypitch`. 
+This document defines the core **Agents** (active system components) responsible for the lifecycle of a query in `midwicket`. 
 
 **Philosophy:** - Agents are **specialized**: The Storage Agent does not compute math; the Compute Agent does not touch disk.
 - Agents are **contract-bound**: They communicate exclusively via Schema V1 and Query Objects.
@@ -8,7 +8,7 @@ This document defines the core **Agents** (active system components) responsible
 ---
 
 ## 1. The Gatekeeper (Runtime Executor)
-**Codepath:** `pypitch.runtime.executor.Executor`
+**Codepath:** `midwicket.runtime.executor.Executor`
 
 The Gatekeeper is the single entry point for all data retrieval. It is the only component allowed to coordinate between the Cache, the Planner, and the Storage Engine.
 
@@ -25,7 +25,7 @@ The Gatekeeper is the single entry point for all data retrieval. It is the only 
 ---
 
 ## 2. The Planner (Query Optimizer)
-**Codepath:** `pypitch.runtime.planner.QueryPlanner`
+**Codepath:** `midwicket.runtime.planner.QueryPlanner`
 
 The Planner analyzes the **Intent** (Query Object) and decides the most efficient execution strategy based on the **Context** (Available Snapshots & Derived Tables).
 
@@ -43,7 +43,7 @@ The Planner analyzes the **Intent** (Query Object) and decides the most efficien
 ---
 
 ## 3. The Archivist (Storage Engine)
-**Codepath:** `pypitch.storage.engine.StorageEngine`
+**Codepath:** `midwicket.storage.engine.StorageEngine`
 
 The Archivist manages the physical persistence layer (DuckDB/Parquet). It is the guardian of the **Schema V1 Contract**.
 
@@ -59,7 +59,7 @@ The Archivist manages the physical persistence layer (DuckDB/Parquet). It is the
 ---
 
 ## 4. The Identity Manager (Registry)
-**Codepath:** `pypitch.storage.registry.IdentityRegistry`
+**Codepath:** `midwicket.storage.registry.IdentityRegistry`
 
 The Identity Manager handles the complexity of "Time-Aware Identity." It ensures that entities (Players, Teams, Venues) remain consistent across decades of data.
 
@@ -75,13 +75,13 @@ The Identity Manager handles the complexity of "Time-Aware Identity." It ensures
 ---
 
 ## 5. The Analyst (Compute Engine)
-**Codepath:** `pypitch.compute`
+**Codepath:** `midwicket.compute`
 
 The Analyst contains the pure mathematical logic. It is divided into **Builders** (who create tables) and **Calculators** (who produce metrics).
 
 ### Responsibilities
-* **Derived Builders:** `pypitch.compute.derived` - Transforms Raw Events into optimized tables (e.g., `PhaseStats`).
-* **Metric Calculators:** `pypitch.compute.metrics` - Pure functions that take tables and return scalars (e.g., `calculate_impact_score`).
+* **Derived Builders:** `midwicket.compute.derived` - Transforms Raw Events into optimized tables (e.g., `PhaseStats`).
+* **Metric Calculators:** `midwicket.compute.metrics` - Pure functions that take tables and return scalars (e.g., `calculate_impact_score`).
 
 ### Strict Rules
 1.  **Pure Functions Only:** Calculators must not access the database or cache. Input -> Math -> Output.

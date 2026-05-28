@@ -1,4 +1,4 @@
-# Minimal Prometheus configuration for PyPitch
+# Minimal Prometheus configuration for Midwicket
 # Extend this file as your monitoring needs grow.
 
 global:
@@ -10,9 +10,9 @@ scrape_configs:
     static_configs:
       - targets: ["localhost:9090"]
 
-  - job_name: "pypitch-api"
+  - job_name: "midwicket-api"
     static_configs:
-      - targets: ["pypitch-api:8000"]
+      - targets: ["midwicket-api:8000"]
     metrics_path: /metrics
-    # If API key auth is enabled, set bearer_token to one key listed in PYPITCH_API_KEYS.
+    # If API key auth is enabled, set bearer_token to one key listed in MIDWICKET_API_KEYS.
     # bearer_token: "replace-with-one-api-key"

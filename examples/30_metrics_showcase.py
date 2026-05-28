@@ -1,7 +1,7 @@
 """
 30_metrics_showcase.py — Pure Compute Metrics (no database required)
 
-All functions in pypitch.compute.metrics operate on PyArrow arrays.
+All functions in midwicket.compute.metrics operate on PyArrow arrays.
 This script builds synthetic data and exercises every metric family:
   - Batting  (strike rate, impact score)
   - Bowling  (economy, pressure index)
@@ -16,26 +16,26 @@ import pyarrow as pa
 import pyarrow.compute as pc
 
 # Batting
-from pypitch.compute.metrics.batting import (
+from midwicket.compute.metrics.batting import (
     calculate_strike_rate,
     calculate_impact_score,
 )
 
 # Bowling
-from pypitch.compute.metrics.bowling import (
+from midwicket.compute.metrics.bowling import (
     calculate_economy,
     calculate_pressure_index,
 )
 
 # Partnership
-from pypitch.compute.metrics.partnership import (
+from midwicket.compute.metrics.partnership import (
     calculate_partnership_run_rate,
     calculate_partnership_contribution,
     calculate_partnership_runs,
 )
 
 # Team
-from pypitch.compute.metrics.team import (
+from midwicket.compute.metrics.team import (
     calculate_team_win_rate,
     calculate_team_run_rate,
     calculate_average_first_innings_score,
@@ -49,7 +49,7 @@ def section(title: str) -> None:
 
 
 def main() -> None:
-    print("PyPitch Metrics Showcase — synthetic data demo")
+    print("Midwicket Metrics Showcase — synthetic data demo")
 
     # ------------------------------------------------------------------
     # Batting

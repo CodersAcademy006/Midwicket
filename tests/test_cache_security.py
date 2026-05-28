@@ -1,11 +1,11 @@
 """
-Tests for pypitch.runtime.cache_duckdb — verifies that pickle has been
+Tests for midwicket.runtime.cache_duckdb — verifies that pickle has been
 removed and that the JSON + Arrow IPC serialization works correctly.
 """
 
 import pytest
 import pyarrow as pa
-from pypitch.runtime.cache_duckdb import DuckDBCache
+from midwicket.runtime.cache_duckdb import DuckDBCache
 
 
 @pytest.fixture
@@ -57,7 +57,7 @@ class TestCacheNoPickle:
         """Verify that the pickle module is not imported in cache_duckdb.py."""
         import ast
         import inspect
-        import pypitch.runtime.cache_duckdb as mod
+        import midwicket.runtime.cache_duckdb as mod
         source = inspect.getsource(mod)
         tree = ast.parse(source)
         for node in ast.walk(tree):

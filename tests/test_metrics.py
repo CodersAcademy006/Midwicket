@@ -8,19 +8,19 @@ import pyarrow as pa
 import pyarrow.compute as pc
 
 # ── Batting ──────────────────────────────────────────────────────────────────
-from pypitch.compute.metrics.batting import calculate_strike_rate
+from midwicket.compute.metrics.batting import calculate_strike_rate
 
 # ── Bowling ───────────────────────────────────────────────────────────────────
-from pypitch.compute.metrics.bowling import calculate_economy, calculate_pressure_index
+from midwicket.compute.metrics.bowling import calculate_economy, calculate_pressure_index
 
 # ── Partnership ───────────────────────────────────────────────────────────────
-from pypitch.compute.metrics.partnership import (
+from midwicket.compute.metrics.partnership import (
     calculate_partnership_run_rate,
     calculate_partnership_contribution,
 )
 
 # ── Team ──────────────────────────────────────────────────────────────────────
-from pypitch.compute.metrics.team import calculate_team_win_rate, calculate_team_run_rate
+from midwicket.compute.metrics.team import calculate_team_win_rate, calculate_team_run_rate
 
 
 # ---------------------------------------------------------------------------

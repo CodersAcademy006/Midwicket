@@ -4,10 +4,10 @@
 This script compares batting performance in the 1st vs 2nd innings.
 """
 
-from pypitch.api.session import PyPitchSession
+from midwicket.api.session import MidwicketSession
 
 def main():
-    session = PyPitchSession.get()
+    session = MidwicketSession.get()
     
     sql = """
     SELECT 

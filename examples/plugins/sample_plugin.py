@@ -1,22 +1,22 @@
 """
-Sample PyPitch plugin — demonstrates the full plugin contract.
+Sample Midwicket plugin — demonstrates the full plugin contract.
 
 To load this plugin:
-    export PYPITCH_PLUGIN_ALLOWLIST=examples.plugins.sample_plugin
-    export PYPITCH_PLUGINS=sample:examples.plugins.sample_plugin
+    export MIDWICKET_PLUGIN_ALLOWLIST=examples.plugins.sample_plugin
+    export MIDWICKET_PLUGINS=sample:examples.plugins.sample_plugin
 
 Or load it directly in code:
 
-    from pypitch.api.plugins import PluginManager, PluginSpec
+    from midwicket.api.plugins import PluginManager, PluginSpec
     import os
 
-    os.environ["PYPITCH_PLUGIN_ALLOWLIST"] = "examples.plugins.sample_plugin"
+    os.environ["MIDWICKET_PLUGIN_ALLOWLIST"] = "examples.plugins.sample_plugin"
     manager = PluginManager()
     spec = PluginSpec(
         name="sample",
         entry_point="examples.plugins.sample_plugin",
         version="1.0.0",
-        description="Example plugin for PyPitch",
+        description="Example plugin for Midwicket",
     )
     manager.load_plugin(spec)
     strike_rate_fn = manager.get_metric("strike_rate")

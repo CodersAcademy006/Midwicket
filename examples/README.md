@@ -1,6 +1,6 @@
-# PyPitch Examples
+# Midwicket Examples
 
-This folder contains 36 example scripts covering every layer of `pypitch`,
+This folder contains 36 example scripts covering every layer of `midwicket`,
 from one-liner express usage to raw SQL and live broadcasting overlays.
 
 ## Quick Start
@@ -37,14 +37,14 @@ python examples/01_setup_data.py
 | Script | What it shows |
 |:---|:---|
 | `31_live_overlay_demo.py` | OBS Browser Source overlay — push live stats to an HTTP endpoint |
-| `32_client_sdk.py` | REST client SDK — connect to a running PyPitch API server |
+| `32_client_sdk.py` | REST client SDK — connect to a running Midwicket API server |
 
 ### Foundation (requires `01_setup_data.py` first)
 
 | Script | What it shows |
 |:---|:---|
 | `01_setup_data.py` | Download and ingest IPL dataset |
-| `02_basic_session.py` | Initialize `PyPitchSession` |
+| `02_basic_session.py` | Initialize `MidwicketSession` |
 | `03_player_lookup.py` | Resolve player names to IDs |
 | `04_venue_lookup.py` | Resolve venue names to IDs |
 | `05_batter_vs_bowler.py` | Basic matchup analysis |

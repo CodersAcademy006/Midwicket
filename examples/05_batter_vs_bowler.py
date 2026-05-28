@@ -5,7 +5,7 @@ This script demonstrates the high-level `matchup` API to analyze
 Head-to-Head records between a batter and a bowler.
 """
 
-from pypitch.api.stats import matchup
+from midwicket.api.stats import matchup
 
 def main():
     batter = "V Kohli"

@@ -140,7 +140,7 @@ data/*.duckdb
 data/*.duckdb.wal
 data/cache.duckdb
 data/registry.duckdb
-data/pypitch.duckdb
+data/midwicket.duckdb
 data/bundled/
 data/raw/
 data/*.zip
@@ -149,7 +149,7 @@ registry.sqlite
 
 # Runtime state
 data/.schema_version
-.pypitch_dev_secret
+.midwicket_dev_secret
 .schema_version
 fix.md
 

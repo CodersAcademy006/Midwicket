@@ -7,11 +7,11 @@ Uses engine.raw_connection() for the ATTACH + JOIN pattern.
 Prerequisites: run 03_ingest_world.py first to populate data.
 """
 
-from pypitch.api.session import PyPitchSession
+from midwicket.api.session import MidwicketSession
 
 
 def main():
-    session = PyPitchSession.get()
+    session = MidwicketSession.get()
 
     registry_path = session.registry_path.replace("\\", "/")
     venue_name = "Wankhede Stadium"

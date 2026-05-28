@@ -8,8 +8,8 @@ Prerequisites: run 03_ingest_world.py first.
 """
 
 from datetime import date
-from pypitch.api.session import get_executor, get_registry
-from pypitch.query.defs import MatchupQuery
+from midwicket.api.session import get_executor, get_registry
+from midwicket.query.defs import MatchupQuery
 
 
 def main():

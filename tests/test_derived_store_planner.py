@@ -2,12 +2,12 @@
 
 from typing import Any, Dict
 
-from pypitch.compute.derived.store import DerivedStore
-from pypitch.query.base import BaseQuery
-from pypitch.runtime.cache_duckdb import DuckDBCache
-from pypitch.runtime.executor import RuntimeExecutor
-from pypitch.runtime.planner import QueryPlanner
-from pypitch.storage.engine import QueryEngine
+from midwicket.compute.derived.store import DerivedStore
+from midwicket.query.base import BaseQuery
+from midwicket.runtime.cache_duckdb import DuckDBCache
+from midwicket.runtime.executor import RuntimeExecutor
+from midwicket.runtime.planner import QueryPlanner
+from midwicket.storage.engine import QueryEngine
 
 
 class _VenueBaselineQuery(BaseQuery):

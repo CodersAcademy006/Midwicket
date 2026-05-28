@@ -1,10 +1,10 @@
 """
-32_client_sdk.py — PyPitch REST Client SDK
+32_client_sdk.py — Midwicket REST Client SDK
 
-Demonstrates the PyPitchClient — a thin HTTP wrapper for the PyPitch
+Demonstrates the MidwicketClient — a thin HTTP wrapper for the Midwicket
 API server. Run the server first with:
 
-    uvicorn pypitch.serve.api:app --reload   # requires 'serve' extra
+    uvicorn midwicket.serve.api:app --reload   # requires 'serve' extra
 
 Usage:
     python examples/32_client_sdk.py
@@ -16,13 +16,13 @@ import sys
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
 
-from pypitch.client import PyPitchClient, connect, quick_health_check
+from midwicket.client import MidwicketClient, connect, quick_health_check
 
 SERVER_URL = "http://localhost:8000"
 
 
 def main() -> None:
-    print("PyPitch Client SDK Demo")
+    print("Midwicket Client SDK Demo")
     print("=" * 45)
     print(f"Target server: {SERVER_URL}\n")
 
@@ -34,8 +34,8 @@ def main() -> None:
 
     if not healthy:
         print("\nServer is offline. Start it with:")
-        print("  pip install 'pypitch[serve]'")
-        print("  uvicorn pypitch.serve.api:app --reload")
+        print("  pip install 'midwicket[serve]'")
+        print("  uvicorn midwicket.serve.api:app --reload")
         print("\nShowing client API surface only (no live calls).")
 
     # ------------------------------------------------------------------

@@ -4,12 +4,12 @@ from datetime import date
 import time
 
 # Import our Stack
-from pypitch.storage.engine import QueryEngine
-from pypitch.storage.registry import IdentityRegistry
-from pypitch.core.canonicalize import canonicalize_match
-from pypitch.runtime.executor import RuntimeExecutor
-from pypitch.runtime.cache_duckdb import DuckDBCache
-from pypitch.query.defs import MatchupQuery
+from midwicket.storage.engine import QueryEngine
+from midwicket.storage.registry import IdentityRegistry
+from midwicket.core.canonicalize import canonicalize_match
+from midwicket.runtime.executor import RuntimeExecutor
+from midwicket.runtime.cache_duckdb import DuckDBCache
+from midwicket.query.defs import MatchupQuery
 
 class TestRobustness(unittest.TestCase):
     
