@@ -5,7 +5,7 @@ Monitoring and metrics collection for Midwicket API.
 import time
 import threading
 from typing import Any, Optional
-from collections import defaultdict
+from collections import defaultdict, deque
 import psutil
 import logging
 import os
@@ -16,7 +16,7 @@ class MetricsCollector:
     """Collects and stores API metrics."""
 
     def __init__(self, disk_path: Optional[str] = None) -> None:
-        self.metrics: dict = defaultdict(list)
+        self.metrics: dict = defaultdict(deque)
         self.lock = threading.Lock()
         self.max_metrics_age = 3600  # Keep metrics for 1 hour
         
@@ -155,7 +155,8 @@ class MetricsCollector:
         """Remove metrics older than max_metrics_age."""
         cutoff = time.time() - self.max_metrics_age
         for metric_list in self.metrics.values():
-            metric_list[:] = [m for m in metric_list if m['timestamp'] > cutoff]
+            while metric_list and metric_list[0]['timestamp'] <= cutoff:
+                metric_list.popleft()
 
 # Prime the psutil CPU counter so subsequent non-blocking calls return a useful
 # value rather than 0.0.  This single blocking call happens once at import time,

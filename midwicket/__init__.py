@@ -1,5 +1,10 @@
 """
-Midwicket (formerly Midwicket) — The Open Source Cricket Intelligence SDK.
+Midwicket — The Advanced Open-Source Cricket Intelligence SDK.
+
+Midwicket is a high-performance cricket intelligence platform engineered for deep analytics,
+statistical modeling, and robust data serving. Built on a modern data stack featuring
+DuckDB, PyArrow, and FastAPI, it empowers developers, analysts, and enthusiasts with
+blazingly fast insights and seamless API integrations.
 
 Quick start::
 

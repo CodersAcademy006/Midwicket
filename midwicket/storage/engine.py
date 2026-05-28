@@ -144,10 +144,10 @@ class QueryEngine:
 
             try:
                 if not read_only:
-                    con.execute(sql, params)
+                    result = con.execute(sql, params).arrow()
                     if _has_timed_out():
                         raise TimeoutError(f"Query timed out after {timeout}s")
-                    return pa.Table.from_pylist([])  # empty table for non-select queries
+                    return result
 
                 result = con.execute(sql, params).arrow()
                 # Ensure we return a Table, not a RecordBatchReader

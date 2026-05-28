@@ -61,11 +61,7 @@ class ConnectionPool:
         """Check if a connection is still valid."""
         if time.time() - conn_info['last_used'] > self.max_idle_time:
             return False
-        try:
-            conn_info['connection'].execute("SELECT 1")
-            return True
-        except Exception:
-            return False
+        return True
 
     def _cleanup_invalid_connections(self) -> None:
         """Clean up invalid idle connections."""

@@ -606,18 +606,18 @@ class MidwicketAPI:
         # Bind this path to the MIDWICKET_ALLOWED_HOSTS guard but not to auth so
         # that container orchestrators can probe liveness without an API key.
         @self.app.get("/_internal/health", include_in_schema=False)
-        async def internal_health():
+        def internal_health():
             """Unauthenticated liveness probe for orchestrators."""
             return {"status": "ok"}
 
         # ── Kubernetes probes (no auth required) ─────────────────────────────
         @self.app.get("/live", include_in_schema=False)
-        async def liveness_probe():
+        def liveness_probe():
             """Liveness probe — 200 if process is alive (no DB check)."""
             return {"status": "alive"}
 
         @self.app.get("/ready", include_in_schema=False)
-        async def readiness_probe():
+        def readiness_probe():
             """Readiness probe — 200 when DB pool is healthy and model is loaded."""
             errors: List[str] = []
             try:
@@ -632,13 +632,13 @@ class MidwicketAPI:
             return {"status": "ready"}
 
         @self.app.get("/v1/ready", include_in_schema=False)
-        async def readiness_probe_v1():
+        def readiness_probe_v1():
             """Versioned readiness probe alias."""
             return await readiness_probe()
 
         # ── Prometheus scrape endpoint ────────────────────────────────────────
         @self.app.get("/metrics", include_in_schema=False)
-        async def prometheus_metrics():
+        def prometheus_metrics():
             """Prometheus text-format metrics scrape endpoint."""
             return Response(
                 content=generate_prometheus_metrics(),
@@ -646,7 +646,7 @@ class MidwicketAPI:
             )
 
         @self.app.get("/")
-        async def root(authenticated: bool = Depends(verify_api_key)):
+        def root(authenticated: bool = Depends(verify_api_key)):
             """API root with available endpoints."""
             return {
                 "message": "Midwicket API is running",
@@ -664,7 +664,7 @@ class MidwicketAPI:
             }
 
         @self.app.get("/v1/health")
-        async def health_check_v1(authenticated: bool = Depends(verify_api_key)):
+        def health_check_v1(authenticated: bool = Depends(verify_api_key)):
             """Health check endpoint (v1)."""
             try:
                 # Check database connectivity
@@ -689,12 +689,12 @@ class MidwicketAPI:
 
         # Keep the old endpoint for backward compatibility
         @self.app.get("/health")
-        async def health_check_legacy(authenticated: bool = Depends(verify_api_key)):
+        def health_check_legacy(authenticated: bool = Depends(verify_api_key)):
             """Health check endpoint (legacy)."""
             return await health_check_v1()
 
         @self.app.get("/v1/metrics")
-        async def get_metrics(authenticated: bool = Depends(verify_api_key)):
+        def get_metrics(authenticated: bool = Depends(verify_api_key)):
             """Get API and system metrics."""
 
             api_metrics = metrics_collector.get_api_metrics()
@@ -707,7 +707,7 @@ class MidwicketAPI:
             }
 
         @self.app.get("/matches")
-        async def list_matches(
+        def list_matches(
             date_from: Optional[_date_type] = Query(None, description="Filter matches on or after this date (YYYY-MM-DD)"),
             date_to: Optional[_date_type] = Query(None, description="Filter matches on or before this date (YYYY-MM-DD)"),
             venue: Optional[str] = Query(None, max_length=100, description="Filter by venue name"),
@@ -788,7 +788,7 @@ class MidwicketAPI:
                 raise HTTPException(status_code=500, detail="Internal server error")
 
         @self.app.get("/matches/{match_id}")
-        async def get_match(match_id: str, authenticated: bool = Depends(verify_api_key)):
+        def get_match(match_id: str, authenticated: bool = Depends(verify_api_key)):
             """Get details for a specific match."""
             try:
                 self.session.load_match(match_id)
@@ -814,7 +814,7 @@ class MidwicketAPI:
                 raise HTTPException(status_code=404, detail="Match not found")
 
         @self.app.get("/teams/{team_id}")
-        async def get_team_stats(team_id: str, authenticated: bool = Depends(verify_api_key)):
+        def get_team_stats(team_id: str, authenticated: bool = Depends(verify_api_key)):
             """Get statistics for a specific team."""
             try:
                 result = self.session.engine.execute_sql(
@@ -842,7 +842,7 @@ class MidwicketAPI:
 
         # ── FEAT-04: Audit log reader (admin) ────────────────────────────────
         @self.app.get("/v1/audit")
-        async def get_audit_log(
+        def get_audit_log(
             request: Request,
             limit: int = Query(100, ge=1, le=1000, description="Maximum rows to return"),
             authenticated: bool = Depends(verify_api_key),
@@ -892,7 +892,7 @@ class MidwicketAPI:
                 raise HTTPException(status_code=500, detail="Internal server error")
 
         @self.app.get("/players/{player_id}")
-        async def get_player_stats(player_id: int, authenticated: bool = Depends(verify_api_key)):
+        def get_player_stats(player_id: int, authenticated: bool = Depends(verify_api_key)):
             """Get statistics for a specific player."""
             try:
                 stats = self.session.registry.get_player_stats(player_id)
@@ -906,7 +906,7 @@ class MidwicketAPI:
                 raise HTTPException(status_code=500, detail="Internal server error")
 
         @self.app.get("/win_probability")
-        async def win_probability(
+        def win_probability(
             target: int = Query(150, gt=0, le=720, description="Target score (1-720)"),
             current_runs: int = Query(50, ge=0, le=720, description="Runs scored so far"),
             wickets_down: int = Query(2, ge=0, le=10, description="Wickets fallen (0-10)"),
@@ -936,7 +936,7 @@ class MidwicketAPI:
 
 
         @self.app.get("/v1/export")
-        async def bulk_export(
+        def bulk_export(
             request: Request,
             table: str = Query("ball_events", description="Table to export"),
             limit: int = Query(10000, le=100000, description="Max rows to export"),
@@ -976,7 +976,7 @@ class MidwicketAPI:
                 raise HTTPException(status_code=500, detail="Export failed")
 
         @self.app.post("/analyze")
-        async def custom_analysis(request: Request, query: Dict[str, Any], authenticated: bool = Depends(verify_api_key)):
+        def custom_analysis(request: Request, query: Dict[str, Any], authenticated: bool = Depends(verify_api_key)):
             """Run a read-only SELECT query against ball_events."""
             import os as _os
             from midwicket.serve.sql_guard import validate_read_only_query, check_query_plan, SQLValidationError
@@ -1083,7 +1083,7 @@ class MidwicketAPI:
                 raise HTTPException(status_code=500, detail="Query execution failed")
 
         @self.app.post("/live/register")
-        async def register_live_match(
+        def register_live_match(
             request: LiveMatchRegistration,
             authenticated: bool = Depends(verify_api_key),
         ):
@@ -1107,7 +1107,7 @@ class MidwicketAPI:
                 raise HTTPException(status_code=500, detail="Internal server error")
 
         @self.app.post("/live/ingest")
-        async def ingest_delivery(
+        def ingest_delivery(
             data: DeliveryData,
             authenticated: bool = Depends(verify_api_key),
         ):
@@ -1137,7 +1137,7 @@ class MidwicketAPI:
                 raise HTTPException(status_code=500, detail="Internal server error")
 
         @self.app.get("/live/matches")
-        async def get_live_matches(authenticated: bool = Depends(verify_api_key)):
+        def get_live_matches(authenticated: bool = Depends(verify_api_key)):
             """Get list of currently live matches."""
             try:
                 if self.ingestor is None:
@@ -1154,7 +1154,7 @@ class MidwicketAPI:
         # ------------------------------------------------------------------
 
         @self.app.get("/v1/players/{player_name}/batting")
-        async def player_batting(
+        def player_batting(
             player_name: str,
             authenticated: bool = Depends(verify_api_key),
         ):
@@ -1183,7 +1183,7 @@ class MidwicketAPI:
                 raise HTTPException(status_code=500, detail="Internal server error")
 
         @self.app.get("/v1/players/{player_name}/bowling")
-        async def player_bowling(
+        def player_bowling(
             player_name: str,
             authenticated: bool = Depends(verify_api_key),
         ):
@@ -1205,7 +1205,7 @@ class MidwicketAPI:
                 raise HTTPException(status_code=500, detail="Internal server error")
 
         @self.app.get("/v1/players/{player_name}/milestones")
-        async def player_milestones(
+        def player_milestones(
             player_name: str,
             authenticated: bool = Depends(verify_api_key),
         ):
@@ -1226,7 +1226,7 @@ class MidwicketAPI:
                 raise HTTPException(status_code=500, detail="Internal server error")
 
         @self.app.get("/v1/players/{player_name}/fantasy")
-        async def player_fantasy(
+        def player_fantasy(
             player_name: str,
             season: Optional[str] = None,
             authenticated: bool = Depends(verify_api_key),
@@ -1240,7 +1240,7 @@ class MidwicketAPI:
                 raise HTTPException(status_code=500, detail="Internal server error")
 
         @self.app.get("/v1/venues/{venue_name}/fantasy")
-        async def venue_fantasy(
+        def venue_fantasy(
             venue_name: str,
             authenticated: bool = Depends(verify_api_key),
         ):
@@ -1259,7 +1259,7 @@ class MidwicketAPI:
                 raise HTTPException(status_code=500, detail="Internal server error")
 
         @self.app.get("/v1/players/{player_name}/vs-team/{team_name}")
-        async def player_vs_team(
+        def player_vs_team(
             player_name: str,
             team_name: str,
             authenticated: bool = Depends(verify_api_key),
@@ -1282,7 +1282,7 @@ class MidwicketAPI:
                 raise HTTPException(status_code=500, detail="Internal server error")
 
         @self.app.get("/v1/players/compare")
-        async def compare_players_endpoint(
+        def compare_players_endpoint(
             p1: str = Query(..., max_length=100),
             p2: str = Query(..., max_length=100),
             authenticated: bool = Depends(verify_api_key),
@@ -1300,7 +1300,7 @@ class MidwicketAPI:
         # ------------------------------------------------------------------
 
         @self.app.get("/v1/players/resolve")
-        async def resolve_player(
+        def resolve_player(
             name: str = Query(..., description="Player name as stored in registry"),
             match_date: _date_type = Query(
                 ...,
@@ -1325,7 +1325,7 @@ class MidwicketAPI:
             return self.lookup_player(req)
 
         @self.app.get("/v1/venues/resolve")
-        async def resolve_venue(
+        def resolve_venue(
             name: str = Query(..., description="Venue name as stored in registry"),
             match_date: _date_type = Query(
                 ...,
@@ -1346,7 +1346,7 @@ class MidwicketAPI:
 
         # ── FEAT-06: Player search / autocomplete ────────────────────────────
         @self.app.get("/v1/players/search")
-        async def search_players(
+        def search_players(
             q: str = Query(..., min_length=1, max_length=100, description="Name prefix or substring"),
             limit: int = Query(10, ge=1, le=50, description="Maximum results"),
             authenticated: bool = Depends(verify_api_key),
@@ -1373,7 +1373,7 @@ class MidwicketAPI:
 
         # ── FEAT-07: Venue browse ─────────────────────────────────────────────
         @self.app.get("/v1/venues")
-        async def list_venues(
+        def list_venues(
             page: int = Query(1, ge=1, description="Page number"),
             page_size: int = Query(50, ge=1, le=200, description="Results per page"),
             authenticated: bool = Depends(verify_api_key),
@@ -1407,7 +1407,7 @@ class MidwicketAPI:
                 raise HTTPException(status_code=500, detail="Internal server error")
 
         @self.app.get("/v1/venues/{venue_id}")
-        async def get_venue(
+        def get_venue(
             venue_id: int,
             authenticated: bool = Depends(verify_api_key),
         ):
@@ -1433,7 +1433,7 @@ class MidwicketAPI:
                 raise HTTPException(status_code=500, detail="Internal server error")
 
         @self.app.get("/v1/matchup")
-        async def matchup_stats(
+        def matchup_stats(
             batter: str = Query(..., description="Batter name"),
             bowler: str = Query(..., description="Bowler name"),
             match_date: _date_type = Query(
@@ -1459,7 +1459,7 @@ class MidwicketAPI:
             return self.get_matchup_stats(req)
 
         @self.app.get("/v1/players/leaderboard/batting")
-        async def batting_leaderboard_endpoint(
+        def batting_leaderboard_endpoint(
             sort_by: str = "runs",
             top_n: int = 10,
             min_balls: int = 30,
@@ -1474,7 +1474,7 @@ class MidwicketAPI:
                 raise HTTPException(status_code=500, detail="Internal server error")
 
         @self.app.get("/v1/players/leaderboard/bowling")
-        async def bowling_leaderboard_endpoint(
+        def bowling_leaderboard_endpoint(
             sort_by: str = "wickets",
             top_n: int = 10,
             min_balls: int = 30,

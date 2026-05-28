@@ -107,98 +107,6 @@ class RateLimiter:
             self._cleanup_old_keys(window_start)
 
 
-class DuckDBRateLimiter:
-    """DuckDB-backed sliding-window limiter shared across worker processes."""
-
-    def __init__(self, requests_per_minute: int = 60, db_path: str | None = None):
-        import duckdb
-
-        self.requests_per_minute = requests_per_minute
-        target_path = Path(db_path) if db_path else (DEFAULT_DATA_DIR / "rate_limit.duckdb")
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        self.db_path = str(target_path)
-        self.con = duckdb.connect(self.db_path)
-        self.lock = threading.Lock()
-
-        with self.lock:
-            self.con.execute(
-                """
-                CREATE TABLE IF NOT EXISTS rate_limit_events (
-                    client_key VARCHAR,
-                    ts DOUBLE
-                )
-                """
-            )
-            self.con.execute(
-                "CREATE INDEX IF NOT EXISTS idx_rate_limit_key_ts ON rate_limit_events(client_key, ts)"
-            )
-
-    def _cleanup_old_requests(self, key: str, window_start: float) -> None:
-        self.con.execute(
-            "DELETE FROM rate_limit_events WHERE client_key = ? AND ts <= ?",
-            [key, window_start],
-        )
-
-    def _cleanup_old_keys(self, window_start: float) -> None:
-        self.con.execute("DELETE FROM rate_limit_events WHERE ts <= ?", [window_start])
-
-    def is_allowed(self, key: str) -> bool:
-        now = time.time()
-        window_start = now - 60
-
-        with self.lock:
-            self._cleanup_old_requests(key, window_start)
-            count_row = self.con.execute(
-                "SELECT COUNT(*) FROM rate_limit_events WHERE client_key = ?",
-                [key],
-            ).fetchone()
-            current_count = count_row[0] if count_row else 0
-
-            if current_count < self.requests_per_minute:
-                self.con.execute(
-                    "INSERT INTO rate_limit_events(client_key, ts) VALUES (?, ?)",
-                    [key, now],
-                )
-                return True
-            return False
-
-    def get_remaining_requests(self, key: str) -> int:
-        now = time.time()
-        window_start = now - 60
-
-        with self.lock:
-            self._cleanup_old_requests(key, window_start)
-            count_row = self.con.execute(
-                "SELECT COUNT(*) FROM rate_limit_events WHERE client_key = ?",
-                [key],
-            ).fetchone()
-            current_count = count_row[0] if count_row else 0
-            return max(0, self.requests_per_minute - current_count)
-
-    def get_reset_time(self, key: str) -> float:
-        now = time.time()
-        window_start = now - 60
-
-        with self.lock:
-            self._cleanup_old_requests(key, window_start)
-            row = self.con.execute(
-                "SELECT MIN(ts) FROM rate_limit_events WHERE client_key = ?",
-                [key],
-            ).fetchone()
-            oldest = row[0] if row else None
-            if oldest is None:
-                return 0
-            return max(0, (oldest + 60) - now)
-
-    def cleanup_old_keys(self) -> None:
-        now = time.time()
-        window_start = now - 60
-        with self.lock:
-            self._cleanup_old_keys(window_start)
-
-    def close(self) -> None:
-        with self.lock:
-            self.con.close()
 
 class RedisRateLimiter:
     """Redis-backed sliding-window limiter for multi-worker production environments."""
@@ -270,7 +178,7 @@ class RedisRateLimiter:
     def close(self) -> None:
         self.client.close()
 
-def _build_rate_limiter() -> RateLimiter | DuckDBRateLimiter | RedisRateLimiter:
+def _build_rate_limiter() -> RateLimiter | RedisRateLimiter:
     raw_rpm = os.getenv("MIDWICKET_RATE_LIMIT_REQUESTS_PER_MINUTE", "60")
     try:
         requests_per_minute = int(raw_rpm)
@@ -285,7 +193,7 @@ def _build_rate_limiter() -> RateLimiter | DuckDBRateLimiter | RedisRateLimiter:
 
     configured_backend = os.getenv("MIDWICKET_RATE_LIMIT_BACKEND", "").strip().lower()
 
-    if configured_backend in {"redis", "duckdb", "memory"}:
+    if configured_backend in {"redis", "memory"}:
         backend = configured_backend
     else:
         backend = "redis" if os.getenv("MIDWICKET_ENV", "development").lower() == "production" else "memory"
@@ -297,17 +205,8 @@ def _build_rate_limiter() -> RateLimiter | DuckDBRateLimiter | RedisRateLimiter:
             logger.info("Rate limiter backend: redis")
             return limiter
         except Exception as exc:
-            logger.warning("Failed to initialize Redis rate limiter (%s). Falling back to DuckDB.", exc)
-            backend = "duckdb"
-
-    if backend == "duckdb":
-        try:
-            db_path = os.getenv("MIDWICKET_RATE_LIMIT_DB_PATH", "").strip() or None
-            limiter = DuckDBRateLimiter(requests_per_minute=requests_per_minute, db_path=db_path)
-            logger.info("Rate limiter backend: duckdb (%s)", limiter.db_path)
-            return limiter
-        except Exception as exc:
-            logger.warning("Failed to initialize DuckDB rate limiter (%s). Falling back to memory.", exc)
+            logger.warning("Failed to initialize Redis rate limiter (%s). Falling back to memory.", exc)
+            backend = "memory"
 
     logger.info("Rate limiter backend: memory")
     return RateLimiter(requests_per_minute=requests_per_minute)
