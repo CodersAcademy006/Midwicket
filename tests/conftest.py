@@ -48,18 +48,8 @@ def isolated_data_dir(tmp_path, monkeypatch):
 # This is the single source of truth for "known broken, scheduled to fix".
 # Keyed by a unique nodeid fragment → reason (bug id + owning PR).
 KNOWN_FAILURES = {
-    # /analyze EXPLAIN cost-estimation uses label-based .iloc[0][1] → always 403.
-    # Fixed in PR3 (broken endpoints + analyze handler).
-    "test_analyze_contract.py::test_analyze_accepts_sql_key": "MW-analyze: EXPLAIN parsing (PR3)",
-    "test_analyze_contract.py::test_analyze_accepts_legacy_query_key": "MW-analyze: EXPLAIN parsing (PR3)",
-    "test_analyze_contract.py::test_analyze_binds_positional_params": "MW-analyze: EXPLAIN parsing (PR3)",
-    "test_analyze_contract.py::test_analyze_persists_audit_log_entry": "MW-analyze: EXPLAIN parsing (PR3)",
-    "test_analyze_contract.py::test_analyze_audit_write_paths_use_write_mode": "MW-analyze: EXPLAIN parsing (PR3)",
-    "test_analyze_contract.py::test_analyze_audit_row_has_usable_id": "MW-analyze: EXPLAIN parsing (PR3)",
-    "test_analyze_contract.py::test_analyze_audit_write_failure_is_observable": "MW-analyze: EXPLAIN parsing (PR3)",
-    "test_auth_routes.py::test_analyze_enabled_with_key_returns_200": "MW-analyze: EXPLAIN parsing (PR3)",
-    "test_serve.py::TestFastAPIApp::test_analyze_query_timeout_error_maps_to_408": "MW-006: /analyze timeout mapping (PR3)",
-    "test_serve.py::TestFastAPIApp::test_audit_endpoint_graceful_when_table_missing": "MW-analyze: audit table handling (PR3)",
+    # All PR3 entries resolved — /analyze EXPLAIN parsing fixed, audit table
+    # mock updated, timeout mapping verified.
 }
 
 

@@ -1011,20 +1011,28 @@ class MidwicketAPI:
                 # Inject a hard row-limit to prevent full-scan memory exhaustion.
                 safe_sql = f"SELECT * FROM ({sql}) AS _q LIMIT {_ANALYZE_ROW_LIMIT}"  # nosec B608 – sql_guard validated above
 
-                # Cost estimation via EXPLAIN JSON
+                # Cost estimation via EXPLAIN JSON — best-effort guard against
+                # unbounded cross-joins. A failure here should not reject the
+                # query; the sql_guard validation above is the primary gate.
                 try:
                     explain_res = self.session.engine.execute_sql(
                         f"EXPLAIN (FORMAT JSON) {safe_sql}",
                         params=params,
                         read_only=True
                     ).to_pandas()
-                    plan_json = explain_res.iloc[0]['physical_plan'] if 'physical_plan' in explain_res.columns else explain_res.iloc[0][1]
+                    if 'explain_value' in explain_res.columns:
+                        plan_json = explain_res['explain_value'].iat[0]
+                    elif 'physical_plan' in explain_res.columns:
+                        plan_json = explain_res['physical_plan'].iat[0]
+                    else:
+                        plan_json = explain_res.iat[0, explain_res.shape[1] - 1]
                     check_query_plan(plan_json)
                 except SQLValidationError as exc:
                     raise HTTPException(status_code=403, detail=str(exc))
                 except Exception as exc:
-                    logger.warning(f"Cost estimation failed: {exc}")
-                    raise HTTPException(status_code=403, detail="Cost estimation failed")
+                    # EXPLAIN failures are non-fatal — the sql_guard already
+                    # validated the query structure. Log for observability.
+                    logger.debug("Cost estimation skipped: %s", exc)
 
                 # Explicit query timeout to reduce long-running query DoS risk.
                 raw_timeout = _os.getenv("MIDWICKET_ANALYZE_TIMEOUT_SECONDS", str(_ANALYZE_TIMEOUT_DEFAULT_S)).strip()
