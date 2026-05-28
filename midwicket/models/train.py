@@ -61,32 +61,6 @@ class WinProbabilityTrainer:
         if second_innings.empty:
             raise DataValidationError("No second innings data found for training")
 
-        # Feature engineering
-        features = []
-
-        for _, delivery in second_innings.iterrows():
-            try:
-                overs_done = delivery['over'] + delivery['ball'] / 6.0
-                venue_adjustment = self._get_venue_adjustment(delivery.get('venue', ''))
-                features.append(
-                    compute_chase_features(
-                        target=delivery['target'],
-                        current_runs=delivery['runs_total'],
-                        wickets_down=delivery['wickets_fallen'],
-                        overs_done=overs_done,
-                        venue_adjustment=venue_adjustment,
-                    )
-                )
-
-            except Exception as e:
-                logger.warning(f"Skipping delivery due to error: {e}")
-                continue
-
-        if not features:
-            raise DataValidationError("No valid training samples generated")
-
-        features_df = pd.DataFrame(features)
-
         # Target: whether the team eventually won
         # Group by match and get final result
         match_results = second_innings.groupby('match_id').agg({
@@ -96,15 +70,38 @@ class WinProbabilityTrainer:
 
         match_results['won'] = (match_results['runs_total'] >= match_results['target']).astype(int)
 
-        # For each delivery, determine if the team won
+        # Feature engineering and target alignment in a single pass
+        features = []
         targets = []
-        for _, delivery in second_innings.iterrows():
-            match_result = match_results[match_results['match_id'] == delivery['match_id']]
-            if not match_result.empty:
-                targets.append(match_result['won'].iloc[0])
-            else:
-                targets.append(0)  # Default to loss if no result found
 
+        for _, delivery in second_innings.iterrows():
+            try:
+                overs_done = delivery['over'] + delivery['ball'] / 6.0
+                venue_adjustment = self._get_venue_adjustment(delivery.get('venue', ''))
+                feature_row = compute_chase_features(
+                    target=delivery['target'],
+                    current_runs=delivery['runs_total'],
+                    wickets_down=delivery['wickets_fallen'],
+                    overs_done=overs_done,
+                    venue_adjustment=venue_adjustment,
+                )
+                features.append(feature_row)
+
+                # Append corresponding target for this delivery
+                match_result = match_results[match_results['match_id'] == delivery['match_id']]
+                if not match_result.empty:
+                    targets.append(match_result['won'].iloc[0])
+                else:
+                    targets.append(0)  # Default to loss if no result found
+
+            except Exception as e:
+                logger.warning(f"Skipping delivery due to error: {e}")
+                continue
+
+        if not features:
+            raise DataValidationError("No valid training samples generated")
+
+        features_df = pd.DataFrame(features)
         target_series = pd.Series(targets, name='won')
 
         return features_df, target_series
