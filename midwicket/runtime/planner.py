@@ -229,8 +229,9 @@ class QueryPlanner:
                     SUM(runs_batter)                                                AS runs,
                     SUM(CASE WHEN runs_batter = 4 THEN 1 ELSE 0 END)               AS fours,
                     SUM(CASE WHEN runs_batter = 6 THEN 1 ELSE 0 END)               AS sixes,
-                    SUM(CASE WHEN is_wicket THEN 20 ELSE 0 END)
-                        + SUM(runs_batter)                                          AS avg_points,
+                    SUM(runs_batter) 
+                        + SUM(CASE WHEN runs_batter = 4 THEN 1 ELSE 0 END) * 1 
+                        + SUM(CASE WHEN runs_batter = 6 THEN 1 ELSE 0 END) * 2      AS avg_points,
                     COUNT(DISTINCT match_id)                                        AS matches
                 FROM {table_ref}
                 WHERE venue_id = ?
