@@ -57,6 +57,9 @@ def _safe_int_env(
 
 DATABASE_THREADS = _safe_int_env("MIDWICKET_DB_THREADS", 4, minimum=1, maximum=16)
 DATABASE_MEMORY_LIMIT = os.getenv("MIDWICKET_DB_MEMORY", "2GB")
+DATABASE_MAX_CONNECTIONS = _safe_int_env("MIDWICKET_DB_MAX_CONNECTIONS", 20, minimum=5)
+DATABASE_READ_POOL_SIZE = _safe_int_env("MIDWICKET_DB_READ_POOL_SIZE", 15, minimum=3)
+DATABASE_WRITE_POOL_SIZE = _safe_int_env("MIDWICKET_DB_WRITE_POOL_SIZE", 5, minimum=2)
 
 # API settings
 API_HOST = os.getenv("MIDWICKET_API_HOST", "0.0.0.0")  # nosec B104 – container default, operator configures via env
@@ -172,6 +175,9 @@ def get_config() -> dict:
         "data_dir": str(DEFAULT_DATA_DIR),
         "db_threads": DATABASE_THREADS,
         "db_memory_limit": DATABASE_MEMORY_LIMIT,
+        "db_max_connections": DATABASE_MAX_CONNECTIONS,
+        "db_read_pool_size": DATABASE_READ_POOL_SIZE,
+        "db_write_pool_size": DATABASE_WRITE_POOL_SIZE,
         "api_host": API_HOST,
         "api_port": API_PORT,
         "cors_origins": API_CORS_ORIGINS,
