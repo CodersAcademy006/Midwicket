@@ -89,11 +89,16 @@ def compute_chase_features(
     run_rate_current = float(current_runs) / float(overs_done) if overs_done > 0 else 0.0
 
     wickets_pressure = 1.0 if wickets_down >= 3 and overs_done < 10 else 0.0
-    # Par total scales with format (extensive); par run rate and runs-per-boundary
-    # do not (intensive / universal). For T20 (120 balls) par_total == 200.0, so
-    # this is identical to the old hardcoded behavior (MW-041).
+    # ── Format-aware par values (MW-041) ────────────────────────────────────
+    # All three constants are now derived from the T20 anchor and scaled by
+    # balls_per_innings so the feature vector is internally consistent for
+    # any format.  For T20 (120 balls, 20 overs) par_total=200, par_rr=10,
+    # which reproduces the original hardcoded behavior exactly.
+    total_overs = float(balls_per_innings) / 6.0
     par_total = (float(balls_per_innings) / _T20_BALLS) * _T20_PAR_TOTAL
-    momentum_factor = max(0.0, run_rate_current - PAR_RUN_RATE)
+    par_run_rate = par_total / total_overs if total_overs > 0 else PAR_RUN_RATE
+
+    momentum_factor = max(0.0, run_rate_current - par_run_rate)
     target_size_factor = min(float(target) / par_total, 1.0) if par_total > 0 else 0.0
 
     rr_gap = run_rate_required - run_rate_current
@@ -103,8 +108,8 @@ def compute_chase_features(
     wickets_in_hand_ratio = wickets_remaining / 10.0
     runs_per_ball_required = runs_remaining / balls_remaining
     target_runs_per_ball = float(target) / float(balls_per_innings)
-    chase_progress = min(max(float(overs_done) / (float(balls_per_innings) / 6.0), 0.0), 1.0)
-    death_overs = 1.0 if float(overs_done) >= (float(balls_per_innings) / 6.0) * 0.75 else 0.0
+    chase_progress = min(max(float(overs_done) / total_overs, 0.0), 1.0) if total_overs > 0 else 0.0
+    death_overs = 1.0 if total_overs > 0 and float(overs_done) >= total_overs * 0.75 else 0.0
     pressure_index = rr_gap * (1.0 + wickets_pressure + death_overs)
 
     return {
