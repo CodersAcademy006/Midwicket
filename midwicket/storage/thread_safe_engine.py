@@ -51,8 +51,8 @@ class ConnectionPool:
         self._memory_limit = memory_limit or DATABASE_MEMORY_LIMIT
 
         # Connection pools
-        self.read_pool: queue.Queue = queue.Queue(maxsize=read_pool_size)
-        self.write_pool: queue.Queue = queue.Queue(maxsize=write_pool_size)
+        self.read_pool: queue.Queue = queue.Queue(maxsize=self.read_pool_size)
+        self.write_pool: queue.Queue = queue.Queue(maxsize=self.write_pool_size)
 
         # Pool management
         self._lock = threading.RLock()
