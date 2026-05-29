@@ -29,15 +29,15 @@ By leveraging vectorized **PyArrow** operations and an embedded **DuckDB** engin
 
 ### Key Innovations
 
-*   **⚡️ Sub-Millisecond Queries:** Powered by PyArrow and DuckDB for instant aggregations without cloud costs.
-*   **🤖 Agent-Based Architecture:** Specialized internal agents (Gatekeeper, Planner, Archivist) systematically isolate logic, routing queries dynamically.
-*   **🧠 Predictive Machine Learning:** Integrates built-in statistical models, including real-time Win Probability calculations.
-*   **🛡️ Type-Safe & Deterministic:** Employs immutable V1 schemas enforced via Pydantic. Queries are securely hashed and natively cached.
-*   **🚀 Production-Ready:** Ships natively with a FastAPI backend, Docker configurations, Prometheus metrics, and Grafana dashboards.
+*   **Sub-Millisecond Queries:** Powered by PyArrow and DuckDB for instant aggregations without cloud costs.
+*   **Agent-Based Architecture:** Specialized internal agents (Gatekeeper, Planner, Archivist) systematically isolate logic, routing queries dynamically.
+*   **Predictive Machine Learning:** Integrates built-in statistical models, including real-time Win Probability calculations.
+*   **Type-Safe & Deterministic:** Employs immutable V1 schemas enforced via Pydantic. Queries are securely hashed and natively cached.
+*   **Production-Ready:** Ships natively with a FastAPI backend, Docker configurations, Prometheus metrics, and Grafana dashboards.
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 The Midwicket engine employs a strict separation of concerns, utilizing an agentic planner to optimize execution paths between raw Parquet scans and materialized DuckDB views.
 
@@ -52,7 +52,7 @@ graph LR
 
 ---
 
-## 🚀 Quick Start (Zero Config)
+## Quick Start (Zero Config)
 
 The easiest way to see Midwicket in action is to use the Express API. It handles data downloading, DuckDB initialization, and agent routing automatically.
 
@@ -85,18 +85,18 @@ Calculate live win probability using the built-in ML models based on current mat
 
 ```python
 result = px.predict_win(
-    venue="Wankhede Stadium", 
-    target=180, 
-    current_runs=120, 
-    wickets_down=5, 
-    overs_completed=15.0
+    venue="Wankhede Stadium",
+    target=180,
+    current_score=120,
+    wickets_down=5,
+    overs_done=15.0,
 )
 print(f"Win Probability: {result['win_prob']:.1%}")
 ```
 
 ---
 
-## 🏢 Enterprise Deployment
+## Enterprise Deployment
 
 Midwicket is engineered for scalable production deployments. A comprehensive Dockerized environment is provided.
 
@@ -112,7 +112,7 @@ cp .env.example .env
 docker-compose up -d
 ```
 
-## 🤝 Contributing
+## Contributing
 Contributions are highly encouraged! We are actively looking for help with:
 - Expanding the built-in Machine Learning models.
 - Optimizing DuckDB materialized views.
