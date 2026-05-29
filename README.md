@@ -56,6 +56,10 @@ graph LR
 
 The easiest way to see Midwicket in action is to use the Express API. It handles data downloading, DuckDB initialization, and agent routing automatically.
 
+If you prefer an interactive walkthrough, open the maintained Colab notebook:
+
+- **Colab Quickstart:** https://colab.research.google.com/github/CodersAcademy006/Midwicket/blob/main/notebooks/quickstart.ipynb
+
 ### 1. Install the SDK
 ```bash
 pip install midwicket
