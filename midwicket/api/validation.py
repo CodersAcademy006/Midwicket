@@ -93,6 +93,7 @@ class DeliveryDataRequest(BaseModel):
     wickets_fallen: int = Field(..., ge=0, le=10, description="Wickets fallen so far")
     target: Optional[int] = Field(None, gt=0, description="Target score (for second innings)")
     venue: Optional[str] = Field(None, max_length=100, description="Venue name")
+    timestamp: Optional[float] = Field(None, description="Delivery timestamp (epoch seconds)")
 
 # Response Models
 class WinPredictionResponse(BaseModel):

@@ -243,20 +243,21 @@ class WinProbabilityTrainer:
         X_val_scaled = self.scaler.transform(X_val)
         X_test_scaled = self.scaler.transform(X_test)
 
-        # Grid search / hyperparameter tuning and Epochs training
+        # Grid search / hyperparameter tuning and Epochs training on validation set
         best_loss = float('inf')
-        best_model = None
-        best_epochs = 50
+        best_alpha = 0.001
+        best_epoch_count = 50
         
         # Test a couple of params (alphas)
         alphas = [0.0001, 0.001, 0.01]
+        max_epochs = 50
         
         for alpha in alphas:
             model = SGDClassifier(loss='log_loss', penalty='l2', alpha=alpha,
                                   random_state=random_state, max_iter=1,
                                   warm_start=True, learning_rate='optimal')
             
-            for epoch in range(1, best_epochs + 1):
+            for epoch in range(1, max_epochs + 1):
                 model.partial_fit(X_train_scaled, y_train, classes=np.array([0, 1]))
                 
                 # Evaluate on Validation Set to select hyperparameters
@@ -266,17 +267,26 @@ class WinProbabilityTrainer:
                 except Exception:
                     val_loss = float('inf')
                 
-                # Checkpoints
-                os.makedirs('checkpoints', exist_ok=True)
-                joblib.dump(model, 'checkpoints/last_checkpoint.pkl')
-                
                 if val_loss < best_loss:
                     best_loss = val_loss
-                    best_model = copy.deepcopy(model)
-                    joblib.dump(best_model, 'checkpoints/best_model.pkl')
-                    
-        # Use the best model
-        model = best_model
+                    best_alpha = alpha
+                    best_epoch_count = epoch
+
+        # Re-fit the best model on the FULL X_train and fit final scaler
+        X_train_scaled = self.scaler.fit_transform(X_train)
+        X_test_scaled = self.scaler.transform(X_test)
+
+        model = SGDClassifier(loss='log_loss', penalty='l2', alpha=best_alpha,
+                              random_state=random_state, max_iter=1,
+                              warm_start=True, learning_rate='optimal')
+        for epoch in range(1, best_epoch_count + 1):
+            model.partial_fit(X_train_scaled, y_train, classes=np.array([0, 1]))
+
+        # Write checkpoints once (MW-015) in the configured / default directory
+        checkpoint_dir = os.getenv("MIDWICKET_CHECKPOINT_DIR", "checkpoints")
+        os.makedirs(checkpoint_dir, exist_ok=True)
+        joblib.dump(model, os.path.join(checkpoint_dir, 'best_model.pkl'))
+        joblib.dump(model, os.path.join(checkpoint_dir, 'last_checkpoint.pkl'))
         
         # Evaluate final
         train_pred = model.predict_proba(X_train_scaled)[:, 1]

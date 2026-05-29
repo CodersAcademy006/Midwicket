@@ -25,10 +25,16 @@ class ConnectionPool:
     Maintains separate pools for read and write operations.
     """
 
-    def __init__(self, db_path: str = ":memory:", max_connections: int = 10,
-                 read_pool_size: int = 5, write_pool_size: int = 2,
+    def __init__(self, db_path: str = ":memory:", max_connections: Optional[int] = None,
+                 read_pool_size: Optional[int] = None, write_pool_size: Optional[int] = None,
                  threads: Optional[int] = None, memory_limit: Optional[str] = None):
-        from midwicket.config import DATABASE_THREADS, DATABASE_MEMORY_LIMIT
+        from midwicket.config import (
+            DATABASE_THREADS,
+            DATABASE_MEMORY_LIMIT,
+            DATABASE_MAX_CONNECTIONS,
+            DATABASE_READ_POOL_SIZE,
+            DATABASE_WRITE_POOL_SIZE,
+        )
 
         self.db_path = db_path
         self._connect_path = db_path
@@ -37,16 +43,16 @@ class ConnectionPool:
             # Use a unique named in-memory database so all pooled connections
             # share the same state within this engine instance.
             self._connect_path = f":memory:midwicket_pool_{uuid.uuid4().hex}"
-        self.max_connections = max_connections
-        self.read_pool_size = read_pool_size
-        self.write_pool_size = write_pool_size
+        self.max_connections = max_connections or DATABASE_MAX_CONNECTIONS
+        self.read_pool_size = read_pool_size or DATABASE_READ_POOL_SIZE
+        self.write_pool_size = write_pool_size or DATABASE_WRITE_POOL_SIZE
         # Honor configured resource limits instead of hardcoding them (MW-018).
         self._threads = threads or DATABASE_THREADS
         self._memory_limit = memory_limit or DATABASE_MEMORY_LIMIT
 
         # Connection pools
-        self.read_pool: queue.Queue = queue.Queue(maxsize=read_pool_size)
-        self.write_pool: queue.Queue = queue.Queue(maxsize=write_pool_size)
+        self.read_pool: queue.Queue = queue.Queue(maxsize=self.read_pool_size)
+        self.write_pool: queue.Queue = queue.Queue(maxsize=self.write_pool_size)
 
         # Pool management
         self._lock = threading.RLock()
@@ -228,7 +234,7 @@ class ConnectionPool:
             except queue.Empty:
                 break
 
-class ThreadSafeQueryEngine:
+class ThreadSafeQueryEngine(QueryEngine):
     """
     Thread-safe version of QueryEngine using connection pooling.
 

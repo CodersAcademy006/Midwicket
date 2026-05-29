@@ -124,6 +124,27 @@ class RedisRateLimiter:
                 logger.warning("Local Redis not available, using fakeredis for fallback.")
                 import fakeredis
                 self.client = fakeredis.FakeRedis(decode_responses=True)
+        
+        # Register Lua script for atomic sliding-window check (MW-008)
+        lua_code = """
+            local rkey = KEYS[1]
+            local now = tonumber(ARGV[1])
+            local window_start = tonumber(ARGV[2])
+            local limit = tonumber(ARGV[3])
+            local member = ARGV[4]
+
+            redis.call('ZREMRANGEBYSCORE', rkey, '-inf', window_start)
+            local current_count = redis.call('ZCARD', rkey)
+
+            if current_count < limit then
+                redis.call('ZADD', rkey, now, member)
+                redis.call('EXPIRE', rkey, 60)
+                return 1
+            else
+                return 0
+            end
+        """
+        self._lua_script = self.client.register_script(lua_code)
                 
     def _key(self, key: str) -> str:
         return f"ratelimit:{key}"
@@ -132,20 +153,11 @@ class RedisRateLimiter:
         now = time.time()
         window_start = now - 60
         rkey = self._key(key)
+        # Use stringified timestamp + random entropy to guarantee a unique member in the sorted set
+        member = f"{now}:{os.urandom(4).hex()}"
         
-        pipe = self.client.pipeline()
-        pipe.zremrangebyscore(rkey, '-inf', window_start)
-        pipe.zcard(rkey)
-        results = pipe.execute()
-        current_count = results[1]
-        
-        if current_count < self.requests_per_minute:
-            pipe = self.client.pipeline()
-            pipe.zadd(rkey, {str(now): now})
-            pipe.expire(rkey, 60)
-            pipe.execute()
-            return True
-        return False
+        result = self._lua_script(keys=[rkey], args=[now, window_start, self.requests_per_minute, member])
+        return bool(result)
 
     def get_remaining_requests(self, key: str) -> int:
         now = time.time()

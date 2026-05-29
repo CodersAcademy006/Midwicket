@@ -30,6 +30,11 @@ class WinPredictor:
 
     def __init__(self, custom_coefs: Optional[Dict[str, float]] = None, venue_adjustments: Optional[Dict[str, float]] = None):
         # Advanced coefficients trained on historical T20 data
+        # Heuristic coefficients derived from cricket domain knowledge.
+        # These are NOT trained on data — they are hand-tuned starting points
+        # that produce plausible predictions for T20 chases. For genuinely
+        # trained coefficients, use WinPredictor.create_trained_model() or
+        # WinPredictor.load_default() (which loads a bundled trained JSON).
         self.coefs = custom_coefs or {
             "intercept": 0.8,
             "runs_remaining": -0.025,
@@ -38,15 +43,15 @@ class WinPredictor:
             "run_rate_required": -0.35,
             "run_rate_current": 0.28,
             "wickets_pressure": -0.15,  # Extra penalty when wickets fall early
-            "momentum_factor": 0.12,     # Bonus for good run rate
-            "target_size_factor": 0.001, # Small bonus for larger targets
-            "venue_adjustment": 1.0,
-            "rr_gap": 0.0,
-            "required_boundary_rate": 0.0,
-            "runs_per_wicket_remaining": 0.0,
-            "wickets_per_over_remaining": 0.0,
-            "chase_progress": 0.0,
-            "death_overs": 0.0,
+            "momentum_factor": 0.12,     # Bonus for good current run rate
+            "target_size_factor": 0.05,   # Higher targets are harder to chase
+            "venue_adjustment": 1.0,      # Multiplied by venue log-odds prior
+            "rr_gap": -0.18,              # Penalty when required RR exceeds current RR
+            "required_boundary_rate": -0.10, # Need for boundaries signals difficulty
+            "runs_per_wicket_remaining": -0.005, # High runs/wicket = pressure
+            "wickets_per_over_remaining": 0.08,   # More wickets in hand per over = comfort
+            "chase_progress": 0.15,       # Further into innings = more certainty
+            "death_overs": -0.12,         # Death overs raise difficulty
         }
 
         # Venue-specific home advantage adjustments (log-odds) — all keys lowercase
@@ -185,10 +190,21 @@ class WinPredictor:
         return self.venue_adjustments.get("default", 0.0)
 
     def _calculate_confidence(self, prob: float, runs_remaining: int, wickets_remaining: int, balls_remaining: int) -> float:
-        """
-        Calculate confidence score based on prediction certainty and situation.
+        """Compute a heuristic certainty score for the win probability estimate.
 
-        Returns confidence between 0.0 and 1.0
+        This is **not** a statistical confidence interval derived from a sample
+        size or variance estimate.  It is a rule-based heuristic that combines:
+
+        * **Prediction extremity** — predictions near 0 or 1 are inherently
+          more certain than 50/50 coin-flips.
+        * **Situation factors** — wickets in hand and balls remaining influence
+          how much information the model has to work with.
+
+        The returned value is clipped to [0.1, 0.95] and should be interpreted
+        as a qualitative certainty indicator, not a calibrated probability.
+
+        Returns:
+            Heuristic certainty score between 0.1 and 0.95.
         """
         # Base confidence from probability extremity
         extremity = abs(prob - 0.5) * 2  # 0 to 1 scale
