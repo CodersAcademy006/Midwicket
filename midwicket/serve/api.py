@@ -1379,20 +1379,8 @@ class MidwicketAPI:
         ):
             """Prefix/substring player search against the alias table."""
             try:
-                with self.session.registry._lock:
-                    rows = self.session.registry.con.execute(
-                        """
-                        SELECT DISTINCT e.id, e.primary_name, e.type
-                        FROM entities e
-                        JOIN aliases a ON a.entity_id = e.id
-                        WHERE e.type = 'player'
-                          AND (LOWER(a.alias) LIKE LOWER(?) OR LOWER(e.primary_name) LIKE LOWER(?))
-                        ORDER BY e.primary_name
-                        LIMIT ?
-                        """,
-                        [f"%{q}%", f"%{q}%", limit],
-                    ).fetchall()
-                return {"results": [{"id": r[0], "name": r[1]} for r in rows]}
+                results = self.session.registry.search_players(q, limit)
+                return {"results": results}
             except Exception as e:
                 logger.warning("search_players failed: %s", e)
                 raise HTTPException(status_code=500, detail="Internal server error")
@@ -1406,24 +1394,9 @@ class MidwicketAPI:
         ):
             """Paginated list of all known venues."""
             try:
-                offset = (page - 1) * page_size
-                with self.session.registry._lock:
-                    total_row = self.session.registry.con.execute(
-                        "SELECT count(*) FROM entities WHERE type = 'venue'"
-                    ).fetchone()
-                    total = total_row[0] if total_row else 0
-                    rows = self.session.registry.con.execute(
-                        """
-                        SELECT id, primary_name
-                        FROM entities
-                        WHERE type = 'venue'
-                        ORDER BY primary_name
-                        LIMIT ? OFFSET ?
-                        """,
-                        [page_size, offset],
-                    ).fetchall()
+                total, items = self.session.registry.list_venues(page, page_size)
                 return {
-                    "items": [{"id": r[0], "name": r[1]} for r in rows],
+                    "items": items,
                     "total": total,
                     "page": page,
                     "page_size": page_size,
@@ -1439,19 +1412,10 @@ class MidwicketAPI:
         ):
             """Full detail for a single venue."""
             try:
-                with self.session.registry._lock:
-                    row = self.session.registry.con.execute(
-                        "SELECT id, primary_name FROM entities WHERE id = ? AND type = 'venue'",
-                        [venue_id],
-                    ).fetchone()
-                if not row:
+                venue_details = self.session.registry.get_venue_details(venue_id)
+                if not venue_details:
                     raise HTTPException(status_code=404, detail="Venue not found")
-                venue_stats = self.session.registry.get_venue_stats(venue_id)
-                return {
-                    "id": row[0],
-                    "name": row[1],
-                    "stats": venue_stats.__dict__ if venue_stats else {},
-                }
+                return venue_details
             except HTTPException:
                 raise
             except Exception as e:
