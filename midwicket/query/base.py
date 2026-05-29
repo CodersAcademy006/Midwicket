@@ -32,8 +32,13 @@ class BaseQuery(BaseModel):
     @property
     def cache_key(self) -> str:
         """
-        Generates a deterministic SHA256 hash of the INTENT only.
-        Crucially, it excludes execution_opts and snapshot_id.
+        Generates a deterministic SHA256 hash of the query.
+
+        It excludes execution_opts (pure runtime controls) but INCLUDES
+        snapshot_id: the executor rewrites snapshot_id to the engine's real data
+        version before hashing, and additionally folds derived_versions into the
+        final key (see RuntimeExecutor._bind_derived_version), so cached results
+        are invalidated whenever the underlying data or derived tables change.
         """
         # 1. Dump model to dict, excluding runtime opts.
         # Include query type so distinct query classes with identical fields
