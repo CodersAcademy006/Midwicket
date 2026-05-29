@@ -75,7 +75,7 @@ def win_probability(
         current_runs: Current runs scored
         wickets_down: Wickets fallen
         overs_done: Overs completed (decimal overs, e.g. 10.5 = 10 overs 3 balls).
-        venue: Optional venue (not used in baseline)
+        venue: Optional venue name to apply venue-specific adjustment factors.
         balls_per_innings: Total balls in innings (default 120 for T20)
         snapshot: Data snapshot (not used in baseline)
         balls_bowled: Explicit number of balls bowled. If provided, overrides overs_done.
