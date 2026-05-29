@@ -296,11 +296,11 @@ class IdentityRegistry:
             entity_id = cast(int, res_seq[0])
 
             self.con.execute("INSERT INTO entities VALUES (?, ?, ?)",
-                             [entity_id, entity_type, name])
+                             [entity_id, entity_type, norm_name])
             self.con.execute("""
                 INSERT OR IGNORE INTO aliases (alias, entity_id, valid_from, valid_to)
                 VALUES (?, ?, ?, NULL)
-            """, [name, entity_id, match_date])
+            """, [norm_name, entity_id, match_date])
 
             self._cache[cache_key] = entity_id
             if len(self._cache) > self._cache_max_size:
