@@ -5,11 +5,18 @@ from typing import List, Dict, Any, cast
 
 class SnapshotManager:
     def __init__(self, data_dir: str):
-        self.meta_path = Path(data_dir) / "snapshots.json"
+        self.is_memory = (data_dir == ":memory:")
+        if self.is_memory:
+            self.meta_path = None
+        else:
+            self.meta_path = Path(data_dir) / "snapshots.json"
         self.history: Dict[str, List[Dict[str, Any]]] = {"snapshots": []}
         self._load()
 
     def _load(self) -> None:
+        if self.is_memory:
+            self.history = {"snapshots": []}
+            return
         if self.meta_path.exists():
             with open(self.meta_path, 'r') as f:
                 self.history = json.load(f)
@@ -28,6 +35,8 @@ class SnapshotManager:
         self._save()
 
     def _save(self) -> None:
+        if self.is_memory:
+            return
         import os
         import tempfile
         with tempfile.NamedTemporaryFile(

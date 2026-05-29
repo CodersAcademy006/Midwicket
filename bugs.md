@@ -13,13 +13,13 @@
 
 | Status | Count | Meaning |
 |--------|-------|---------|
-| **RESOLVED** | 26 | Fixed and verified in code — a regression test exists or the defect is structurally gone. |
+| **RESOLVED** | 28 | Fixed and verified in code — a regression test exists or the defect is structurally gone. |
 | **PARTIAL** | 5 | The concrete, low-risk part is fixed; a deeper or riskier remainder is tracked in the entry. |
-| **OPEN** | 18 | Not yet addressed. |
+| **OPEN** | 16 | Not yet addressed. |
 
-- **Resolved (26):** MW-001, MW-002, MW-003, MW-005, MW-007, MW-009, MW-010, MW-011, MW-012, MW-013, MW-014, MW-019, MW-023, MW-025, MW-026, MW-027, MW-029, MW-030, MW-031, MW-035, MW-036, MW-037, MW-038, MW-040, MW-046, MW-047
+- **Resolved (28):** MW-001, MW-002, MW-003, MW-005, MW-006, MW-007, MW-009, MW-010, MW-011, MW-012, MW-013, MW-014, MW-019, MW-023, MW-025, MW-026, MW-027, MW-028, MW-029, MW-030, MW-031, MW-035, MW-036, MW-037, MW-038, MW-040, MW-046, MW-047
 - **Partial (5):** MW-004, MW-016, MW-018, MW-032, MW-041
-- **Open (18):** MW-006, MW-008, MW-015, MW-017, MW-020, MW-021, MW-022, MW-024, MW-028, MW-033, MW-034, MW-039, MW-042, MW-043, MW-044, MW-045, MW-048, MW-049
+- **Open (16):** MW-008, MW-015, MW-017, MW-020, MW-021, MW-022, MW-024, MW-033, MW-034, MW-039, MW-042, MW-043, MW-044, MW-045, MW-048, MW-049
 
 ## Severity legend
 
@@ -37,7 +37,7 @@
 | ID | Severity | Area | Status | One-line |
 |----|----------|------|--------|----------|
 | [MW-004](#mw-004) | P0 | Tests | PARTIAL | Test suite validates a fictional Frankenschema; masks MW-001 |
-| [MW-006](#mw-006) | P1 | Perf | OPEN | Audit middleware does sync DB write in async path — blocks event loop per request |
+| [MW-006](#mw-006) | P1 | Perf | RESOLVED | Audit middleware does sync DB write in async path — blocks event loop per request |
 | [MW-008](#mw-008) | P1 | Concurrency | OPEN | `RedisRateLimiter` has TOCTOU race; silently falls back per-process |
 | [MW-011](resolved.md#mw-011) | P1 | Correctness | RESOLVED | Strike rate counts wides as balls faced (knowingly wrong) |
 | [MW-013](resolved.md#mw-013) | P1 | Correctness | RESOLVED | Runs scored off no-balls are dropped in canonicalization |
@@ -52,7 +52,7 @@
 | [MW-024](#mw-024) | P2 | Correctness | OPEN | `DerivedStore` only materializes `venue_baselines`; planner optimization mostly dead |
 | [MW-025](resolved.md#mw-025) | P2 | Correctness | RESOLVED | Two different "venue baseline" formulas; relative SR compares mismatched units |
 | [MW-027](resolved.md#mw-027) | P2 | Correctness | RESOLVED | Live ingest writes legacy schema but v1 path needs IDs → live data can't land |
-| [MW-028](#mw-028) | P2 | Security | OPEN | `sql_guard` blocks legitimate `replace()`; cardinality plan-guard likely a no-op |
+| [MW-028](#mw-028) | P2 | Security | RESOLVED | `sql_guard` blocks legitimate `replace()`; cardinality plan-guard likely a no-op |
 | [MW-032](#mw-032) | P3 | Latent | PARTIAL | `config.SECRET_KEY` alias is `""` in prod; `API_KEY_REQUIRED` frozen at import |
 | [MW-033](#mw-033) | P3 | Code smell | OPEN | Duplicate debug flags; 3× "try 4 dates" resolution hack; broad `except` everywhere |
 | [MW-034](#mw-034) | P3 | Audit | OPEN | `visuals/worm.py` = 947 LOC/38 fns, no plotting import at top; audit for bloat |
