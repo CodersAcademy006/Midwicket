@@ -63,7 +63,7 @@ class WinPredictor:
         # Populated by create_trained_model / WinProbabilityTrainer.create_win_predictor
         self.training_metadata: Optional[Dict] = None
 
-    def predict(self, target: int, current_runs: int, wickets_down: int, overs_done: float, venue: str = None, balls_per_innings: float = 120.0) -> Tuple[float, float]:
+    def predict(self, target: int, current_runs: int, wickets_down: int, overs_done: float, venue: str = None, balls_per_innings: float = 120.0, balls_bowled: Optional[int] = None) -> Tuple[float, float]:
         """
         Predict win probability for the chasing team with confidence interval.
 
@@ -74,6 +74,7 @@ class WinPredictor:
             overs_done: Overs completed
             venue: Venue name for home advantage adjustment
             balls_per_innings: Total balls in innings
+            balls_bowled: Explicit number of balls bowled. Overrides overs_done if provided.
 
         Returns:
             Tuple of (win_probability, confidence_score)
@@ -103,6 +104,7 @@ class WinPredictor:
             overs_done=overs_done,
             venue_adjustment=venue_adjust,
             balls_per_innings=balls_per_innings,
+            balls_bowled=balls_bowled,
         )
         runs_remaining = feature_values["runs_remaining"]
         wickets_remaining = feature_values["wickets_remaining"]
