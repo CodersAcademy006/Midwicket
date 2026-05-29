@@ -37,7 +37,6 @@ def matchup(
         v_id = str(reg.resolve_venue(venue, today))
 
     q = MatchupQuery(
-        snapshot_id="latest",
         batter_id=b_id,
         bowler_id=bo_id,
         venue_id=v_id,

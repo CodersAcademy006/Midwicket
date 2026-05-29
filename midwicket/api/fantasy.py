@@ -139,7 +139,7 @@ def fantasy_score(
                 COUNT(DISTINCT match_id)                                  AS matches,
                 COUNT(*)                                                  AS balls,
                 SUM(CASE WHEN is_wicket AND wicket_type NOT IN ('RUN_OUT', 'OBSTRUCTING_THE_FIELD', 'RETIRED_HURT', 'RETIRED_OUT', 'RETIRED_NOT_OUT') THEN 1 ELSE 0 END)               AS wickets,
-                SUM(runs_batter + runs_extras)                            AS runs_conceded
+                SUM(runs_batter + CASE WHEN extras_type IN ('wides', 'noballs') THEN runs_extras ELSE 0 END) AS runs_conceded
             FROM ball_events
             WHERE bowler = ? {season_clause}
         """
@@ -210,7 +210,6 @@ def cheat_sheet(venue: str, last_n_years: int = 3) -> pd.DataFrame:
             venue_id=v_id,
             roles=["all"],
             min_matches=5,
-            snapshot_id="latest",
         )
         response = exc.execute(q)
         df = response.data.to_pandas()
