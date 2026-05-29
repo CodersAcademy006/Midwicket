@@ -47,7 +47,7 @@ def canonicalize_match(match_data: Dict[str, Any], registry: IdentityRegistry, m
         'inning': [], 'over': [], 'ball': [],
         'batter_id': [], 'bowler_id': [], 'non_striker_id': [],
         'batting_team_id': [], 'bowling_team_id': [],
-        'runs_batter': [], 'runs_extras': [],
+        'runs_batter': [], 'runs_extras': [], 'extras_type': [],
         'is_wicket': [], 'wicket_type': [],
         'phase': [],
         # Denormalized names for analytics convenience (mirror IDs above)
@@ -97,14 +97,19 @@ def canonicalize_match(match_data: Dict[str, Any], registry: IdentityRegistry, m
                 extras_data = delivery.get('extras', {})
                 
                 # Determine run component type based on extras
+                extras_type = None
                 if 'wides' in extras_data:
                     run_component = RunComponent.from_wide(extras_data['wides'])
+                    extras_type = 'wides'
                 elif 'noballs' in extras_data:
                     run_component = RunComponent.from_no_ball(extras_data['noballs'])
+                    extras_type = 'noballs'
                 elif 'byes' in extras_data:
                     run_component = RunComponent.from_bye(extras_data['byes'])
+                    extras_type = 'byes'
                 elif 'legbyes' in extras_data:
                     run_component = RunComponent.from_leg_bye(extras_data['legbyes'])
+                    extras_type = 'legbyes'
                 else:
                     # Normal delivery - check for boundary
                     batter_runs = runs_data.get('batter', 0)
@@ -115,6 +120,7 @@ def canonicalize_match(match_data: Dict[str, Any], registry: IdentityRegistry, m
                 
                 buffers['runs_batter'].append(run_component.batter_runs)
                 buffers['runs_extras'].append(run_component.extras)
+                buffers['extras_type'].append(extras_type)
                 
                 wickets = delivery.get('wickets', [])
                 buffers['is_wicket'].append(len(wickets) > 0)

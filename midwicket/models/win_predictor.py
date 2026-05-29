@@ -110,9 +110,10 @@ class WinPredictor:
         wickets_remaining = feature_values["wickets_remaining"]
         balls_remaining = feature_values["balls_remaining"]
 
-        linear_terms = [
-            feature for feature in feature_values.keys() if feature != "venue_adjustment"
-        ]
+        linear_terms = list(feature_values.keys())
+        if "venue_adjustment" not in self.coefs:
+            linear_terms.remove("venue_adjustment")
+
         scaler_lookup = self._get_scaler_lookup()
 
         # Linear predictor with all features
@@ -126,9 +127,7 @@ class WinPredictor:
 
         # Keep legacy venue adjustment as an additive prior when no trained
         # venue coefficient exists.
-        if "venue_adjustment" in self.coefs:
-            x += self.coefs.get("venue_adjustment", 0.0) * feature_values["venue_adjustment"]
-        else:
+        if "venue_adjustment" not in self.coefs:
             x += venue_adjust
 
         # Logistic function for probability

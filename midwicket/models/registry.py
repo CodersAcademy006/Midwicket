@@ -18,6 +18,8 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List
 from pathlib import Path
 import logging
+import uuid
+import threading
 
 from ..exceptions import ModelTrainingError, ModelNotFoundError
 
@@ -38,6 +40,7 @@ class ModelRegistry:
         self.base_path = Path(base_path)
         self.base_path.mkdir(parents=True, exist_ok=True)
         self._models: Dict[str, Dict[str, Any]] = {}
+        self._lock = threading.Lock()
 
         self._load_registry()
 
@@ -119,7 +122,7 @@ class ModelRegistry:
             metadata = {}
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        version = f"{name}_v_{timestamp}"
+        version = f"{name}_v_{timestamp}_{uuid.uuid4().hex[:8]}"
         model_path = self._model_path(version)
 
         joblib = self._get_joblib()
@@ -128,13 +131,18 @@ class ModelRegistry:
         except Exception as exc:
             raise ModelTrainingError(f"Failed to save model {version}: {exc}") from exc
 
-        self._models[name] = {
-            "current_version": version,
-            "versions": self._models.get(name, {}).get("versions", []) + [version],
-            "metadata": metadata,
-            "created_at": datetime.now().isoformat(),
-        }
-        self._save_registry()
+        with self._lock:
+            versions = self._models.get(name, {}).get("versions", [])
+            if version not in versions:
+                versions.append(version)
+                
+            self._models[name] = {
+                "current_version": version,
+                "versions": versions,
+                "metadata": metadata,
+                "created_at": datetime.now().isoformat(),
+            }
+            self._save_registry()
         logger.info("Registered model: %s", version)
         return version
 
@@ -181,42 +189,45 @@ class ModelRegistry:
 
     def delete_model(self, name: str, version: Optional[str] = None) -> None:
         """Delete a model version or entire model."""
-        if name not in self._models:
-            raise ModelNotFoundError(f"Model '{name}' not found")
-
-        if version is None:
-            for v in self._models[name]["versions"]:
-                p = self._model_path(v)
+        with self._lock:
+            if name not in self._models:
+                raise ModelNotFoundError(f"Model '{name}' not found")
+    
+            if version is None:
+                for v in self._models[name]["versions"]:
+                    p = self._model_path(v)
+                    if p.exists():
+                        p.unlink()
+                del self._models[name]
+            else:
+                if version not in self._models[name]["versions"]:
+                    raise ModelNotFoundError(f"Version '{version}' not found")
+                p = self._model_path(version)
                 if p.exists():
                     p.unlink()
-            del self._models[name]
-        else:
-            if version not in self._models[name]["versions"]:
-                raise ModelNotFoundError(f"Version '{version}' not found")
-            p = self._model_path(version)
-            if p.exists():
-                p.unlink()
-            self._models[name]["versions"].remove(version)
-            if self._models[name].get("current_version") == version:
-                remaining = self._models[name]["versions"]
-                if remaining:
-                    self._models[name]["current_version"] = max(remaining)
-                else:
-                    del self._models[name]
-
-        self._save_registry()
+                self._models[name]["versions"].remove(version)
+                if self._models[name].get("current_version") == version:
+                    remaining = self._models[name]["versions"]
+                    if remaining:
+                        self._models[name]["current_version"] = max(remaining)
+                    else:
+                        del self._models[name]
+    
+            self._save_registry()
 
 
 # ── Module-level singleton ────────────────────────────────────────────────────
 
 _registry: Optional[ModelRegistry] = None
-
+_registry_lock = threading.Lock()
 
 def get_model_registry() -> ModelRegistry:
     """Get the global model registry instance (lazy-initialized)."""
     global _registry
     if _registry is None:
-        _registry = ModelRegistry()
+        with _registry_lock:
+            if _registry is None:
+                _registry = ModelRegistry()
     return _registry
 
 

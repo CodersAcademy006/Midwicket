@@ -17,6 +17,12 @@ class IdentityRegistry:
         self._lock = threading.Lock()
         self._init_db()
         self._cache: Dict[str, int] = {}
+        self._cache_max_size = 10000
+
+    def clear_cache(self) -> None:
+        """Clear the in-memory resolution cache."""
+        with self._lock:
+            self._cache.clear()
 
     def _init_db(self) -> None:
         if self.path == ":memory:":
@@ -189,7 +195,25 @@ class IdentityRegistry:
                 "INSERT INTO matchup_stats VALUES (?, ?, ?, ?, ?, ?, ?, ?)", data
             )
 
+    @staticmethod
+    def _normalize_name(name: str) -> str:
+        import string
+        name = name.lower()
+        name = "".join(" " if c in string.punctuation else c for c in name)
+        tokens = name.split()
+        if not tokens:
+            return name
+        
+        if len(tokens) >= 2 and len(tokens[-1]) == 1:
+            tokens = [tokens[-1]] + tokens[:-1]
+            
+        if len(tokens) >= 2:
+            tokens[0] = tokens[0][0]
+            
+        return " ".join(tokens)
+
     def _resolve_generic(self, name: str, entity_type: str, match_date: date, auto_ingest: bool = False) -> int:
+        name = self._normalize_name(name)
         prefix = entity_type[0].upper()
         cache_key = f"{prefix}:{name}:{match_date}"
 
@@ -211,6 +235,8 @@ class IdentityRegistry:
             if res:
                 entity_id = cast(int, res[0])
                 self._cache[cache_key] = entity_id
+                if len(self._cache) > self._cache_max_size:
+                    del self._cache[next(iter(self._cache))]
                 return entity_id
 
             if not auto_ingest:
@@ -233,6 +259,8 @@ class IdentityRegistry:
             """, [name, entity_id, match_date])
 
             self._cache[cache_key] = entity_id
+            if len(self._cache) > self._cache_max_size:
+                del self._cache[next(iter(self._cache))]
             return entity_id
 
     def resolve_player(self, name: str, match_date: Optional[date] = None, auto_ingest: bool = False) -> int:
