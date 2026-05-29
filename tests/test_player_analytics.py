@@ -544,3 +544,43 @@ class TestHandSplits:
         result = pa.bowling_vs_batter_hand(BOWLER)
         assert result["available"] is False
         assert "note" in result
+
+
+# ---------------------------------------------------------------------------
+# Regression tests for wides and no-balls (MW-011, MW-013, MW-040)
+# ---------------------------------------------------------------------------
+
+class TestCricketStatsCorrectness:
+    def test_wides_and_noballs_metrics(self, monkeypatch):
+        # Insert test events:
+        # 1. A wide ball (runs_extras=1, extras_type='wides')
+        # 2. A noball where batter scores 4 runs (runs_batter=4, runs_extras=1, extras_type='noballs')
+        # 3. A normal ball where batter scores 1 run (runs_batter=1)
+        test_rows = [
+            ("M999", "2026-05-29", 99, 1, 0, 1, 100, 200, 101, 1, 2, 0, 1, "wides", False, None, "Middle", "Test Batter", "Test Bowler", "Test Venue"),
+            ("M999", "2026-05-29", 99, 1, 0, 2, 100, 200, 101, 1, 2, 4, 1, "noballs", False, None, "Middle", "Test Batter", "Test Bowler", "Test Venue"),
+            ("M999", "2026-05-29", 99, 1, 0, 3, 100, 200, 101, 1, 2, 1, 0, None, False, None, "Middle", "Test Batter", "Test Bowler", "Test Venue")
+        ]
+        
+        def _get_seeded_con():
+            con = duckdb.connect(":memory:")
+            con.execute(_SCHEMA)
+            con.executemany("INSERT INTO ball_events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", test_rows)
+            return con
+        
+        # Patch _get_con to return our custom seeded connection creator
+        monkeypatch.setattr(pa, "_get_con", _get_seeded_con)
+        
+        # Test batting stats
+        bat_stats = pa.career_batting("Test Batter")
+        assert bat_stats["runs"] == 5
+        assert bat_stats["balls_faced"] == 2  # noball + normal ball, excludes wide
+        assert bat_stats["strike_rate"] == 250.0
+        assert bat_stats["dot_balls"] == 0  # neither ball faced had runs_batter = 0
+        
+        # Test bowling stats
+        bowl_stats = pa.career_bowling("Test Bowler")
+        assert bowl_stats["balls_bowled"] == 1  # normal ball only, excludes wide and noball
+        assert bowl_stats["runs_conceded"] == 7  # 4 batter runs + 1 wide penalty + 1 noball penalty
+        assert bowl_stats["economy"] == 42.0  # 7 runs / (1/6 overs) = 42.0
+
