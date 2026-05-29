@@ -13,13 +13,13 @@
 
 | Status | Count | Meaning |
 |--------|-------|---------|
-| **RESOLVED** | 0 | Fixed and verified in code — a regression test exists or the defect is structurally gone. |
+| **RESOLVED** | 5 | Fixed and verified in code — a regression test exists or the defect is structurally gone. |
 | **PARTIAL** | 5 | The concrete, low-risk part is fixed; a deeper or riskier remainder is tracked in the entry. |
-| **OPEN** | 25 | Not yet addressed. |
+| **OPEN** | 20 | Not yet addressed. |
 
-- **Resolved (0):** None
+- **Resolved (5):** MW-006, MW-011, MW-013, MW-028, MW-037
 - **Partial (5):** MW-004, MW-016, MW-018, MW-032, MW-041
-- **Open (25):** MW-006, MW-008, MW-011, MW-013, MW-015, MW-017, MW-020, MW-021, MW-022, MW-023, MW-024, MW-025, MW-027, MW-028, MW-033, MW-034, MW-037, MW-039, MW-040, MW-042, MW-043, MW-044, MW-045, MW-048, MW-049
+- **Open (20):** MW-008, MW-015, MW-017, MW-020, MW-021, MW-022, MW-023, MW-024, MW-025, MW-027, MW-033, MW-034, MW-039, MW-040, MW-042, MW-043, MW-044, MW-045, MW-048, MW-049
 
 ## Severity legend
 
@@ -37,10 +37,10 @@
 | ID | Severity | Area | Status | One-line |
 |----|----------|------|--------|----------|
 | [MW-004](#mw-004) | P0 | Tests | PARTIAL | Test suite validates a fictional Frankenschema; masks MW-001 |
-| [MW-006](#mw-006) | P1 | Perf | OPEN | Audit middleware does sync DB write in async path — blocks event loop per request |
+| [MW-006](#mw-006) | P1 | Perf | RESOLVED | Audit middleware does sync DB write in async path — blocks event loop per request |
 | [MW-008](#mw-008) | P1 | Concurrency | OPEN | `RedisRateLimiter` has TOCTOU race; silently falls back per-process |
-| [MW-011](#mw-011) | P1 | Correctness | OPEN | Strike rate counts wides as balls faced (knowingly wrong) |
-| [MW-013](#mw-013) | P1 | Correctness | OPEN | Runs scored off no-balls are dropped in canonicalization |
+| [MW-011](#mw-011) | P1 | Correctness | RESOLVED | Strike rate counts wides as balls faced (knowingly wrong) |
+| [MW-013](#mw-013) | P1 | Correctness | RESOLVED | Runs scored off no-balls are dropped in canonicalization |
 | [MW-015](#mw-015) | P1 | ML | OPEN | Training selects hyperparams on the test set (leakage); reported metrics inflated |
 | [MW-016](#mw-016) | P1 | Concurrency | PARTIAL | File-based `DuckDBCache` breaks under concurrency; unbounded growth |
 | [MW-017](#mw-017) | P1 | Perf | OPEN | Live `QueryEngine` pool = 5 conns; registry serializes on one global lock |
@@ -52,7 +52,7 @@
 | [MW-024](#mw-024) | P2 | Correctness | OPEN | `DerivedStore` only materializes `venue_baselines`; planner optimization mostly dead |
 | [MW-025](#mw-025) | P2 | Correctness | OPEN | Two different "venue baseline" formulas; relative SR compares mismatched units |
 | [MW-027](#mw-027) | P2 | Correctness | OPEN | Live ingest writes legacy schema but v1 path needs IDs → live data can't land |
-| [MW-028](#mw-028) | P2 | Security | OPEN | `sql_guard` blocks legitimate `replace()`; cardinality plan-guard likely a no-op |
+| [MW-028](#mw-028) | P2 | Security | RESOLVED | `sql_guard` blocks legitimate `replace()`; cardinality plan-guard likely a no-op |
 | [MW-032](#mw-032) | P3 | Latent | PARTIAL | `config.SECRET_KEY` alias is `""` in prod; `API_KEY_REQUIRED` frozen at import |
 | [MW-033](#mw-033) | P3 | Code smell | OPEN | Duplicate debug flags; 3× "try 4 dates" resolution hack; broad `except` everywhere |
 | [MW-034](#mw-034) | P3 | Audit | OPEN | `visuals/worm.py` = 947 LOC/38 fns, no plotting import at top; audit for bloat |
@@ -208,7 +208,7 @@ These modules are competently written. Preserve their behavior when refactoring:
 |----|----------|------|--------|----------|
 | [MW-035](#mw-035) | P0 | Caching | RESOLVED | Cache is keyed on a hardcoded `snapshot_id="latest"`, not the data version → serves stale results after every ingest |
 | [MW-036](#mw-036) | P1 | Caching | RESOLVED | `SnapshotManager` is wired to nothing; the snapshot system that should drive cache coherence is decorative |
-| [MW-037](#mw-037) | P1 | Identity | OPEN | Registry has no name normalization → one player becomes many entities; stats fragment across spellings |
+| [MW-037](#mw-037) | P1 | Identity | RESOLVED | Registry has no name normalization → one player becomes many entities; stats fragment across spellings |
 | [MW-038](#mw-038) | P1 | Stats | OPEN | `not_outs` SQL is mathematically meaningless (`MAX(ball)` where `ball`∈1..6) → batting average wrong even after schema fix |
 | [MW-039](#mw-039) | P1 | Concurrency | OPEN | Derived-schema `DROP/CREATE` runs unlocked in the live engine → concurrent readers hit dropped tables |
 | [MW-040](#mw-040) | P1 | Stats | OPEN | Bowling economy excludes wides/no-balls → economy understated even on legacy schema |
