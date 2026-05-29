@@ -45,8 +45,8 @@ class RunComponent:
         return cls(batter_runs=0, extras=runs, is_ball_faced=False, bowler_charged=True)
     
     @classmethod
-    def from_no_ball(cls, runs: int) -> 'RunComponent':
-        return cls(batter_runs=0, extras=runs, is_ball_faced=False, bowler_charged=True)
+    def from_no_ball(cls, runs: int, batter_runs: int = 0) -> 'RunComponent':
+        return cls(batter_runs=batter_runs, extras=runs, is_ball_faced=True, bowler_charged=True)
     
     @classmethod
     def from_bye(cls, runs: int) -> 'RunComponent':

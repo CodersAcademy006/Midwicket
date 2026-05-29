@@ -82,7 +82,8 @@ def build_registry_stats(loader: Any, registry: Any) -> None:
 
                     # --- bowler stats ---
                     bowlers_this_match.add(bo_id)
-                    if not is_wide:
+                    is_no_ball = "noballs" in extras_data
+                    if not is_wide and not is_no_ball:
                         player_stats[bo_id]["balls_bowled"] += 1
                     # Byes and leg byes go to the batting team but are NOT charged
                     # to the bowler — only batter runs, wides, and no-balls count.

@@ -86,10 +86,10 @@ def career_batting(player_name: str) -> Dict[str, Any]:
             COUNT(DISTINCT match_id)                         AS matches,
             COUNT(DISTINCT match_id || '_' || inning)        AS innings,
             COALESCE(SUM(runs_batter), 0)                    AS runs,
-            COUNT(*)                                          AS balls_faced,
+            SUM(CASE WHEN extras_type = 'wides' THEN 0 ELSE 1 END) AS balls_faced,
             COUNT(DISTINCT match_id || '_' || inning) - SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END) AS not_outs,
             MAX(runs_batter)                                  AS highest_ball,
-            SUM(CASE WHEN runs_batter = 0 THEN 1 ELSE 0 END) AS dot_balls,
+            SUM(CASE WHEN runs_batter = 0 AND COALESCE(extras_type, '') != 'wides' THEN 1 ELSE 0 END) AS dot_balls,
             SUM(CASE WHEN runs_batter = 4 THEN 1 ELSE 0 END) AS fours,
             SUM(CASE WHEN runs_batter = 6 THEN 1 ELSE 0 END) AS sixes
         FROM ball_events
@@ -167,7 +167,7 @@ def career_bowling(player_name: str) -> Dict[str, Any]:
             COUNT(DISTINCT match_id)                          AS matches,
             COUNT(DISTINCT match_id || '_' || inning)         AS innings,
             SUM(CASE WHEN is_wicket AND wicket_type NOT IN ('RUN_OUT', 'OBSTRUCTING_THE_FIELD', 'RETIRED_HURT', 'RETIRED_OUT', 'RETIRED_NOT_OUT') THEN 1 ELSE 0 END)        AS wickets,
-            COUNT(*)                                           AS balls_bowled,
+            SUM(CASE WHEN extras_type IN ('wides', 'noballs') THEN 0 ELSE 1 END) AS balls_bowled,
             COALESCE(SUM(runs_batter + CASE WHEN extras_type IN ('wides', 'noballs') THEN runs_extras ELSE 0 END), 0) AS runs_conceded
         FROM ball_events
         WHERE bowler = ?
@@ -257,12 +257,12 @@ def batting_by_phase(player_name: str) -> Dict[str, Any]:
         sql = """  -- nosec B608
         SELECT
             phase,
-            COUNT(*)                                          AS balls,
+            SUM(CASE WHEN extras_type = 'wides' THEN 0 ELSE 1 END) AS balls,
             COALESCE(SUM(runs_batter), 0)                    AS runs,
             SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END)        AS dismissals,
             SUM(CASE WHEN runs_batter = 4 THEN 1 ELSE 0 END) AS fours,
             SUM(CASE WHEN runs_batter = 6 THEN 1 ELSE 0 END) AS sixes,
-            SUM(CASE WHEN runs_batter = 0 THEN 1 ELSE 0 END) AS dot_balls
+            SUM(CASE WHEN runs_batter = 0 AND COALESCE(extras_type, '') != 'wides' THEN 1 ELSE 0 END) AS dot_balls
         FROM ball_events
         WHERE batter = ?
         GROUP BY phase
@@ -301,7 +301,7 @@ def bowling_by_phase(player_name: str) -> Dict[str, Any]:
         sql = """  -- nosec B608
         SELECT
             phase,
-            COUNT(*)                                                   AS balls,
+            SUM(CASE WHEN extras_type IN ('wides', 'noballs') THEN 0 ELSE 1 END) AS balls,
             SUM(CASE WHEN is_wicket AND wicket_type NOT IN ('RUN_OUT', 'OBSTRUCTING_THE_FIELD', 'RETIRED_HURT', 'RETIRED_OUT', 'RETIRED_NOT_OUT') THEN 1 ELSE 0 END)                AS wickets,
             COALESCE(SUM(runs_batter + CASE WHEN extras_type IN ('wides', 'noballs') THEN runs_extras ELSE 0 END), 0) AS runs_conceded
         FROM ball_events
@@ -344,7 +344,7 @@ def batting_by_venue(player_name: str) -> List[Dict[str, Any]]:
         SELECT
             venue,
             COUNT(DISTINCT match_id)                          AS matches,
-            COUNT(*)                                          AS balls,
+            SUM(CASE WHEN extras_type = 'wides' THEN 0 ELSE 1 END) AS balls,
             COALESCE(SUM(runs_batter), 0)                    AS runs,
             SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END)        AS dismissals,
             SUM(CASE WHEN runs_batter = 4 THEN 1 ELSE 0 END) AS fours,
@@ -388,7 +388,7 @@ def bowling_by_venue(player_name: str) -> List[Dict[str, Any]]:
         SELECT
             venue,
             COUNT(DISTINCT match_id)                          AS matches,
-            COUNT(*)                                          AS balls,
+            SUM(CASE WHEN extras_type IN ('wides', 'noballs') THEN 0 ELSE 1 END) AS balls,
             SUM(CASE WHEN is_wicket AND wicket_type NOT IN ('RUN_OUT', 'OBSTRUCTING_THE_FIELD', 'RETIRED_HURT', 'RETIRED_OUT', 'RETIRED_NOT_OUT') THEN 1 ELSE 0 END)        AS wickets,
             COALESCE(SUM(runs_batter + CASE WHEN extras_type IN ('wides', 'noballs') THEN runs_extras ELSE 0 END), 0) AS runs_conceded
         FROM ball_events
@@ -462,7 +462,7 @@ def batting_by_season(player_name: str) -> List[Dict[str, Any]]:
         SELECT
             COALESCE(CAST(EXTRACT(YEAR FROM date) AS VARCHAR), 'unknown') AS season,
             COUNT(DISTINCT match_id)                           AS matches,
-            COUNT(*)                                           AS balls,
+            SUM(CASE WHEN extras_type = 'wides' THEN 0 ELSE 1 END) AS balls,
             COALESCE(SUM(runs_batter), 0)                     AS runs,
             SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END)         AS dismissals
         FROM ball_events
@@ -502,7 +502,7 @@ def bowling_by_season(player_name: str) -> List[Dict[str, Any]]:
         SELECT
             COALESCE(CAST(EXTRACT(YEAR FROM date) AS VARCHAR), 'unknown') AS season,
             COUNT(DISTINCT match_id)                           AS matches,
-            COUNT(*)                                           AS balls,
+            SUM(CASE WHEN extras_type IN ('wides', 'noballs') THEN 0 ELSE 1 END) AS balls,
             SUM(CASE WHEN is_wicket AND wicket_type NOT IN ('RUN_OUT', 'OBSTRUCTING_THE_FIELD', 'RETIRED_HURT', 'RETIRED_OUT', 'RETIRED_NOT_OUT') THEN 1 ELSE 0 END)         AS wickets,
             COALESCE(SUM(runs_batter + CASE WHEN extras_type IN ('wides', 'noballs') THEN runs_extras ELSE 0 END), 0) AS runs_conceded
         FROM ball_events
@@ -545,7 +545,7 @@ def batting_form(player_name: str, last_n: int = 5) -> Dict[str, Any]:
             match_id,
             inning,
             SUM(runs_batter)                                   AS runs,
-            COUNT(*)                                           AS balls,
+            SUM(CASE WHEN extras_type = 'wides' THEN 0 ELSE 1 END) AS balls,
             MAX(CASE WHEN is_wicket THEN 1 ELSE 0 END)         AS got_out,
             SUM(CASE WHEN runs_batter = 4 THEN 1 ELSE 0 END)  AS fours,
             SUM(CASE WHEN runs_batter = 6 THEN 1 ELSE 0 END)  AS sixes,
@@ -602,7 +602,7 @@ def bowling_form(player_name: str, last_n: int = 5) -> Dict[str, Any]:
         SELECT
             match_id,
             inning,
-            COUNT(*)                                           AS balls,
+            SUM(CASE WHEN extras_type IN ('wides', 'noballs') THEN 0 ELSE 1 END) AS balls,
             SUM(CASE WHEN is_wicket AND wicket_type NOT IN ('RUN_OUT', 'OBSTRUCTING_THE_FIELD', 'RETIRED_HURT', 'RETIRED_OUT', 'RETIRED_NOT_OUT') THEN 1 ELSE 0 END)         AS wickets,
             COALESCE(SUM(runs_batter + CASE WHEN extras_type IN ('wides', 'noballs') THEN runs_extras ELSE 0 END), 0) AS runs_conceded,
             MAX(date)                                          AS match_ts
@@ -666,7 +666,7 @@ def batting_vs_teams(player_name: str) -> List[Dict[str, Any]]:
         SELECT
             CAST(bowling_team_id AS VARCHAR)                   AS opposition_proxy,
             COUNT(DISTINCT match_id)                           AS matches,
-            COUNT(*)                                           AS balls,
+            SUM(CASE WHEN extras_type = 'wides' THEN 0 ELSE 1 END) AS balls,
             COALESCE(SUM(runs_batter), 0)                     AS runs,
             SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END)         AS dismissals
         FROM ball_events
@@ -706,7 +706,7 @@ def bowling_vs_teams(player_name: str) -> List[Dict[str, Any]]:
         SELECT
             CAST(batting_team_id AS VARCHAR)                   AS opposition_proxy,
             COUNT(DISTINCT match_id)                           AS matches,
-            COUNT(*)                                           AS balls,
+            SUM(CASE WHEN extras_type IN ('wides', 'noballs') THEN 0 ELSE 1 END) AS balls,
             SUM(CASE WHEN is_wicket AND wicket_type NOT IN ('RUN_OUT', 'OBSTRUCTING_THE_FIELD', 'RETIRED_HURT', 'RETIRED_OUT', 'RETIRED_NOT_OUT') THEN 1 ELSE 0 END)         AS wickets,
             COALESCE(SUM(runs_batter + CASE WHEN extras_type IN ('wides', 'noballs') THEN runs_extras ELSE 0 END), 0) AS runs_conceded
         FROM ball_events
@@ -801,7 +801,7 @@ def batting_by_innings_number(player_name: str) -> Dict[str, Any]:
         SELECT
             inning,
             COUNT(DISTINCT match_id)                           AS matches,
-            COUNT(*)                                           AS balls,
+            SUM(CASE WHEN extras_type = 'wides' THEN 0 ELSE 1 END) AS balls,
             COALESCE(SUM(runs_batter), 0)                     AS runs,
             SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END)         AS dismissals
         FROM ball_events
@@ -840,7 +840,7 @@ def batting_in_chases(player_name: str) -> Dict[str, Any]:
         sql = """  -- nosec B608
         SELECT
             COUNT(DISTINCT match_id)                           AS matches,
-            COUNT(*)                                           AS balls,
+            SUM(CASE WHEN extras_type = 'wides' THEN 0 ELSE 1 END) AS balls,
             COALESCE(SUM(runs_batter), 0)                     AS runs,
             SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END)         AS dismissals,
             SUM(CASE WHEN runs_batter = 4 THEN 1 ELSE 0 END)  AS fours,
@@ -902,7 +902,7 @@ def death_over_specialist(player_name: str) -> Dict[str, Any]:
     try:
         sql = """  -- nosec B608
         SELECT
-            COUNT(*)                                           AS balls,
+            SUM(CASE WHEN extras_type = 'wides' THEN 0 ELSE 1 END) AS balls,
             COALESCE(SUM(runs_batter), 0)                     AS runs
         FROM ball_events
         WHERE batter = ? AND over >= 15
@@ -944,7 +944,7 @@ def highest_score(player_name: str, top_n: int = 5) -> Dict[str, Any]:
             match_id,
             inning,
             SUM(runs_batter)                                   AS runs,
-            COUNT(*)                                           AS balls,
+            SUM(CASE WHEN extras_type = 'wides' THEN 0 ELSE 1 END) AS balls,
             MAX(CASE WHEN is_wicket THEN 1 ELSE 0 END)         AS got_out,
             SUM(CASE WHEN runs_batter = 4 THEN 1 ELSE 0 END)  AS fours,
             SUM(CASE WHEN runs_batter = 6 THEN 1 ELSE 0 END)  AS sixes
@@ -988,7 +988,7 @@ def best_bowling_figures(player_name: str, top_n: int = 5) -> Dict[str, Any]:
             inning,
             SUM(CASE WHEN is_wicket AND wicket_type NOT IN ('RUN_OUT', 'OBSTRUCTING_THE_FIELD', 'RETIRED_HURT', 'RETIRED_OUT', 'RETIRED_NOT_OUT') THEN 1 ELSE 0 END)         AS wickets,
             COALESCE(SUM(runs_batter + CASE WHEN extras_type IN ('wides', 'noballs') THEN runs_extras ELSE 0 END), 0) AS runs_conceded,
-            COUNT(*)                                           AS balls
+            SUM(CASE WHEN extras_type IN ('wides', 'noballs') THEN 0 ELSE 1 END) AS balls
         FROM ball_events
         WHERE bowler = ?
         GROUP BY match_id, inning
@@ -1101,7 +1101,7 @@ def milestones_and_failures(player_name: str) -> Dict[str, Any]:
         FROM (
             SELECT match_id, inning,
                 COALESCE(SUM(runs_batter + CASE WHEN extras_type IN ('wides', 'noballs') THEN runs_extras ELSE 0 END), 0) AS runs_conceded,
-                COUNT(*)                                         AS balls
+                SUM(CASE WHEN extras_type IN ('wides', 'noballs') THEN 0 ELSE 1 END) AS balls
             FROM ball_events WHERE bowler = ?
             GROUP BY match_id, inning
             HAVING balls >= 6
@@ -1163,13 +1163,13 @@ def batting_leaderboard(
         SELECT
             batter,
             COUNT(DISTINCT match_id)                           AS matches,
-            COUNT(*)                                           AS balls,
+            SUM(CASE WHEN extras_type = 'wides' THEN 0 ELSE 1 END) AS balls,
             COALESCE(SUM(runs_batter), 0)                     AS runs,
             SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END)         AS dismissals
         FROM ball_events
         WHERE batter != ''
         GROUP BY batter
-        HAVING COUNT(*) >= ?
+        HAVING SUM(CASE WHEN extras_type = 'wides' THEN 0 ELSE 1 END) >= ?
         """
         rows = con.execute(sql, [min_balls]).fetchall()
         result = []
@@ -1216,13 +1216,13 @@ def bowling_leaderboard(
         SELECT
             bowler,
             COUNT(DISTINCT match_id)                           AS matches,
-            COUNT(*)                                           AS balls,
+            SUM(CASE WHEN extras_type IN ('wides', 'noballs') THEN 0 ELSE 1 END) AS balls,
             SUM(CASE WHEN is_wicket AND wicket_type NOT IN ('RUN_OUT', 'OBSTRUCTING_THE_FIELD', 'RETIRED_HURT', 'RETIRED_OUT', 'RETIRED_NOT_OUT') THEN 1 ELSE 0 END)         AS wickets,
             COALESCE(SUM(runs_batter + CASE WHEN extras_type IN ('wides', 'noballs') THEN runs_extras ELSE 0 END), 0) AS runs_conceded
         FROM ball_events
         WHERE bowler != ''
         GROUP BY bowler
-        HAVING COUNT(*) >= ?
+        HAVING SUM(CASE WHEN extras_type IN ('wides', 'noballs') THEN 0 ELSE 1 END) >= ?
         """
         rows = con.execute(sql, [min_balls]).fetchall()
         result = []
