@@ -13,13 +13,13 @@
 
 | Status | Count | Meaning |
 |--------|-------|---------|
-| **RESOLVED** | 17 | Fixed and verified in code — a regression test exists or the defect is structurally gone. |
-| **PARTIAL** | 6 | The concrete, low-risk part is fixed; a deeper or riskier remainder is tracked in the entry. |
-| **OPEN** | 26 | Not yet addressed. |
+| **RESOLVED** | 0 | Fixed and verified in code — a regression test exists or the defect is structurally gone. |
+| **PARTIAL** | 5 | The concrete, low-risk part is fixed; a deeper or riskier remainder is tracked in the entry. |
+| **OPEN** | 25 | Not yet addressed. |
 
-- **Resolved (18):** MW-001, 002, 003, 005, 007, 009, 010, 012, 014, 019, 026, 029, 030, 031, 035, 036, 046, 047
-- **Partial (5):** MW-004 (Frankenschema fixtures still in `test_win_model_training`, `test_player_analytics`, `test_storage_and_monitoring`), MW-016 (cache lock added; coherence + TTL unverified), MW-018 (engine honors config; runtime wire-in/removal deferred), MW-032 (`get_secret_key()` added but the `SECRET_KEY=""` module alias remains at config.py:141), MW-041 (`balls_per_innings` plumbed; T20 par constants still hardcoded)
-- **Open (26):** MW-006 (audit write still synchronous inside the async middleware), 008, 011, 013, 015, 017, 020, 021, 022, 023, 024, 025, 027, 028, 033, 034, 037, 038, 039, 040, 042, 043, 044, 045, 048, 049
+- **Resolved (0):** None
+- **Partial (5):** MW-004, MW-016, MW-018, MW-032, MW-041
+- **Open (25):** MW-006, MW-008, MW-011, MW-013, MW-015, MW-017, MW-020, MW-021, MW-022, MW-023, MW-024, MW-025, MW-027, MW-028, MW-033, MW-034, MW-037, MW-039, MW-040, MW-042, MW-043, MW-044, MW-045, MW-048, MW-049
 
 ## Severity legend
 
@@ -36,37 +36,23 @@
 
 | ID | Severity | Area | Status | One-line |
 |----|----------|------|--------|----------|
-| [MW-001](#mw-001) | P0 | Data model | RESOLVED | `ball_events` has 4 incompatible schemas; analytics can't read ingest output |
-| [MW-002](#mw-002) | P0 | API | RESOLVED | `/v1/players/resolve`, `/v1/venues/resolve`, `/v1/matchup` crash 500 every call |
-| [MW-003](#mw-003) | P0 | Data integrity | RESOLVED | `GET /matches/{id}` double-counts rows on every hit (non-idempotent append) |
 | [MW-004](#mw-004) | P0 | Tests | PARTIAL | Test suite validates a fictional Frankenschema; masks MW-001 |
-| [MW-005](#mw-005) | P0 | Analytics | RESOLVED | `api/fantasy.py` + all 28 `player_analytics` features return zeros on v1 data |
 | [MW-006](#mw-006) | P1 | Perf | OPEN | Audit middleware does sync DB write in async path — blocks event loop per request |
-| [MW-007](#mw-007) | P1 | Security | RESOLVED | `read_only=True` is not enforced in the engine actually used |
 | [MW-008](#mw-008) | P1 | Concurrency | OPEN | `RedisRateLimiter` has TOCTOU race; silently falls back per-process |
-| [MW-009](#mw-009) | P1 | Perf | RESOLVED | Redis singleflight in executor makes multi-worker slower (cross-worker blind) |
-| [MW-010](#mw-010) | P1 | Perf | RESOLVED | 100k-row memory cap is dead code; full result already materialized |
 | [MW-011](#mw-011) | P1 | Correctness | OPEN | Strike rate counts wides as balls faced (knowingly wrong) |
-| [MW-012](#mw-012) | P1 | Correctness | RESOLVED | Phase casing mismatch → wrong impact scores / silent empty filters |
 | [MW-013](#mw-013) | P1 | Correctness | OPEN | Runs scored off no-balls are dropped in canonicalization |
-| [MW-014](#mw-014) | P1 | Correctness | RESOLVED | Run-outs counted as bowler wickets |
 | [MW-015](#mw-015) | P1 | ML | OPEN | Training selects hyperparams on the test set (leakage); reported metrics inflated |
 | [MW-016](#mw-016) | P1 | Concurrency | PARTIAL | File-based `DuckDBCache` breaks under concurrency; unbounded growth |
 | [MW-017](#mw-017) | P1 | Perf | OPEN | Live `QueryEngine` pool = 5 conns; registry serializes on one global lock |
 | [MW-018](#mw-018) | P2 | Dead code | PARTIAL | `ThreadSafeQueryEngine` (563 LOC) never used in runtime |
-| [MW-019](#mw-019) | P2 | Dead code | RESOLVED | `core/migration.py` migrates phantom tables (`deliveries`/`matches`) |
 | [MW-020](#mw-020) | P2 | Dead code | OPEN | `api/validation.py` models unused; weaker inline models used instead |
 | [MW-021](#mw-021) | P2 | ML | OPEN | Shipped "trained" model is hand-picked constants; ~6 coefs are 0.0 |
 | [MW-022](#mw-022) | P2 | ML | OPEN | `_calculate_confidence` is arbitrary multipliers sold as statistical confidence |
 | [MW-023](#mw-023) | P2 | ML | OPEN | Train/serve venue dicts diverge (`'dyanmond park'` typo); train match-id misalignment |
 | [MW-024](#mw-024) | P2 | Correctness | OPEN | `DerivedStore` only materializes `venue_baselines`; planner optimization mostly dead |
 | [MW-025](#mw-025) | P2 | Correctness | OPEN | Two different "venue baseline" formulas; relative SR compares mismatched units |
-| [MW-026](#mw-026) | P2 | Correctness | RESOLVED | Planner `FantasyQuery` SQL gives a batter +20 points for getting out |
 | [MW-027](#mw-027) | P2 | Correctness | OPEN | Live ingest writes legacy schema but v1 path needs IDs → live data can't land |
 | [MW-028](#mw-028) | P2 | Security | OPEN | `sql_guard` blocks legitimate `replace()`; cardinality plan-guard likely a no-op |
-| [MW-029](#mw-029) | P2 | Tooling | RESOLVED | `fix_*.py` regex patchers committed; `# type: ignore` spray neuters mypy |
-| [MW-030](#mw-030) | P3 | Hygiene | RESOLVED | Scratch scripts, `pypitch/` ghost, committed PDF, dup tests in repo root |
-| [MW-031](#mw-031) | P3 | Packaging | RESOLVED | `pyproject.toml` duplicate `"midwicket*"`; `create_dockerfile` ships junk |
 | [MW-032](#mw-032) | P3 | Latent | PARTIAL | `config.SECRET_KEY` alias is `""` in prod; `API_KEY_REQUIRED` frozen at import |
 | [MW-033](#mw-033) | P3 | Code smell | OPEN | Duplicate debug flags; 3× "try 4 dates" resolution hack; broad `except` everywhere |
 | [MW-034](#mw-034) | P3 | Audit | OPEN | `visuals/worm.py` = 947 LOC/38 fns, no plotting import at top; audit for bloat |
@@ -75,29 +61,6 @@
 
 ## P0 — Product-breaking
 
-### MW-001
-**Status:** RESOLVED (verified against code 2026-05-29).
-**`ball_events` has four mutually incompatible schemas; the analytics layer cannot read what the ingest layer writes.**
-- **Producer (real data):** `core/canonicalize.py:147-153` writes the v1 schema — `batter_id`, `bowler_id`, `venue_id` (int), `runs_batter`, `runs_extras`. No name columns, no `runs_total`, no `season`. Enforced by `schema/v1.py:72` (`BALL_EVENT_SCHEMA`).
-- **Consumers expect names/legacy:** `api/player_analytics.py:95,167,165` (`WHERE batter = ?`, `WHERE bowler = ?`, `runs_total - runs_extras`); `api/fantasy.py:107,143,234,75` (`batter`, `bowler`, `venue`, `season`).
-- **Two more schemas exist:** `storage/thread_safe_engine.py:248` and `storage/engine.py:209` create *legacy* `ball_events` (names + `runs_total`); `core/migration.py:25-46` targets tables `deliveries`/`matches` that exist nowhere else.
-- **Impact:** On canonicalized data, analytics/fantasy queries throw → swallowed → return empty/zeros. The flagship features do not work on the data the pipeline produces.
-- **Fix:** Choose **one** schema (v1). Rewrite `player_analytics`, `fantasy`, and live-ingest SQL to use `batter_id`/`bowler_id`/`venue_id` (join the registry for names). Delete the legacy `CREATE TABLE ball_events` paths. This is the root cause; most P0/P1s below are symptoms.
-
-### MW-002
-**Status:** RESOLVED (verified against code 2026-05-29).
-**Three public endpoints crash with HTTP 500 on every call.**
-- **Location:** `serve/api.py:1305` (`/v1/players/resolve`), `:1330` (`/v1/venues/resolve`), `:1438` (`/v1/matchup`). Each builds a plain `_Req` object with `.name`/`.batter` attributes, then calls `lookup_player`/`lookup_venue`/`get_matchup_stats`, which read `request.root.name` / `request.root.batter` (`api.py:373,442`). `_Req` (and the inline Pydantic models) have no `.root`.
-- **Root cause:** `fix_mypy.py` blindly ran `request.name` → `request.root.name`, assuming `RootModel`. The `except` handlers *also* use `request.root.*` (e.g. `api.py:388`), so they re-raise → unhandled 500. `# type: ignore` hides it from mypy.
-- **Impact:** Guaranteed crash; the SDK client (`client.py:228,235,254`) faithfully wraps these → always errors.
-- **Fix:** Replace `request.root.X` with `request.X` in `lookup_player`, `lookup_venue`, `get_matchup_stats` (and their `except` blocks). Add a real integration test that calls these routes.
-
-### MW-003
-**Status:** RESOLVED (verified against code 2026-05-29).
-**`GET /matches/{match_id}` corrupts data by double-counting on every hit.**
-- **Location:** route `serve/api.py:794` → `session.load_match()` → `engine.ingest_events(..., append=True)` (`api/session.py:94`). `append=True` does `INSERT INTO ball_events SELECT * FROM arrow_view` (`storage/engine.py:70`) with **no dedup/idempotency**.
-- **Impact:** A cacheable, client-retried GET mutates state. Hitting the endpoint N times multiplies that match's rows by N. All subsequent stats for the match are permanently wrong until rebuild.
-- **Fix:** Make `load_match` idempotent (delete-then-insert by `match_id`, or skip if already loaded). A read endpoint must never append.
 
 ### MW-004
 **Status:** PARTIALLY RESOLVED — the crash-causing schema mismatch is gone, but Frankenschema fixtures (legacy `runs_total` + v1 `runs_batter` in one synthetic table) still exist in `test_win_model_training.py`, `test_player_analytics.py`, and `test_storage_and_monitoring.py`; only a handful of tests exercise the real `canonicalize_match` path (verified 2026-05-29).
@@ -106,30 +69,12 @@
 - **Impact:** `WHERE batter = ?` works in tests but not in production. Green CI gives false confidence and is the reason MW-001/MW-005 shipped undetected.
 - **Fix:** Build test fixtures by running `canonicalize_match` (the real ingest path). Delete Frankenschema fixtures. Expect (and then fix) failures.
 
-### MW-005
-**Status:** RESOLVED (verified against code 2026-05-29).
-**Fantasy + all 28 player-analytics features return zeros/empty on real data.**
-- **Location:** `api/fantasy.py` (`fantasy_score`, `cheat_sheet`, `venue_bias`) and `api/player_analytics.py` (PA-01..PA-28). All query name/legacy columns (see MW-001). Errors are swallowed by broad `except` (`fantasy.py:185`, etc.).
-- **Impact:** `/v1/players/{name}/batting|bowling|fantasy`, `/v1/venues/{venue}/fantasy`, leaderboards, etc. silently return empty. `venue_bias` always returns neutral 50/50 "INSUFFICIENT DATA".
-- **Fix:** Resolved by MW-001. Until then, do **not** advertise these features as working.
-
----
-
-## P1 — High
-
 ### MW-006
 **Status:** OPEN — despite being claimed fixed, `audit_api_key_usage` (serve/api.py:207) is an `async def` middleware that still calls `self.session.engine.execute_sql(..., read_only=False)` synchronously (api.py:222) with no threadpool/background offload, blocking the event loop on every sensitive request (verified 2026-05-29).
 **Audit middleware blocks the event loop with a synchronous DB write on every sensitive request.**
 - **Location:** `serve/api.py:205-231` — an `async def` middleware calls `self.session.engine.execute_sql(... read_only=False)` (a sync DuckDB write) for every successful request to `/v1/players`, `/v1/teams`, `/matches`, `/v1/venues`.
 - **Impact:** Serializes all traffic behind a write lock; violates the project's own `Agents.md` rule #2. Introduced by `add_middleware_and_export.py`.
 - **Fix:** Move audit writes to a background task/queue, or run in a threadpool executor, or drop the middleware (the `/analyze` audit already exists at `api.py:1054`).
-
-### MW-007
-**Status:** RESOLVED — `QueryEngine.execute_sql` now refuses write/DDL statements when `read_only=True` (engine-level defense in depth); regression test in `test_storage_and_monitoring.py` (verified 2026-05-29).
-**`read_only=True` provides no write protection in the engine actually used.**
-- **Location:** `MidwicketSession` uses `QueryEngine` (`api/session.py:37`). In `storage/engine.py:149-177`, `read_only` only decides whether results are chunked — both branches use the same read-write pooled connection. The read-only-transaction enforcement lives in `ThreadSafeQueryEngine`, which is never used (see MW-018).
-- **Impact:** `/analyze`'s "defense in depth" is one layer (`sql_guard`) only. Any guard bypass = writes.
-- **Fix:** Either wire `ThreadSafeQueryEngine` in, or enforce `BEGIN TRANSACTION READ ONLY` in `QueryEngine` for read paths.
 
 ### MW-008
 **Status:** OPEN (verified against code 2026-05-29).
@@ -138,20 +83,6 @@
 - **Impact:** The multi-worker limiter it exists to provide is not atomic, and silently becomes per-process.
 - **Fix:** Single atomic Lua script (zremrangebyscore + zcard + conditional zadd). Fail loudly (or to a clearly-degraded mode) when Redis is unavailable, don't silently swap to fakeredis.
 
-### MW-009
-**Status:** RESOLVED (verified against code 2026-05-29).
-**Redis singleflight in the executor makes multi-worker slower, not faster.**
-- **Location:** `runtime/executor.py:74-92,172-181` — the leader stores results in its **local** cache, but cross-worker waiters poll *their own* local cache, which the leader never populates → 30s poll-then-timeout. Also reads `REDIS_URL` while `rate_limit.py` reads `MIDWICKET_REDIS_URL`.
-- **Impact:** In the exact scenario Redis is for, latency increases and waiters error out.
-- **Fix:** Use a shared cache (Redis) for results too, or remove the distributed path and keep the in-process `threading.Event` singleflight. Unify the env var name.
-
-### MW-010
-**Status:** RESOLVED — reads now stream via `to_arrow_reader` and truncate at `MAX_RESULT_ROWS` instead of materializing the full result with `.arrow()`; regression test in `test_storage_and_monitoring.py` (verified 2026-05-29).
-**The 100k-row memory cap never executes.**
-- **Location:** `storage/engine.py:160` and `thread_safe_engine.py:502` guard with `if isinstance(result, pa.RecordBatchReader)`, but `con.execute(...).arrow()` returns a fully-materialized `pa.Table`. The branch is unreachable.
-- **Impact:** The OOM it claims to prevent is fully present — the entire result set is in RAM before the "cap".
-- **Fix:** Use `.fetch_record_batch()` for streaming, or append `LIMIT` at the SQL level before execution.
-
 ### MW-011
 **Status:** OPEN (verified against code 2026-05-29).
 **Strike rate counts wides as balls faced (knowingly wrong).**
@@ -159,26 +90,12 @@
 - **Impact:** SR understated whenever wides are present; `relative_strike_rate` compounds it.
 - **Fix:** Exclude wides (and treat no-balls per the rules) from the denominator. Requires a legal-ball indicator in the schema (see MW-013).
 
-### MW-012
-**Status:** RESOLVED (verified against code 2026-05-29).
-**Phase casing mismatch produces wrong impact scores and can silently return empty filters.**
-- **Location:** `compute/metrics/batting.py:96-97` matches `"Powerplay"`/`"Death"` (capitalized) while `core/canonicalize.py:8-12` writes capitalized but `storage/engine.py:_infer_phase`, `runtime/planner.py:184`, and `query/defs.py:8` use lowercase.
-- **Impact:** Impact score: powerplay/death balls fall through to the "Middle" baseline (1.1 RPB). Phase filters comparing the wrong case return zero rows silently.
-- **Fix:** Normalize phase casing in one place (constant/enum) and use it everywhere on write and read.
-
 ### MW-013
 **Status:** OPEN (verified against code 2026-05-29).
 **Runs scored off no-balls are dropped; `RunComponent` flags are computed then discarded.**
 - **Location:** `core/canonicalize.py:101` calls `RunComponent.from_no_ball(...)` which hardcodes `batter_runs=0` (`schema/v1.py:48`). Canonicalize only reads `.batter_runs`/`.extras` (`:114-115`); `is_ball_faced`/`bowler_charged` are never persisted (no column exists).
 - **Impact:** Batter runs off a no-ball are lost; SR/economy can't distinguish legal vs illegal deliveries.
 - **Fix:** Capture `runs.batter` on no-balls; add a `legal_ball` (or `extras_type`) column to v1 and persist it.
-
-### MW-014
-**Status:** RESOLVED (verified against code 2026-05-29).
-**Run-outs counted as bowler wickets.**
-- **Location:** `core/canonicalize.py:117-118` sets `is_wicket=True` for all dismissals; `api/player_analytics.py:163` and `runtime/planner.py:213` count `SUM(is_wicket)` as bowler wickets. (Note: `data/pipeline.py:98` does this correctly for registry stats.)
-- **Impact:** Bowling wicket counts inflated by run-outs/obstruction.
-- **Fix:** Add a `bowler_wicket` flag (exclude run out / obstructing / retired) and count that for bowling.
 
 ### MW-015
 **Status:** OPEN (verified against code 2026-05-29).
@@ -209,10 +126,6 @@
 **Status:** PARTIALLY RESOLVED — the engine's pool now honors configured `threads`/`memory_limit` instead of hardcoding `2`/`1GB`. Wiring `ThreadSafeQueryEngine` into the runtime (or deleting it) is deferred: it is the safer engine but is currently used only by the live ingestor fixture and tests, so a swap/removal is a separate, higher-risk change (verified 2026-05-29).
 **`ThreadSafeQueryEngine` (563 LOC) is dead code.** Referenced only in tests; runtime uses `QueryEngine` (`api/session.py:37`). Its read/write separation and read-only-transaction enforcement never run. **Fix:** wire it in (preferred — it's the safer engine) or delete it. Note it also redefines a second class named `ConnectionPool` and hardcodes `PRAGMA threads=2`/`memory_limit='1GB'` ignoring config (`thread_safe_engine.py:114-115`).
 
-### MW-019
-**Status:** RESOLVED — `_migrate_1_0_to_1_1` now guards every `ALTER` on real table existence (so it never touches phantom `deliveries`/`matches`), and `migrate_on_connect` logs the actual number of tables migrated instead of a blanket "schema updated" claim (verified 2026-05-29).
-**`core/migration.py` migrates phantom tables.** `SCHEMA_VERSIONS` (`:25-46`) and `_migrate_1_0_to_1_1` (`:85-119`) target `deliveries`/`matches` tables that exist nowhere; `ALTER TABLE deliveries` fails silently (`:124-126`) yet logs *"Database schema updated. Existing data is safe."* Runs on every session init (`session.py:43`). **Fix:** delete or rewrite against the real `ball_events`.
-
 ### MW-020
 **Status:** OPEN (verified against code 2026-05-29).
 **`api/validation.py` (139 LOC) is unused.** `serve/api.py:38-65` defines weaker duplicate Pydantic models; `/analyze` takes raw `Dict[str, Any]`. **Fix:** use the validation models on the routes (incl. the name regex and 8KB metadata cap), delete the inline duplicates.
@@ -237,10 +150,6 @@
 **Status:** OPEN (verified against code 2026-05-29).
 **Inconsistent venue-baseline math.** `derived/store.py:46` defines `venue_avg_sr = SUM(runs_batter+runs_extras)/COUNT(*)*100` while `:57` defines `avg_runs_per_over = AVG(runs_batter+runs_extras)*6`. `relative_strike_rate` (`batting.py`) then divides player SR (batter runs only) by a venue baseline that includes extras — mismatched units. **Fix:** one definition; compare like with like (batter runs vs batter runs).
 
-### MW-026
-**Status:** RESOLVED (verified against code 2026-05-29).
-**Planner fantasy SQL credits a batter +20 for getting out.** `runtime/planner.py:231` — `SUM(CASE WHEN is_wicket THEN 20 ELSE 0 END) + SUM(runs_batter) AS avg_points`, grouped by `batter_id`. `is_wicket` on a batter's delivery means the batter was dismissed. Also it's a SUM mislabeled `avg_points`. (Duplicate, divergent logic vs `api/fantasy.py`.) **Fix:** correct the scoring sign/semantics and de-duplicate against `fantasy.py`.
-
 ### MW-027
 **Status:** OPEN (verified against code 2026-05-29).
 **Live ingestion can't land in a v1 table.** `live/ingestor.py` deliveries carry `batter`/`bowler` names (`LiveDeliverySchema:35-36`), but `storage/engine.py:368` v1 insert path requires `batter_id`/`bowler_id` → `DataIngestionError`. Bounds also disagree across layers (`ingestor` `ball le=10` vs `validation.py` `ball le=6` vs `api.py` model). **Fix:** resolve names→IDs in the ingestor before insert (via registry); unify delivery bounds.
@@ -248,22 +157,6 @@
 ### MW-028
 **Status:** OPEN (verified against code 2026-05-29).
 **`sql_guard` over-blocks and a plan-guard may be a no-op.** `serve/sql_guard.py:19-43` lists `REPLACE` as forbidden, which also rejects the legitimate `replace()` scalar function. `check_query_plan` (`:370`) tests `node.get("estimated_cardinality", ...)`; verify that key actually exists in DuckDB's `EXPLAIN (FORMAT JSON)` output — if the field name differs, the cardinality guard silently never fires. **Fix:** scope `REPLACE` to statement-leading DDL; confirm the plan JSON field name (and add a test that a known plan-bomb is rejected).
-
-### MW-029
-**Status:** RESOLVED (verified against code 2026-05-29).
-**Codebase is being maintained by blind regex patchers.** Committed/working-tree scripts: `fix_mypy.py` (sprays `# type: ignore`, caused MW-002), `fix_mypy_ignores.py`, `fix_rest.py` (comments describe deleting failing tests), `add_middleware_and_export.py` (caused MW-006), `update_audit.py`, `update_audit_endpoint.py`, `callback.py`, `fix_train_register.py`. **Fix:** delete these from the repo; ban the workflow. Fix types/code by editing source, not string-replacing it. `warn_unused_ignores = true` is set in `pyproject.toml` — run mypy clean and remove the spray.
-
----
-
-## P3 — Low / Hygiene / Latent
-
-### MW-030
-**Status:** RESOLVED (verified against code 2026-05-29).
-**Repo-root junk.** Tracked scratch scripts (see MW-029) + `v1.txt` (24KB) + `virat_report.pdf` (committed despite `.gitignore` `*.pdf` "must never be committed"). `pypitch/` is a ghost: package dirs with **zero `.py` files**, only stale `__pycache__`. Duplicate test files at root (`test_metrics.py`, `test_query_types.py`, …) that CI doesn't run. **Fix:** delete; add a CI check that fails on tracked scratch files.
-
-### MW-031
-**Status:** RESOLVED (verified against code 2026-05-29).
-**Packaging defects.** `pyproject.toml:94` `include = ["midwicket*", "midwicket*"]` (duplicate; was meant to be `pypitch*`). `serve/api.py:1527` `create_dockerfile()` emits `COPY . .` with a `.dockerignore` that excludes none of the scratch scripts, `.env`, `data/`, or `pypitch/`. **Fix:** correct the include glob; tighten the generated dockerignore (or remove the generator — a top-level `Dockerfile` already exists).
 
 ### MW-032
 **Status:** PARTIALLY RESOLVED — `get_secret_key()` with production fail-fast was added, but the dangerous module-level alias `SECRET_KEY = os.getenv("MIDWICKET_SECRET_KEY", "")` still lives at config.py:141, so `from config import SECRET_KEY` is `""` in prod; `is_production()` vs `get_secret_key()` env semantics still disagree (verified 2026-05-29).
@@ -331,22 +224,6 @@ These modules are competently written. Preserve their behavior when refactoring:
 
 ---
 
-### MW-035
-**Status:** RESOLVED — `snapshot_id` removed from queries and hardcoded calls removed; cache key natively binds to engine's `snapshot_id` and `derived_versions` in `executor.py` (verified 2026-05-29).
-**The cache key is `snapshot_id`, and every caller hardcodes `snapshot_id="latest"` — so the cache serves stale results forever after new data loads.**
-- **Mechanism:** `query/base.py:41-52` builds `cache_key` from `model_dump(...)`, which includes the `snapshot_id` **field** (`base.py:15`). That field is supplied by the caller — and every call site passes the literal string `"latest"`: `express.py:168`, `api/fantasy.py:212`, `api/head_to_head.py:135`, `api/sim.py:20`, `api/stats.py:40`.
-- **The trap:** the engine's *real* data version is `engine._snapshot_id`, which changes on every `ingest_events` (`storage/engine.py:88`, e.g. `"match_123"`). But the cache key never sees it — it sees the constant `"latest"`. So after `session.load_match(...)` changes `ball_events`, the next identical query produces the **same `cache_key`** → `executor.execute` returns the cached pre-load result (`runtime/executor.py:154-166`).
-- **Why it's nasty:** `ResultMetadata.snapshot_id` is also set to the caller's `"latest"` (`executor.py:163`), so the stale result is *labelled* current — you cannot detect staleness from the response. Default TTL is 3600s (`cache.set` called without ttl, `executor.py:288`), so wrong answers persist for up to an hour, or until the cache file is cleared.
-- **Impact:** "deterministic, snapshot-aware caching" is the headline feature, and it is silently incoherent with the data. Load data → query → answer X. Load more → query → still X.
-- **Fix:** Key the cache on the **engine's** `snapshot_id` + `derived_versions`, not the caller's literal. Stop letting callers pass `snapshot_id`; have the executor stamp the real version into the key and the metadata.
-
-### MW-036
-**Status:** RESOLVED (verified against code 2026-05-29).
-**The snapshot system that should make MW-035 impossible exists but is wired to nothing.**
-- **Location:** `storage/snapshots.py` (`SnapshotManager`, `create_snapshot`, `get_latest`). Grep shows **zero** usages outside the file. It writes `snapshots.json` that nothing reads; it has no reference to the engine, the cache, or query keys.
-- **Impact:** There's a bookkeeping ledger of snapshots that influences nothing. The infrastructure to fix MW-035 was built and left unplugged.
-- **Fix:** Either drive cache keys/invalidation from `SnapshotManager` (and bump it on every ingest), or delete it so it stops implying coherence that doesn't exist.
-
 ### MW-037
 **Status:** OPEN (verified against code 2026-05-29).
 **The identity registry creates a new entity for every spelling of a name — so one player silently becomes several, and stats fragment.**
@@ -354,19 +231,6 @@ These modules are competently written. Preserve their behavior when refactoring:
 - **Impact:** "V Kohli", "Virat Kohli", "Kohli, V", "v kohli" → distinct `entity_id`s, each with its own `player_stats` / `matchup_stats`. Career aggregates split across variants and read low. This makes analytics subtly wrong even after the schema (MW-001) is fixed.
 - **Secondary:** the in-memory `self._cache` (`registry.py:19,199`) is never invalidated when an alias's validity changes, and grows unbounded (one entry per name×date) — a slow memory leak in a long-running resolver.
 - **Fix:** Normalize names before resolution/ingest (case-fold, collapse whitespace, canonical initial form), or back resolution with a curated alias table. Bound/clear the cache.
-
-### MW-038
-**Status:** OPEN (verified against code 2026-05-29).
-**`not_outs` (and therefore batting average) is computed from a subquery that is mathematically meaningless.**
-- **Location:** `api/player_analytics.py:82-89`:
-  ```sql
-  SUM(CASE WHEN is_wicket THEN 0 ELSE 1 END)
-    FILTER (WHERE ball = (SELECT MAX(b2.ball) FROM ball_events b2
-                          WHERE b2.match_id=... AND b2.inning=... AND b2.batter=...))
-  ```
-  `ball` is the ball-*within-over* (1..6), so `MAX(b2.ball)` ≈ 6 for any innings. The FILTER therefore matches "every 6th-ball-of-an-over the batter faced", not "the batter's last delivery". It has nothing to do with whether the batter was not out.
-- **Impact:** `not_outs` is garbage; any average that uses dismissals derived this way is wrong. The bug is in the *logic*, so fixing MW-001 won't fix this.
-- **Fix:** Determine not-outs from a per-innings dismissal flag (e.g., did a wicket with `player_out = this batter` occur in that match/innings), not from `ball` ordering. To order deliveries you need `(over, ball)` or a global delivery index, not `ball` alone.
 
 ### MW-039
 **Status:** OPEN (verified against code 2026-05-29).
@@ -420,20 +284,6 @@ These modules are competently written. Preserve their behavior when refactoring:
 - **Location:** `compute/derived/phase.py` (`build_phase_stats`) and `compute/derived/venue.py` (`build_venue_stats`) are only re-exported in `__init__.py` — **never called** anywhere. `DerivedStore.ensure_materialized` only knows `venue_baselines` (`store.py:34-38`), so `phase_stats`/`venue_bias`/etc. are never built → the planner's "materialized_view" path can't fire (ties to MW-024).
 - **Worse, they're wrong/incomplete:** `build_venue_stats` returns the raw aggregation with a literal comment *"Logic to calculate avg score would go here"* (`venue.py:18`). `build_phase_stats` uses `('is_wicket','sum')` as a batter's `outs` (`phase.py:21`) — but `is_wicket` on a delivery includes run-outs where the *non-striker* was dismissed, so batter "outs" overcounts.
 - **Fix:** Either implement + wire these into `DerivedStore` and the ingest path, or delete them and drop the materialization claims from the planner.
-
-### MW-046
-**Status:** RESOLVED (verified against code 2026-05-29).
-**Three different phase definitions coexist, and the analytics ignore the phase column the ingest layer materialized.**
-- **Location:** `core/canonicalize.py:8-12` writes a `phase` column (`Powerplay`/`Middle`/`Death`, boundaries `<6`/`<15`). But `api/player_analytics.py:253-256,301-305` **recompute** phase inline from `over` (`CASE WHEN over<=5 ... <=14 ...`), ignoring the stored column. `storage/engine.py:_infer_phase` is a third definition (lowercase). (See MW-012 for the casing half of this.)
-- **Impact:** The materialized `phase` is dead weight; phase logic is duplicated in 3 places that can (and do) drift. Change a boundary in one and the others silently disagree.
-- **Fix:** One canonical phase function used at write time; read the stored column everywhere else.
-
-### MW-047
-**Status:** RESOLVED (verified against code 2026-05-29).
-**`MIDWICKET_CACHE_SALT` can silently destroy cross-worker cache sharing and guards a non-existent threat.**
-- **Location:** `query/base.py:50-52` mixes an env salt into the cache key. The cache backend is an internal DuckDB file (`runtime/cache_duckdb.py`), not user-writable — there is no poisoning vector for the salt to defend.
-- **Impact:** If the salt is set inconsistently across workers/replicas (or set on one deploy and not the next), the *same* query hashes to *different* keys per worker → 0% cross-worker hit rate and cache thrash, with no error. Cargo-cult security that adds an operational footgun. (Compounds MW-016.)
-- **Fix:** Remove the salt, or document that it must be identical across all workers and is only for key-namespacing, not security.
 
 ### MW-048
 **Status:** OPEN (verified against code 2026-05-29).

@@ -21,7 +21,7 @@ class FantasyQuery(BaseQuery):
     @property
     def requires(self) -> Dict[str, Any]:
         return {
-            "preferred_tables": ["fantasy_points_avg", "venue_bias"],
+            "preferred_tables": [],
             "fallback_table": "ball_events",
             "entities": ["venue", "player"],
             "granularity": "match"
@@ -54,7 +54,7 @@ class WinProbQuery(BaseQuery):
     @property
     def requires(self) -> Dict[str, Any]:
         return {
-            "preferred_tables": ["chase_history"],
+            "preferred_tables": [],
             "fallback_table": "ball_events",
             "entities": ["venue"],
             "granularity": "match"

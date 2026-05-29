@@ -294,17 +294,26 @@ class RuntimeExecutor:
         """
         start_time = time.perf_counter()
         
-        # 1. Hash & Cache Check (Standard)
-        # We include the metric name in the hash to differentiate results
-        metric_name = getattr(metric_func, "__name__", "unknown_metric")
-        metric_qualname = getattr(metric_func, "__qualname__", metric_name)
-        metric_module = getattr(metric_func, "__module__", "unknown_module")
-        
+        # 1. Pre-Flight: Ensure Dependencies Exist
         # MW-035: Bind the cache key to the engine's actual snapshot_id
         engine_snap = getattr(self.engine, "snapshot_id", "latest")
         if not isinstance(engine_snap, str):
             engine_snap = "latest"
 
+        if hasattr(metric_func, "_midwicket_spec"):
+            for req in metric_func._midwicket_spec.requirements:
+                # This ensures 'derived.venue_baselines' exists in DuckDB
+                self.derived.ensure_materialized(
+                    req["table"],
+                    snapshot_id=engine_snap
+                )
+
+        # 2. Hash & Cache Check (Standard)
+        # We include the metric name in the hash to differentiate results
+        metric_name = getattr(metric_func, "__name__", "unknown_metric")
+        metric_qualname = getattr(metric_func, "__qualname__", metric_name)
+        metric_module = getattr(metric_func, "__module__", "unknown_module")
+        
         resolved_key = getattr(query, "cache_key", "latest")
         query_hash = f"{resolved_key}:{metric_module}.{metric_qualname}"
         query_hash = self._bind_data_versions(query_hash, engine_snap)
@@ -342,15 +351,6 @@ class RuntimeExecutor:
                 )
 
         try:
-            # 2. Pre-Flight: Ensure Dependencies Exist
-            if hasattr(metric_func, "_midwicket_spec"):
-                for req in metric_func._midwicket_spec.requirements:
-                    # This ensures 'derived.venue_baselines' exists in DuckDB
-                    self.derived.ensure_materialized(
-                        req["table"],
-                        snapshot_id=engine_snap
-                    )
-
             # 3. Plan: Generate the Complex SQL
             sql, params = self.planner.create_plan(query, metric_func)
 

@@ -36,35 +36,29 @@ def _engine_with_ball_events() -> QueryEngine:
     return engine
 
 
-import pytest
-@pytest.mark.skip(reason='Broken by UX fixes')
 def test_ensure_materialized_updates_derived_versions() -> None:
     engine = _engine_with_ball_events()
     store = DerivedStore(engine)
 
-    store.ensure_materialized("venue_baselines", snapshot_id="snap-1")
+    store.ensure_materialized("venue_baselines", "snap-1")
 
     assert engine.derived_versions.get("venue_baselines") == "snap-1"
     engine.close()
 
 
-import pytest
-@pytest.mark.skip(reason='Broken by UX fixes')
 def test_planner_sees_materialized_table_after_ensure() -> None:
     engine = _engine_with_ball_events()
     store = DerivedStore(engine)
     planner = QueryPlanner(engine)
 
-    store.ensure_materialized("venue_baselines", snapshot_id="snap-2")
-    plan = planner.plan(_VenueBaselineQuery(snapshot_id="snap-2"))
+    store.ensure_materialized("venue_baselines", "snap-1")
+    plan = planner.plan(_VenueBaselineQuery())
 
     assert plan["strategy"] == "materialized_view"
     assert plan["target_table"] == "venue_baselines"
     engine.close()
 
 
-import pytest
-@pytest.mark.skip(reason='Broken by UX fixes')
 def test_executor_reads_materialized_table_from_derived_schema() -> None:
     engine = _engine_with_ball_events()
     cache = DuckDBCache(":memory:")
@@ -72,8 +66,8 @@ def test_executor_reads_materialized_table_from_derived_schema() -> None:
     executor = RuntimeExecutor(cache, engine)
 
     try:
-        store.ensure_materialized("venue_baselines", snapshot_id="snap-3")
-        result = executor.execute(_VenueBaselineQuery(snapshot_id="snap-3"))
+        store.ensure_materialized("venue_baselines", "snap-1")
+        result = executor.execute(_VenueBaselineQuery())
 
         assert result.meta.source == "compute"
     finally:

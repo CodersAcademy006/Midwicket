@@ -111,6 +111,11 @@ class QueryPlanner:
         preferred_tables = builtin_preferred + [
             t for t in query_preferred if t not in builtin_preferred
         ]
+        # Defence-in-depth: a query's `requires` may still name a materialized
+        # table that has since been retired from `_VALID_TABLES`. Drop unknown
+        # tables here so a stale declaration falls back to a raw scan instead of
+        # crashing later in `_generate_sql` -> `_validate_table`.
+        preferred_tables = [t for t in preferred_tables if t in _VALID_TABLES]
 
         strategy = "raw_scan"
         target_table = reqs.get("fallback_table", "ball_events")

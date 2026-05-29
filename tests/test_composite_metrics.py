@@ -86,8 +86,6 @@ class TestCompositeMetrics(unittest.TestCase):
             ]
         }
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_executor_injects_dependencies(self):
         print("\n🧪 Testing Composite Metric Execution...")
         
@@ -117,7 +115,6 @@ class TestCompositeMetrics(unittest.TestCase):
         q = MatchupQuery(
             batter_id=str(player_x_id), 
             bowler_id=str(bowler_y_id), # Filter by bowler too
-            snapshot_id="snap_comp"
         )
         
         # 4. Execute Metric
