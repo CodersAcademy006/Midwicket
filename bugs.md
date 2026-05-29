@@ -13,13 +13,13 @@
 
 | Status | Count | Meaning |
 |--------|-------|---------|
-| **RESOLVED** | 37 | Fixed and verified in code — a regression test exists or the defect is structurally gone. |
+| **RESOLVED** | 46 | Fixed and verified in code — a regression test exists or the defect is structurally gone. |
 | **PARTIAL** | 2 | The concrete, low-risk part is fixed; a deeper or riskier remainder is tracked in the entry. |
-| **OPEN** | 10 | Not yet addressed. |
+| **OPEN** | 1 | Not yet addressed. |
 
-- **Resolved (37):** MW-001, MW-002, MW-003, MW-005, MW-006, MW-007, MW-008, MW-009, MW-010, MW-011, MW-012, MW-013, MW-014, MW-015, MW-016, MW-017, MW-018, MW-019, MW-020, MW-023, MW-025, MW-026, MW-027, MW-028, MW-029, MW-030, MW-031, MW-033, MW-035, MW-036, MW-037, MW-038, MW-039, MW-040, MW-041, MW-046, MW-047
+- **Resolved (46):** MW-001, MW-002, MW-003, MW-005, MW-006, MW-007, MW-008, MW-009, MW-010, MW-011, MW-012, MW-013, MW-014, MW-015, MW-016, MW-017, MW-018, MW-019, MW-020, MW-021, MW-022, MW-023, MW-024, MW-025, MW-026, MW-027, MW-028, MW-029, MW-030, MW-031, MW-033, MW-035, MW-036, MW-037, MW-038, MW-039, MW-040, MW-041, MW-042, MW-043, MW-044, MW-045, MW-046, MW-047, MW-048, MW-049
 - **Partial (2):** MW-004, MW-032
-- **Open (10):** MW-021, MW-022, MW-024, MW-034, MW-042, MW-043, MW-044, MW-045, MW-048, MW-049
+- **Open (1):** MW-034
 
 ## Severity legend
 
@@ -46,10 +46,10 @@
 | [MW-017](resolved.md#mw-017) | P1 | Perf | RESOLVED | Live `QueryEngine` pool = 5 conns; registry serializes on one global lock |
 | [MW-018](resolved.md#mw-018) | P2 | Dead code | RESOLVED | `ThreadSafeQueryEngine` (563 LOC) never used in runtime |
 | [MW-020](resolved.md#mw-020) | P2 | Dead code | RESOLVED | `api/validation.py` models unused; weaker inline models used instead |
-| [MW-021](#mw-021) | P2 | ML | OPEN | Shipped "trained" model is hand-picked constants; ~6 coefs are 0.0 |
-| [MW-022](#mw-022) | P2 | ML | OPEN | `_calculate_confidence` is arbitrary multipliers sold as statistical confidence |
+| [MW-021](resolved.md#mw-021) | P2 | ML | RESOLVED | Shipped "trained" model is hand-picked constants; ~6 coefs are 0.0 |
+| [MW-022](resolved.md#mw-022) | P2 | ML | RESOLVED | `_calculate_confidence` is arbitrary multipliers sold as statistical confidence |
 | [MW-023](#mw-023) | P2 | ML | RESOLVED | Train/serve venue dicts diverge (`'dyanmond park'` typo); train match-id misalignment |
-| [MW-024](#mw-024) | P2 | Correctness | OPEN | `DerivedStore` only materializes `venue_baselines`; planner optimization mostly dead |
+| [MW-024](resolved.md#mw-024) | P2 | Correctness | RESOLVED | `DerivedStore` only materializes `venue_baselines`; planner optimization mostly dead |
 | [MW-025](resolved.md#mw-025) | P2 | Correctness | RESOLVED | Two different "venue baseline" formulas; relative SR compares mismatched units |
 | [MW-027](resolved.md#mw-027) | P2 | Correctness | RESOLVED | Live ingest writes legacy schema but v1 path needs IDs → live data can't land |
 | [MW-028](#mw-028) | P2 | Security | RESOLVED | `sql_guard` blocks legitimate `replace()`; cardinality plan-guard likely a no-op |
@@ -81,20 +81,20 @@
 ## P2 — Medium
 
 ### MW-021
-**Status:** OPEN (verified against code 2026-05-29).
-**Shipped "trained" model is hand-picked constants.** `models/win_predictor.py:33-50` — defaults; six coefficients are `0.0` (`rr_gap`, `required_boundary_rate`, `runs_per_wicket_remaining`, `wickets_per_over_remaining`, `chase_progress`, `death_overs`) so those features contribute nothing. **Fix:** ship a genuinely trained `win_model_default.json` or stop describing it as a trained logistic regression.
+**Status:** RESOLVED (2026-05-30). `models/data/win_model_default.json` is a genuinely trained model (source: `retrained_v2`) with no zero coefficients and a full feature scaler (`scaler_mean`/`scaler_scale` present). The `WinPredictor.__init__` hand-tuned defaults are explicitly documented as "hand-tuned starting points, NOT trained on data" and are never used by the shipped `load_default()` path.
+**Shipped "trained" model is hand-picked constants.** Resolved by shipping a trained JSON artifact; the hand-tuned fallback in `__init__` is now clearly labelled as non-trained.
 
 ### MW-022
-**Status:** OPEN (verified against code 2026-05-29).
-**`_calculate_confidence` is arbitrary multipliers presented as statistical confidence.** `win_predictor.py:177-207` multiplies 0.7/1.1/0.8/1.05/0.9 by thresholds; docstring claims "based on … sample size" but there is no sample-size input. **Fix:** compute a real interval, or rename/clearly document it as a heuristic certainty score.
+**Status:** RESOLVED (2026-05-30). `_calculate_confidence` docstring now explicitly states: *"This is **not** a statistical confidence interval derived from a sample size or variance estimate. It is a rule-based heuristic…"* and the return description is *"Heuristic certainty score between 0.1 and 0.95."* The method's interface is unchanged but is no longer sold as something it is not.
+**`_calculate_confidence` is arbitrary multipliers presented as statistical confidence.** Resolved by honest documentation; the heuristic algorithm is retained but labelled correctly.
 
 ### MW-023
 **Status:** RESOLVED (verified against code 2026-05-29).
 **Train/serve skew + match-id misalignment.** `models/train.py:184` venue dict has typo `'dyanmond park'` and uses spaces (`'eden gardens'`) while `win_predictor.py:53-61` uses underscores (`'eden_gardens'`) → features computed with different venue adjustments at train vs serve. `win_predictor.py:316` / `train.py:174` truncate `match_ids[:len(features)]`, which misaligns groups if any row was skipped (`prepare_training_data:81-83` skips on error while the targets loop does not → potential length-mismatch crash at `train.py:205`). **Fix:** share one venue-normalization function; build `match_ids` in lockstep with surviving feature rows.
 
 ### MW-024
-**Status:** OPEN (verified against code 2026-05-29).
-**Planner materialization is mostly aspirational.** `compute/derived/store.py:34-38` only knows how to build `venue_baselines`; every other preferred table (`matchup_stats`, `phase_stats`, `fantasy_points_avg`, `venue_bias`, `chase_history`) raises `ValueError`, so they're never in `derived_versions` and the planner falls back to raw scans. Also `planner.plan()` just calls `create_legacy_plan()` (`planner.py:95`) despite docstrings describing a distinction. **Fix:** implement the builders or remove the dead "materialized_view" routing claims.
+**Status:** RESOLVED (2026-05-30). The dead routing claims were removed. `_VALID_TABLES` is now `{"ball_events", "venue_baselines"}` — no aspirational entries. `_QUERY_PREFERRED_TABLES` only carries `WinProbQuery: []` (WinProb never hits SQL). `plan()` docstring now explicitly documents the routing algorithm and its relationship to `create_legacy_plan()`. DerivedStore correctly builds `venue_baselines` only; requesting any other table raises `ValueError` which the planner prevents by filtering on `_VALID_TABLES`.
+**Planner materialization is mostly aspirational.** Resolved by removing dead routing claims and making `plan()` documentation truthful about delegation.
 
 
 ### MW-028
@@ -102,8 +102,8 @@
 **`sql_guard` over-blocks and a plan-guard may be a no-op.** `serve/sql_guard.py:19-43` lists `REPLACE` as forbidden, which also rejects the legitimate `replace()` scalar function. `check_query_plan` (`:370`) tests `node.get("estimated_cardinality", ...)`; verify that key actually exists in DuckDB's `EXPLAIN (FORMAT JSON)` output — if the field name differs, the cardinality guard silently never fires. **Fix:** scope `REPLACE` to statement-leading DDL; confirm the plan JSON field name (and add a test that a known plan-bomb is rejected).
 
 ### MW-032
-**Status:** PARTIALLY RESOLVED — `get_secret_key()` with production fail-fast was added, but the dangerous module-level alias `SECRET_KEY = os.getenv("MIDWICKET_SECRET_KEY", "")` still lives at config.py:141, so `from config import SECRET_KEY` is `""` in prod; `is_production()` vs `get_secret_key()` env semantics still disagree (verified 2026-05-29).
-**Latent config landmines.** `config.py:141` `SECRET_KEY = os.getenv("MIDWICKET_SECRET_KEY", "")` — the comment claims it defers to `get_secret_key()` but it's a plain empty string in prod; any `from config import SECRET_KEY` signs JWTs with `""`. `config.py:145` `API_KEY_REQUIRED` is evaluated at import → can't be toggled post-import (the reason test scripts fought it). `is_production()` (`MIDWICKET_ENV == "production"`) and `get_secret_key()` (`!= "development"`) disagree on what "prod" means. **Fix:** remove the `SECRET_KEY` alias (force callers to `get_secret_key()`); read auth toggles at request time; unify env semantics.
+**Status:** PARTIALLY RESOLVED (2026-05-30). `SECRET_KEY` module-level alias is gone (comment at config.py:142 explains why; only `get_secret_key()` is exposed). `is_api_key_required()` added — reads `MIDWICKET_API_KEY_REQUIRED` at *call* time rather than import time; `get_config()` now calls it. The legacy `API_KEY_REQUIRED` module constant is retained for backward compat with the many existing `monkeypatch.setattr(auth_mod, "API_KEY_REQUIRED", …)` test patterns; `serve/auth.py` still reads the frozen constant. Remaining: update `auth.py` callers to use `is_api_key_required()` and migrate tests.
+**Latent config landmines.** Partially resolved — secret key is safe; `is_api_key_required()` is the new canonical accessor. Full remediation requires migrating `serve/auth.py` and test patches.
 
 ### MW-034
 **Status:** OPEN (verified against code 2026-05-29).
@@ -152,61 +152,41 @@ These modules are competently written. Preserve their behavior when refactoring:
 | [MW-039](resolved.md#mw-039) | P1 | Concurrency | RESOLVED | Derived-schema `DROP/CREATE` runs unlocked in the live engine → concurrent readers hit dropped tables |
 | [MW-040](resolved.md#mw-040) | P1 | Stats | RESOLVED | Bowling economy excludes wides/no-balls → economy understated even on legacy schema |
 | [MW-041](resolved.md#mw-041) | P2 | ML | RESOLVED | Win features are half-generalized: some scale with `balls_per_innings`, others keep T20 constants (6.0, /200, /4) |
-| [MW-042](#mw-042) | P2 | ML | OPEN | Trained `venue_adjustment` uses a scaled coefficient against a raw value → silent train/serve skew |
-| [MW-043](#mw-043) | P2 | ML | RESOLVED | `overs_done` unit ambiguity: decimal overs (train) vs over.ball notation (likely user input) |
-| [MW-044](#mw-044) | P2 | ML | OPEN | ModelRegistry versions collide at 1-second granularity → silent model overwrite + duplicate version list; singleton unlocked |
-| [MW-045](#mw-045) | P2 | Derived | OPEN | Derived builders are orphaned and unfinished (`build_venue_stats` "logic would go here"; `build_phase_stats` counts run-outs as batter outs) |
+| [MW-042](resolved.md#mw-042) | P2 | ML | RESOLVED | Trained `venue_adjustment` uses a scaled coefficient against a raw value → silent train/serve skew |
+| [MW-043](resolved.md#mw-043) | P2 | ML | RESOLVED | `overs_done` unit ambiguity: decimal overs (train) vs over.ball notation (likely user input) |
+| [MW-044](resolved.md#mw-044) | P2 | ML | RESOLVED | ModelRegistry versions collide at 1-second granularity → silent model overwrite + duplicate version list; singleton unlocked |
+| [MW-045](resolved.md#mw-045) | P2 | Derived | RESOLVED | Derived builders are orphaned and unfinished (`build_venue_stats` "logic would go here"; `build_phase_stats` counts run-outs as batter outs) |
 | [MW-046](#mw-046) | P2 | Stats | RESOLVED | Three divergent phase definitions; analytics ignore the stored `phase` column and recompute from `over` |
 | [MW-047](#mw-047) | P3 | Caching | RESOLVED | `MIDWICKET_CACHE_SALT` breaks cross-worker cache sharing if inconsistent; defends a threat that doesn't exist |
-| [MW-048](#mw-048) | P3 | Lifecycle | OPEN | SIGTERM handler is registered per `MidwicketAPI` instance → multi-app embedding only drains the last one |
-| [MW-049](#mw-049) | P3 | Privacy | OPEN | `/analyze` audit stores raw SQL (with literal filter values) readable by any admin via `/v1/audit` |
+| [MW-048](resolved.md#mw-048) | P3 | Lifecycle | RESOLVED | SIGTERM handler is registered per `MidwicketAPI` instance → multi-app embedding only drains the last one |
+| [MW-049](resolved.md#mw-049) | P3 | Privacy | RESOLVED | `/analyze` audit stores raw SQL (with literal filter values) readable by any admin via `/v1/audit` |
 
 ---
 
 
 ### MW-042
-**Status:** OPEN (verified against code 2026-05-29).
-**Trained models apply a scaled `venue_adjustment` coefficient to an unscaled value.**
-- **Location:** `models/win_predictor.py:103-122`. `venue_adjustment` is excluded from the scaled `linear_terms` loop (`:104`) and added separately (`:119-122`) using the **raw** value. But for a trained model, `coefs["venue_adjustment"]` came from `feature_importance` = coefficients learned on **scaled** features (`models/train.py:235,302,341-347`).
-- **Impact:** The venue term is off by the feature's scale factor for any trained model — a quiet train/serve skew that only shows up once you actually train (the shipped heuristic model dodges it because it has no scaler).
-- **Fix:** Apply the same scaler to `venue_adjustment` at serve time, or exclude it from scaling at train time too. Keep one path.
+**Status:** RESOLVED (2026-05-30). `venue_adjustment` is now included in `linear_terms` when it appears in `self.coefs` (win_predictor.py line 120-121), and the unified scaler loop (lines 127-132) applies the same `(value - mean) / scale` normalisation to it. A legacy additive path (line 136-137) fires only when `venue_adjustment` is *absent* from the trained coefficient dict, keeping the heuristic model working unchanged.
+**Trained models apply a scaled `venue_adjustment` coefficient to an unscaled value.** Resolved — venue_adjustment participates in the scaler loop; train/serve scaling is consistent.
 
 ### MW-043
-**Status:** OPEN (verified against code 2026-05-29).
-**`overs_done` conflates decimal overs with cricket over.ball notation.**
-- **Location:** Training derives `overs_done = over + ball/6.0` → **decimal** overs (`models/train.py:69`). Serving takes `overs_done: float` from the API/SDK (`serve/api.py:913`, `express.predict_win`), and features do `balls_bowled = int(overs_done * 6)` (`win_features.py:47`).
-- **The trap:** a caller who passes `10.5` meaning "10 overs, 5 balls" (standard cricket notation) gets `int(10.5*6)=63` balls, but the real ball count is 65. There is no documentation forcing decimal overs, and the natural human input is over.ball.
-- **Impact:** Off-by-a-few-balls feature errors at exactly the high-leverage death-over moments; silent train/serve unit mismatch.
-- **Fix:** Accept explicit `balls_bowled` (or `overs` + `balls`) at the boundary; document and validate the unit.
+**Status:** RESOLVED (2026-05-30). `compute_chase_features` (win_features.py:70-82) now uses a "smart parse" that distinguishes cricket over.ball notation (e.g. `10.5` → 10 overs 5 balls = 65 balls) from decimal overs (e.g. `10.833` → 65 balls). Fractions with one decimal digit in `{0.1,0.2,0.3,0.4,0.5}` are treated as cricket notation; all other fractions are treated as decimal. An explicit `balls_bowled` parameter also exists as a side-channel for callers who want to be unambiguous.
+**`overs_done` conflates decimal overs with cricket over.ball notation.** Resolved — smart parse handles both input conventions.
 
 ### MW-044
-**Status:** OPEN (verified against code 2026-05-29).
-**Model versions collide at 1-second granularity → silent overwrite; the registry singleton is unlocked.**
-- **Location:** `models/registry.py:121-133` — `version = f"{name}_v_{strftime('%Y%m%d_%H%M%S')}"`. Two registrations in the same second produce the **same** version → `joblib.dump` overwrites the first file (`:127`) and the `versions` list gets a duplicate entry (`:133`, append with no dedup). `delete_model` then picks `current_version = max(remaining)` (`:203`) which can point at an overwritten artifact.
-- **Also:** `get_model_registry()` (`:215-219`) lazily builds the singleton with no lock; concurrent first-callers double-initialize, and `register_model` mutates `_models` + rewrites `registry.json` with no lock (last-write-wins, lost versions).
-- **Impact:** In CI/retraining loops (which *do* register rapidly), models silently clobber each other and the registry index corrupts.
-- **Fix:** Add a monotonic counter/uuid to the version; dedup the versions list; guard the singleton and writes with a lock.
+**Status:** RESOLVED (2026-05-30). Version strings now include a UUID fragment: `f"{name}_v_{timestamp}_{uuid.uuid4().hex[:8]}"` (registry.py:125) — collision-free even in rapid retraining loops. Versions list deduplicates before append (`if version not in versions`, line 136). `register_model` acquires `self._lock` (line 134) for all mutations. The module-level singleton uses double-checked locking (`_registry_lock`, lines 222-230).
+**Model versions collide at 1-second granularity.** Resolved — UUID suffix, dedup, and proper locking.
 
 ### MW-045
-**Status:** OPEN (verified against code 2026-05-29).
-**The derived-table builders the planner depends on are orphaned and unfinished.**
-- **Location:** `compute/derived/phase.py` (`build_phase_stats`) and `compute/derived/venue.py` (`build_venue_stats`) are only re-exported in `__init__.py` — **never called** anywhere. `DerivedStore.ensure_materialized` only knows `venue_baselines` (`store.py:34-38`), so `phase_stats`/`venue_bias`/etc. are never built → the planner's "materialized_view" path can't fire (ties to MW-024).
-- **Worse, they're wrong/incomplete:** `build_venue_stats` returns the raw aggregation with a literal comment *"Logic to calculate avg score would go here"* (`venue.py:18`). `build_phase_stats` uses `('is_wicket','sum')` as a batter's `outs` (`phase.py:21`) — but `is_wicket` on a delivery includes run-outs where the *non-striker* was dismissed, so batter "outs" overcounts.
-- **Fix:** Either implement + wire these into `DerivedStore` and the ingest path, or delete them and drop the materialization claims from the planner.
+**Status:** RESOLVED (2026-05-30). The orphaned, unfinished `compute/derived/venue.py` and `compute/derived/phase.py` files were removed. `DerivedStore` now exposes only the correctly-implemented `venue_baselines` builder. The planner's `_VALID_TABLES` and `_QUERY_PREFERRED_TABLES` were pruned to match what `DerivedStore` can actually build (MW-024). No aspirational materialization claims remain.
+**Derived builders orphaned and unfinished.** Resolved — dead builders deleted; planner only routes to tables that actually exist.
 
 ### MW-048
-**Status:** OPEN (verified against code 2026-05-29).
-**The SIGTERM drain handler is registered per `MidwicketAPI` instance, so multi-app embedding only drains the last one.**
-- **Location:** `serve/api.py:154-166` registers `signal.signal(SIGTERM, _handle_sigterm)` inside `__init__`. `create_app()` can be called more than once (tests, ASGI mounts, multi-tenant embedding). Each call overwrites the process-wide handler.
-- **Impact:** Only the most-recently-constructed app drains on SIGTERM; earlier apps reject nothing and may drop in-flight work on shutdown.
-- **Fix:** Register the signal handler once at process scope, or maintain a registry of apps to drain.
+**Status:** RESOLVED (2026-05-30). `_active_apps = weakref.WeakSet()` at module scope (api.py:70) holds all live `MidwicketAPI` instances. `_global_sigterm_handler` (api.py:73-75) drains every app in the set when SIGTERM fires. Each `MidwicketAPI.__init__` registers itself in `_active_apps` (line 167) and ensures the global handler is registered exactly once (lines 171-174). The WeakSet prevents memory leaks from test instances.
+**SIGTERM handler registered per instance.** Resolved — process-wide handler drains all live apps via WeakSet.
 
 ### MW-049
-**Status:** OPEN (verified against code 2026-05-29).
-**`/analyze` stores the raw user SQL (including literal filter values) in an audit table any admin can read.**
-- **Location:** `serve/api.py:1062-1067` inserts `[user_id, sql, ...]` into `audit_log`; `/v1/audit` (`api.py:844`) returns `query_text` to any holder of `MIDWICKET_ADMIN_KEYS`.
-- **Impact:** If users embed sensitive values in `WHERE` literals, those persist in plaintext for 30 days (`api.py:292`) and are exposed via the admin endpoint. Minor, but a data-handling surprise for a "read-only analytics" surface.
-- **Fix:** Store a parameterized/normalized query shape, or redact literals, or restrict `query_text` visibility.
+**Status:** RESOLVED (2026-05-30). `/analyze` now calls `_redact_sql_literals(safe_sql)` (api.py:1088) before inserting into `audit_log`. The `_redact_sql_literals` function (api.py:27-39) strips string literals, numeric literals, and date values, replacing them with `?`. The structural query shape is preserved; sensitive literal values are not persisted.
+**`/analyze` stores raw SQL in audit log.** Resolved — literals redacted before storage.
 
 ---
 
