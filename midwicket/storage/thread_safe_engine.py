@@ -26,7 +26,10 @@ class ConnectionPool:
     """
 
     def __init__(self, db_path: str = ":memory:", max_connections: int = 10,
-                 read_pool_size: int = 5, write_pool_size: int = 2):
+                 read_pool_size: int = 5, write_pool_size: int = 2,
+                 threads: Optional[int] = None, memory_limit: Optional[str] = None):
+        from midwicket.config import DATABASE_THREADS, DATABASE_MEMORY_LIMIT
+
         self.db_path = db_path
         self._connect_path = db_path
         if db_path == ":memory:":
@@ -37,6 +40,9 @@ class ConnectionPool:
         self.max_connections = max_connections
         self.read_pool_size = read_pool_size
         self.write_pool_size = write_pool_size
+        # Honor configured resource limits instead of hardcoding them (MW-018).
+        self._threads = threads or DATABASE_THREADS
+        self._memory_limit = memory_limit or DATABASE_MEMORY_LIMIT
 
         # Connection pools
         self.read_pool: queue.Queue = queue.Queue(maxsize=read_pool_size)
@@ -110,9 +116,13 @@ class ConnectionPool:
         """
         conn = duckdb.connect(self._connect_path, read_only=False)
 
-        # Performance tuning
-        conn.execute("PRAGMA threads=2;")  # Reduced for connection pooling
-        conn.execute("PRAGMA memory_limit='1GB';")
+        # Performance tuning — honor configured limits instead of hardcoding
+        # values that silently ignored MIDWICKET_DB_THREADS / MIDWICKET_DB_MEMORY (MW-018).
+        threads = int(self._threads)
+        if not (1 <= threads <= 16):
+            raise ValueError(f"Invalid thread count {threads}; must be 1-16")
+        conn.execute(f"PRAGMA threads={threads};")  # nosec B608 — integer validated above
+        conn.execute(f"PRAGMA memory_limit='{self._memory_limit}';")
 
         # Tag the connection so the read pool can enforce read-only semantics
         # at the DuckDB transaction level on every checkout.
