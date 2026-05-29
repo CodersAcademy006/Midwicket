@@ -49,6 +49,8 @@ class SchemaMigration:
         self.data_dir = Path(data_dir)
         self.db_path = self.data_dir / "midwicket.duckdb"
         self.schema_file = self.data_dir / ".schema_version"
+        # Number of real tables changed by the most recent migration step.
+        self.tables_migrated = 0
 
     def get_current_schema_version(self) -> str:
         """Get the current schema version from disk."""
@@ -76,57 +78,65 @@ class SchemaMigration:
 
         # Perform migrations step by step
         if current_version == "1.0" and target_version == "1.1":
-            self._migrate_1_0_to_1_1()
+            self.tables_migrated = self._migrate_1_0_to_1_1()
 
         self.set_schema_version(target_version)
-        logger.info("Schema migration completed to version %s", target_version)
+        logger.info(
+            "Schema version advanced to %s (%d legacy table(s) migrated).",
+            target_version, self.tables_migrated,
+        )
         return True
 
-    def _migrate_1_0_to_1_1(self):
-        """Migrate from schema 1.0 to 1.1."""
-        # Add new columns with default values
+    @staticmethod
+    def _table_exists(con: duckdb.DuckDBPyConnection, table_name: str) -> bool:
+        """True only if a real table of this name exists in the database."""
+        row = con.execute(
+            "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ?",
+            [table_name],
+        ).fetchone()
+        return bool(row and row[0] > 0)
+
+    def _migrate_1_0_to_1_1(self) -> int:
+        """Migrate 1.0 -> 1.1, touching only tables that actually exist.
+
+        Older revisions blindly ran ``ALTER TABLE deliveries`` / ``matches`` even
+        though canonicalized data lives in a single ``ball_events`` table, so the
+        ALTERs failed silently while the caller still logged success (MW-019). We
+        now guard every statement on real table existence and return the number of
+        tables actually changed, so callers can log the truth.
+        """
+        migrated = 0
         con = duckdb.connect(str(self.db_path))
-
         try:
-            # Add is_impact_player column to deliveries
-            con.execute("""
-                ALTER TABLE deliveries
-                ADD COLUMN IF NOT EXISTS is_impact_player BOOLEAN DEFAULT FALSE
-            """)
-
-            # Add metadata columns to matches
-            con.execute("""
-                ALTER TABLE matches
-                ADD COLUMN IF NOT EXISTS competition VARCHAR DEFAULT 'unknown'
-            """)
-
-            con.execute("""
-                ALTER TABLE matches
-                ADD COLUMN IF NOT EXISTS season INTEGER DEFAULT 2023
-            """)
-
-            # Update existing data with sensible defaults
-            # For example, mark some players as impact players based on rules
-            con.execute("""
-                UPDATE deliveries
-                SET is_impact_player = TRUE
-                WHERE batter IN (
-                    SELECT DISTINCT batter
-                    FROM deliveries
-                    GROUP BY batter
-                    HAVING COUNT(DISTINCT match_id) >= 10  -- Frequent players
+            if self._table_exists(con, "deliveries"):
+                con.execute(
+                    "ALTER TABLE deliveries "
+                    "ADD COLUMN IF NOT EXISTS is_impact_player BOOLEAN DEFAULT FALSE"
                 )
-            """)
+                con.execute(
+                    "UPDATE deliveries SET is_impact_player = TRUE "
+                    "WHERE batter IN (SELECT batter FROM deliveries "
+                    "GROUP BY batter HAVING COUNT(DISTINCT match_id) >= 10)"
+                )
+                migrated += 1
+                logger.debug("Migrated deliveries table to schema 1.1")
 
-            logger.debug("Updated deliveries table with is_impact_player column")
-            logger.debug("Updated matches table with competition and season columns")
-
-        except Exception as e:
+            if self._table_exists(con, "matches"):
+                con.execute(
+                    "ALTER TABLE matches "
+                    "ADD COLUMN IF NOT EXISTS competition VARCHAR DEFAULT 'unknown'"
+                )
+                con.execute(
+                    "ALTER TABLE matches "
+                    "ADD COLUMN IF NOT EXISTS season INTEGER DEFAULT 2023"
+                )
+                migrated += 1
+                logger.debug("Migrated matches table to schema 1.1")
+        except Exception as e:  # nosec B110 — schema patch is best-effort
             logger.warning("Migration warning: %s", e)
-            # Don't fail the migration for non-critical issues
-
         finally:
             con.close()
+        return migrated
 
     def validate_schema(self) -> Dict[str, Any]:
         """
@@ -286,7 +296,16 @@ def migrate_on_connect(data_dir: str) -> None:
         return
 
     if migrator.check_and_migrate():
-        logger.info("Database schema updated. Existing data is safe.")
+        if migrator.tables_migrated:
+            logger.info(
+                "Database schema updated; %d legacy table(s) migrated. Existing data is safe.",
+                migrator.tables_migrated,
+            )
+        else:
+            logger.info(
+                "Schema version marker advanced to %s; no legacy tables present, no data changed.",
+                migrator.CURRENT_SCHEMA_VERSION,
+            )
 
 def validate_database_integrity(data_dir: str) -> Dict[str, Any]:
     """
