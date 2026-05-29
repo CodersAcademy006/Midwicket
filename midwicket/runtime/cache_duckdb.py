@@ -7,12 +7,22 @@ import threading
 from contextlib import nullcontext
 from midwicket.runtime.cache import CacheInterface
 
+try:
+    from midwicket.config import CACHE_TTL as _DEFAULT_TTL
+except Exception:
+    _DEFAULT_TTL = 3600
+
 class DuckDBCache(CacheInterface):
     def __init__(self, path: str = ".midwicket_cache.db"):
         self.path = path
         self._in_memory = path == ":memory:"
+        # MW-016: use a single shared lock for ALL modes (file and in-memory)
+        # to prevent concurrent writes from corrupting the DuckDB file.
         self._lock = threading.RLock()
         self._init_db()
+        # Background eviction: purge expired rows every 5 minutes for file mode
+        if not self._in_memory:
+            self._start_eviction_thread()
 
     def _init_db(self) -> None:
         """
@@ -77,14 +87,31 @@ class DuckDBCache(CacheInterface):
         else:
             return json.loads(blob.decode("utf-8") if isinstance(blob, (bytes, bytearray)) else blob)
 
+    def _start_eviction_thread(self) -> None:
+        """Start a daemon thread that periodically removes expired rows."""
+        def _evict():
+            while True:
+                time.sleep(300)  # every 5 minutes
+                try:
+                    with self._lock:
+                        with duckdb.connect(self.path) as con:
+                            con.execute(
+                                "DELETE FROM cache_store WHERE expires_at <= ?",
+                                [int(time.time())],
+                            )
+                except Exception:
+                    pass  # eviction is best-effort
+        t = threading.Thread(target=_evict, daemon=True, name="DuckDBCache-evict")
+        t.start()
+
     def _get_con(self, read_only: bool = False) -> duckdb.DuckDBPyConnection:
         if self.path == ":memory:":
             return self.con
         return duckdb.connect(self.path, read_only=read_only)
 
     def _operation_guard(self):
-        """Serialize operations for in-memory mode where one connection is shared."""
-        return self._lock if self._in_memory else nullcontext()
+        # MW-016: always use the lock (file-based mode is now also serialized)
+        return self._lock
 
     def get(self, key: str) -> Optional[Any]:
         current_time = int(time.time())
@@ -109,7 +136,7 @@ class DuckDBCache(CacheInterface):
                 if self.path != ":memory:":
                     con.close()
 
-    def set(self, key: str, value: Any, ttl: int = 3600) -> None:
+    def set(self, key: str, value: Any, ttl: int = _DEFAULT_TTL) -> None:
         blob, is_arrow = self._serialize(value)
         expires_at = int(time.time()) + ttl
 
@@ -121,6 +148,11 @@ class DuckDBCache(CacheInterface):
                     INSERT OR REPLACE INTO cache_store (key, value, is_arrow, expires_at)
                     VALUES (?, ?, ?, ?)
                 """, [key, blob, is_arrow, expires_at])
+                # Inline opportunistic eviction: remove a batch of expired rows
+                con.execute(
+                    "DELETE FROM cache_store WHERE expires_at <= ?",
+                    [int(time.time())],
+                )
             finally:
                 if self.path != ":memory:":
                     con.close()

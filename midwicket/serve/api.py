@@ -21,6 +21,23 @@ import json
 from pathlib import Path
 import time
 import logging
+import re
+
+
+def _redact_sql_literals(sql: str) -> str:
+    """Replace SQL string, numeric, and date literals with '?' for audit safety.
+
+    This prevents PII or sensitive filter values from being stored in plaintext
+    in the audit_log table.  The structural shape of the query is preserved
+    so it remains useful for debugging and query-pattern analytics.
+    """
+    # Replace single-quoted strings (including escaped quotes)
+    redacted = re.sub(r"'(?:[^'\\]|\\.)*'", "?", sql)
+    # Replace double-quoted strings (identifiers won't usually match, but be safe)
+    redacted = re.sub(r'"(?:[^"\\]|\\.)*"', "?", redacted)
+    # Replace numeric literals (integers and decimals, but not part of identifiers)
+    redacted = re.sub(r"\b\d+(?:\.\d+)?\b", "?", redacted)
+    return redacted
 
 from midwicket.live.ingestor import StreamIngestor
 from midwicket.serve.auth import verify_api_key
@@ -34,35 +51,18 @@ from midwicket.compute.winprob import win_probability as wp_func
 
 logger = logging.getLogger(__name__)
 
-# Pydantic models for request validation
-class PlayerLookupRequest(BaseModel):
-    name: str
-    match_date: Optional[_date_type] = None  # ISO date string; used for historical alias resolution
-
-class VenueLookupRequest(BaseModel):
-    name: str
-    match_date: Optional[_date_type] = None
-
-class MatchupRequest(BaseModel):
-    batter: str
-    bowler: str
-    match_date: Optional[_date_type] = None  # pass match date for correct historical resolution
-
-class LiveMatchRegistration(BaseModel):
-    match_id: str
-    source: str
-    metadata: Optional[Dict[str, Any]] = None
-
-class DeliveryData(BaseModel):
-    match_id: str
-    inning: int
-    over: int
-    ball: int
-    runs_total: int
-    wickets_fallen: int
-    target: Optional[int] = None
-    venue: Optional[str] = None
-    timestamp: Optional[float] = None
+# Pydantic models — import from the canonical validation module (MW-020).
+# Previously duplicated inline with weaker constraints; the validation module
+# includes field limits, regex validators, and size checks.
+from midwicket.api.validation import (
+    PlayerLookupRequest,
+    VenueLookupRequest,
+    MatchupRequest,
+    LiveMatchRegistrationRequest as LiveMatchRegistration,
+    DeliveryDataRequest as DeliveryData,
+    FantasyPointsRequest,
+    WinPredictionRequest,
+)
 
 import weakref
 
@@ -1085,7 +1085,7 @@ class MidwicketAPI:
                     self.session.engine.execute_sql(
                         "INSERT INTO audit_log (ts, user_id, query_text, row_count, duration_ms, endpoint, action, ip_address) "
                         "VALUES (current_timestamp, ?, ?, ?, ?, ?, ?, ?)",
-                        [user_id, safe_sql, n, round(duration_ms, 2), "/analyze", "custom_query", client_ip],
+                        [user_id, _redact_sql_literals(safe_sql), n, round(duration_ms, 2), "/analyze", "custom_query", client_ip],
                         read_only=False,
                     )
                 except Exception as audit_exc:

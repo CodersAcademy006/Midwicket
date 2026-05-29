@@ -236,6 +236,7 @@ def predict_win(venue: str, target: int, current_score: int, wickets_down: int, 
     """
     if data_dir:
         from midwicket.models.registry import ModelRegistry
+        from midwicket.exceptions import ModelNotFoundError, ModelTrainingError
         from pathlib import Path
         model_path = Path(data_dir) / "models"
         if model_path.exists():
@@ -244,7 +245,7 @@ def predict_win(venue: str, target: int, current_score: int, wickets_down: int, 
                 model = registry.get_model("win_predictor")
                 prob, conf = model.predict(target, current_score, wickets_down, overs_done, venue)
                 return {"win_prob": prob, "confidence": conf}
-            except Exception:
+            except (ModelNotFoundError, ModelTrainingError):
                 pass
 
     # Use the compute win probability function directly for express API
