@@ -7,7 +7,7 @@ import os
 import pickle
 import threading
 import numpy as np
-from typing import Dict
+from typing import Dict, Optional
 from ..models.win_predictor import WinPredictor
 
 def _load_initial_model() -> WinPredictor:
@@ -63,7 +63,8 @@ def win_probability(
     overs_done: float,
     venue: str = None,
     balls_per_innings: int = 120,
-    snapshot: str = "latest"
+    snapshot: str = "latest",
+    balls_bowled: Optional[int] = None,
 ) -> Dict[str, float]:
     """
     Estimate win probability for the chasing team in a T20 match.
@@ -73,17 +74,18 @@ def win_probability(
         target: Target score to chase
         current_runs: Current runs scored
         wickets_down: Wickets fallen
-        overs_done: Overs completed
+        overs_done: Overs completed (decimal overs, e.g. 10.5 = 10 overs 3 balls).
         venue: Optional venue (not used in baseline)
         balls_per_innings: Total balls in innings (default 120 for T20)
         snapshot: Data snapshot (not used in baseline)
+        balls_bowled: Explicit number of balls bowled. If provided, overrides overs_done.
 
     Returns:
         Dict with 'win_prob' and 'confidence' keys
     """
     with _model_lock:
         model = _default_model
-    prob, conf = model.predict(target, current_runs, wickets_down, overs_done, venue, balls_per_innings=balls_per_innings)
+    prob, conf = model.predict(target, current_runs, wickets_down, overs_done, venue, balls_per_innings=balls_per_innings, balls_bowled=balls_bowled)
     return {"win_prob": prob, "confidence": conf}
 
 def set_win_model(model: WinPredictor) -> None:
