@@ -53,34 +53,37 @@ def _ensure_data_dir(data_dir: Optional[str] = None) -> Path:
     path.mkdir(parents=True, exist_ok=True)
     return path
 
-def _auto_setup_session(data_dir: Optional[str] = None) -> MidwicketSession:
-    """Auto-setup session with defaults and caching."""
+def _auto_setup_session(data_dir: Optional[str] = None, auto_download: bool = False) -> MidwicketSession:
+    """Auto-setup session with caching. Does not download data by default."""
     global _cached_session, _cached_session_dir
 
     resolved = str(_ensure_data_dir(data_dir))
     with _session_lock:
-        # Return cached session only if the data dir matches
         if _cached_session is not None and _cached_session_dir == resolved:
             return _cached_session
 
         data_path = Path(resolved)
-
-        # Download data on first run if not already present
-        loader = DataLoader(str(data_path))
-        raw_present = loader.raw_dir.exists() and bool(list(loader.raw_dir.glob("*.json")))
-
-        if not raw_present:
-            if _DEBUG_MODE:
+        
+        if auto_download:
+            loader = DataLoader(str(data_path))
+            raw_present = loader.raw_dir.exists() and bool(list(loader.raw_dir.glob("*.json")))
+            if not raw_present:
                 print("No local data found. Downloading IPL dataset (~50 MB)...")
-            try:
-                loader.download()
-            except Exception as exc:
-                if _DEBUG_MODE:
+                try:
+                    loader.download()
+                except Exception as exc:
                     print(f"Download failed: {exc}. Continuing without data.")
 
         _cached_session = MidwicketSession(str(data_path))
         _cached_session_dir = resolved
         return _cached_session
+
+def download_data(data_dir: Optional[str] = None) -> None:
+    """Explicitly download the historical dataset."""
+    path = _ensure_data_dir(data_dir)
+    loader = DataLoader(str(path))
+    print("Downloading historical dataset...")
+    loader.download()
 
 def load_competition(competition: str, season: int, data_dir: str = "./data") -> CricsheetLoader:
     """
@@ -212,7 +215,7 @@ def quick_load(data_dir: Optional[str] = None) -> MidwicketSession:
         session = px.quick_load()
         session.load_match("1234567")
     """
-    return _auto_setup_session(data_dir)
+    return _auto_setup_session(data_dir, auto_download=True)
 
 # Export convenience functions
 __all__ = [
