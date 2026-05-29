@@ -136,9 +136,9 @@ def get_secret_key() -> str:
     return _SECRET_KEY
 
 
-# Backward-compat: modules that read config.SECRET_KEY get the lazy accessor
-# via a property-like pattern. For now, keep a module-level alias that defers.
-SECRET_KEY = os.getenv("MIDWICKET_SECRET_KEY", "")
+# SECRET_KEY is intentionally NOT exposed as a module-level constant. Importing
+# it eagerly captured "" in production (signing JWTs with an empty key); callers
+# must use get_secret_key(), which fails fast when no key is configured.
 
 # Secure default: require API key authentication unless explicitly disabled.
 # Set MIDWICKET_API_KEY_REQUIRED=false only for local development.
