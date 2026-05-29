@@ -13,13 +13,13 @@
 
 | Status | Count | Meaning |
 |--------|-------|---------|
-| **RESOLVED** | 22 | Fixed and verified in code — a regression test exists or the defect is structurally gone. |
+| **RESOLVED** | 25 | Fixed and verified in code — a regression test exists or the defect is structurally gone. |
 | **PARTIAL** | 5 | The concrete, low-risk part is fixed; a deeper or riskier remainder is tracked in the entry. |
-| **OPEN** | 22 | Not yet addressed. |
+| **OPEN** | 19 | Not yet addressed. |
 
-- **Resolved (22):** MW-001, MW-002, MW-003, MW-005, MW-007, MW-009, MW-010, MW-011, MW-012, MW-013, MW-014, MW-019, MW-026, MW-029, MW-030, MW-031, MW-035, MW-036, MW-038, MW-040, MW-046, MW-047
+- **Resolved (25):** MW-001, MW-002, MW-003, MW-005, MW-007, MW-009, MW-010, MW-011, MW-012, MW-013, MW-014, MW-019, MW-025, MW-026, MW-027, MW-029, MW-030, MW-031, MW-035, MW-036, MW-037, MW-038, MW-040, MW-046, MW-047
 - **Partial (5):** MW-004, MW-016, MW-018, MW-032, MW-041
-- **Open (22):** MW-006, MW-008, MW-015, MW-017, MW-020, MW-021, MW-022, MW-023, MW-024, MW-025, MW-027, MW-028, MW-033, MW-034, MW-037, MW-039, MW-042, MW-043, MW-044, MW-045, MW-048, MW-049
+- **Open (19):** MW-006, MW-008, MW-015, MW-017, MW-020, MW-021, MW-022, MW-023, MW-024, MW-028, MW-033, MW-034, MW-039, MW-042, MW-043, MW-044, MW-045, MW-048, MW-049
 
 ## Severity legend
 
@@ -50,8 +50,8 @@
 | [MW-022](#mw-022) | P2 | ML | OPEN | `_calculate_confidence` is arbitrary multipliers sold as statistical confidence |
 | [MW-023](#mw-023) | P2 | ML | OPEN | Train/serve venue dicts diverge (`'dyanmond park'` typo); train match-id misalignment |
 | [MW-024](#mw-024) | P2 | Correctness | OPEN | `DerivedStore` only materializes `venue_baselines`; planner optimization mostly dead |
-| [MW-025](#mw-025) | P2 | Correctness | OPEN | Two different "venue baseline" formulas; relative SR compares mismatched units |
-| [MW-027](#mw-027) | P2 | Correctness | OPEN | Live ingest writes legacy schema but v1 path needs IDs → live data can't land |
+| [MW-025](resolved.md#mw-025) | P2 | Correctness | RESOLVED | Two different "venue baseline" formulas; relative SR compares mismatched units |
+| [MW-027](resolved.md#mw-027) | P2 | Correctness | RESOLVED | Live ingest writes legacy schema but v1 path needs IDs → live data can't land |
 | [MW-028](#mw-028) | P2 | Security | OPEN | `sql_guard` blocks legitimate `replace()`; cardinality plan-guard likely a no-op |
 | [MW-032](#mw-032) | P3 | Latent | PARTIAL | `config.SECRET_KEY` alias is `""` in prod; `API_KEY_REQUIRED` frozen at import |
 | [MW-033](#mw-033) | P3 | Code smell | OPEN | Duplicate debug flags; 3× "try 4 dates" resolution hack; broad `except` everywhere |
@@ -132,13 +132,6 @@
 **Status:** OPEN (verified against code 2026-05-29).
 **Planner materialization is mostly aspirational.** `compute/derived/store.py:34-38` only knows how to build `venue_baselines`; every other preferred table (`matchup_stats`, `phase_stats`, `fantasy_points_avg`, `venue_bias`, `chase_history`) raises `ValueError`, so they're never in `derived_versions` and the planner falls back to raw scans. Also `planner.plan()` just calls `create_legacy_plan()` (`planner.py:95`) despite docstrings describing a distinction. **Fix:** implement the builders or remove the dead "materialized_view" routing claims.
 
-### MW-025
-**Status:** OPEN (verified against code 2026-05-29).
-**Inconsistent venue-baseline math.** `derived/store.py:46` defines `venue_avg_sr = SUM(runs_batter+runs_extras)/COUNT(*)*100` while `:57` defines `avg_runs_per_over = AVG(runs_batter+runs_extras)*6`. `relative_strike_rate` (`batting.py`) then divides player SR (batter runs only) by a venue baseline that includes extras — mismatched units. **Fix:** one definition; compare like with like (batter runs vs batter runs).
-
-### MW-027
-**Status:** OPEN (verified against code 2026-05-29).
-**Live ingestion can't land in a v1 table.** `live/ingestor.py` deliveries carry `batter`/`bowler` names (`LiveDeliverySchema:35-36`), but `storage/engine.py:368` v1 insert path requires `batter_id`/`bowler_id` → `DataIngestionError`. Bounds also disagree across layers (`ingestor` `ball le=10` vs `validation.py` `ball le=6` vs `api.py` model). **Fix:** resolve names→IDs in the ingestor before insert (via registry); unify delivery bounds.
 
 ### MW-028
 **Status:** OPEN (verified against code 2026-05-29).
@@ -194,7 +187,7 @@ These modules are competently written. Preserve their behavior when refactoring:
 |----|----------|------|--------|----------|
 | [MW-035](#mw-035) | P0 | Caching | RESOLVED | Cache is keyed on a hardcoded `snapshot_id="latest"`, not the data version → serves stale results after every ingest |
 | [MW-036](#mw-036) | P1 | Caching | RESOLVED | `SnapshotManager` is wired to nothing; the snapshot system that should drive cache coherence is decorative |
-| [MW-037](#mw-037) | P1 | Identity | OPEN | Registry has no name normalization → one player becomes many entities; stats fragment across spellings |
+| [MW-037](resolved.md#mw-037) | P1 | Identity | RESOLVED | Registry has no name normalization → one player becomes many entities; stats fragment across spellings |
 | [MW-038](resolved.md#mw-038) | P1 | Stats | RESOLVED | `not_outs` SQL is mathematically meaningless (`MAX(ball)` where `ball`∈1..6) → batting average wrong even after schema fix |
 | [MW-039](#mw-039) | P1 | Concurrency | OPEN | Derived-schema `DROP/CREATE` runs unlocked in the live engine → concurrent readers hit dropped tables |
 | [MW-040](resolved.md#mw-040) | P1 | Stats | RESOLVED | Bowling economy excludes wides/no-balls → economy understated even on legacy schema |
@@ -210,13 +203,6 @@ These modules are competently written. Preserve their behavior when refactoring:
 
 ---
 
-### MW-037
-**Status:** OPEN (verified against code 2026-05-29).
-**The identity registry creates a new entity for every spelling of a name — so one player silently becomes several, and stats fragment.**
-- **Location:** `storage/registry.py:192-236` (`_resolve_generic`). The lookup/cache key is `f"{prefix}:{name}:{match_date}"` with `name` used **raw** — no case-folding, no punctuation/initials normalization. With `auto_ingest=True` (used by `canonicalize_match` and `data/pipeline.py`), an unseen string mints a brand-new entity + alias.
-- **Impact:** "V Kohli", "Virat Kohli", "Kohli, V", "v kohli" → distinct `entity_id`s, each with its own `player_stats` / `matchup_stats`. Career aggregates split across variants and read low. This makes analytics subtly wrong even after the schema (MW-001) is fixed.
-- **Secondary:** the in-memory `self._cache` (`registry.py:19,199`) is never invalidated when an alias's validity changes, and grows unbounded (one entry per name×date) — a slow memory leak in a long-running resolver.
-- **Fix:** Normalize names before resolution/ingest (case-fold, collapse whitespace, canonical initial form), or back resolution with a curated alias table. Bound/clear the cache.
 
 ### MW-039
 **Status:** OPEN (verified against code 2026-05-29).

@@ -52,7 +52,9 @@ class DerivedStore:
         CREATE OR REPLACE TABLE derived.venue_baselines AS
         SELECT
             venue_id,
-            (SUM(runs_batter + runs_extras) / COUNT(*)) * 100 as venue_avg_sr
+            CASE WHEN SUM(CASE WHEN extras_type = 'wides' THEN 0 ELSE 1 END) = 0 THEN 0.0
+                 ELSE (SUM(runs_batter) / SUM(CASE WHEN extras_type = 'wides' THEN 0 ELSE 1 END)) * 100
+            END as venue_avg_sr
         FROM ball_events
         GROUP BY venue_id
         """
