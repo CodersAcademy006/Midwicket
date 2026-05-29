@@ -61,7 +61,7 @@ def test_cache_behavior(registry):
     id1 = registry.resolve_player(name, d1, auto_ingest=True)
 
     # Verify it"s in cache
-    cache_key = f"P:{name}:{d1}"
+    cache_key = f"P:{registry._normalize_name(name)}:{d1}"
     assert cache_key in registry._cache
     assert registry._cache[cache_key] == id1
 
@@ -198,4 +198,38 @@ class TestRegistryConcurrentReads:
         assert not any(t.is_alive() for t in threads), "resolve threads deadlocked"
         assert errors == [], f"concurrent resolve raised: {errors!r}"
         assert len(set(results)) == 1, f"unstable ids: {set(results)!r}"
+
+
+def test_name_normalization_and_compatibility(registry):
+    d = date(2020, 1, 1)
+    
+    # 1. Register Virat Kohli
+    id_virat = registry.resolve_player("Virat Kohli", d, auto_ingest=True)
+    
+    # 2. Spelling variants should resolve to Virat Kohli
+    assert registry.resolve_player("virat kohli", d) == id_virat
+    assert registry.resolve_player("Virat  Kohli", d) == id_virat
+    assert registry.resolve_player("Kohli, Virat", d) == id_virat
+    assert registry.resolve_player("v kohli", d) == id_virat
+    assert registry.resolve_player("V. Kohli", d) == id_virat
+    assert registry.resolve_player("Kohli, V.", d) == id_virat
+
+    # 3. Add a distinct Kohli player: Vijay Kohli
+    id_vijay = registry.resolve_player("Vijay Kohli", d, auto_ingest=True)
+    assert id_vijay != id_virat
+
+    # 4. Under ambiguity ("V Kohli"), it should no longer auto-resolve to Virat Kohli (since both Virat and Vijay are compatible)
+    # Wait, but since "v kohli" was already added as an alias to Virat Kohli during step 2,
+    # let's test a brand new ambiguous lookup on a new registry to be sure:
+    reg2 = IdentityRegistry(":memory:")
+    try:
+        reg2.resolve_player("Virat Kohli", d, auto_ingest=True)
+        reg2.resolve_player("Vijay Kohli", d, auto_ingest=True)
+        
+        # "V Kohli" is ambiguous, so it should not resolve automatically (raises EntityNotFoundError)
+        with pytest.raises(EntityNotFoundError):
+            reg2.resolve_player("V Kohli", d)
+    finally:
+        reg2.close()
+
 

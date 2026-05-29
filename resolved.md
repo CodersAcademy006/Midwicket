@@ -194,3 +194,63 @@
 - **Location:** `query/base.py:50-52` mixes an env salt into the cache key. The cache backend is an internal DuckDB file (`runtime/cache_duckdb.py`), not user-writable — there is no poisoning vector for the salt to defend.
 - **Impact:** If the salt is set inconsistently across workers/replicas (or set on one deploy and not the next), the *same* query hashes to *different* keys per worker → 0% cross-worker hit rate and cache thrash, with no error. Cargo-cult security that adds an operational footgun. (Compounds MW-016.)
 - **Fix:** Remove the salt, or document that it must be identical across all workers and is only for key-namespacing, not security.
+
+---
+
+### MW-011
+**Status:** RESOLVED (verified against code 2026-05-29).
+- **Resolved Date:** 2026-05-29
+**Strike rate counts wides as balls faced (knowingly wrong).**
+- **Location:** `compute/metrics/batting.py:43` — `balls_faced = len(events)`.
+- **Impact:** SR understated whenever wides are present; `relative_strike_rate` compounds it.
+- **Fix:** Exclude wides (and treat no-balls per the rules) from the denominator in batting strike rate (both in python metrics and all player analytics SQL queries).
+
+---
+
+### MW-013
+**Status:** RESOLVED (verified against code 2026-05-29).
+- **Resolved Date:** 2026-05-29
+**Runs scored off no-balls are dropped; `RunComponent` flags are computed then discarded.**
+- **Location:** `core/canonicalize.py:101` calls `RunComponent.from_no_ball(...)` which hardcoded `batter_runs=0`.
+- **Impact:** Batter runs off a no-ball were lost; SR/economy couldn't distinguish legal vs illegal deliveries.
+- **Fix:** Capture `runs.batter` on no-balls; allow `batter_runs` in `RunComponent.from_no_ball` and set `is_ball_faced=True` to count as a ball faced for the batter.
+
+---
+
+### MW-040
+**Status:** RESOLVED (verified against code 2026-05-29).
+- **Resolved Date:** 2026-05-29
+**Bowling economy understates runs conceded — it excludes the wides and no-balls the bowler is charged for.**
+- **Location:** `api/player_analytics.py:165,308,509` compute `runs_conceded = SUM(runs_total - runs_extras)`.
+- **Impact:** Every bowling economy/average from `player_analytics` is too low.
+- **Fix:** Correctly sum runs conceded as `runs_batter` plus wide and noball extras, and exclude wides and no-balls from the bowler's balls bowled count.
+
+---
+
+### MW-025
+**Status:** RESOLVED (verified against code 2026-05-29).
+- **Resolved Date:** 2026-05-29
+**Inconsistent venue-baseline math.**
+- **Location:** `derived/store.py:52` in `_build_venue_baselines`.
+- **Impact:** `relative_strike_rate` (`batting.py`) divided player SR (batter runs only) by a venue baseline that included extras — mismatched units.
+- **Fix:** Fixed `venue_avg_sr` calculation in `_build_venue_baselines` to compute batting strike rate correctly (using `runs_batter` and excluding wides: `SUM(runs_batter) / SUM(CASE WHEN extras_type = 'wides' THEN 0 ELSE 1 END) * 100`).
+
+---
+
+### MW-027
+**Status:** RESOLVED (verified against code 2026-05-29).
+- **Resolved Date:** 2026-05-29
+**Live ingestion can't land in a v1 table.**
+- **Location:** `storage/engine.py` and `thread_safe_engine.py` in `insert_live_delivery`.
+- **Impact:** Live deliveries carried `batter`/`bowler` names but the v1 insert path required `batter_id`/`bowler_id` causing ingestion errors.
+- **Fix:** Updated the live ingestion write path to dynamically instantiate `IdentityRegistry` and resolve player/venue/team names to registry IDs when missing from the input dictionary, only if the corresponding raw names are supplied.
+
+---
+
+### MW-037
+**Status:** RESOLVED (verified against code 2026-05-29).
+- **Resolved Date:** 2026-05-29
+**The identity registry creates a new entity for every spelling of a name — so one player silently becomes several, and stats fragment.**
+- **Location:** `storage/registry.py` (`_resolve_generic`).
+- **Impact:** "V Kohli", "Virat Kohli", "Kohli, V", "v kohli" mapped to distinct `entity_id`s, splitting career aggregates.
+- **Fix:** Implemented safe name normalization and initials compatibility matching (`_normalize_name` and `_names_compatible`) in `IdentityRegistry` so spelling and abbreviation variants safely resolve to the correct entity ID when unique, while strictly preventing over-merging of distinct players (like Virat Kohli vs Vijay Kohli).

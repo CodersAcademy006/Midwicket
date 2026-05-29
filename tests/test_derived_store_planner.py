@@ -28,7 +28,8 @@ def _engine_with_ball_events() -> QueryEngine:
         CREATE TABLE IF NOT EXISTS ball_events (
             venue_id INTEGER,
             runs_batter INTEGER,
-            runs_extras INTEGER
+            runs_extras INTEGER,
+            extras_type VARCHAR
         )
         """,
         read_only=False,
