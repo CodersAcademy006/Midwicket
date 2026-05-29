@@ -56,8 +56,9 @@ class WinPredictor:
             "eden_gardens": 0.12,  # Kolkata Knight Riders
             "chinnaswamy": 0.10,   # Royal Challengers Bangalore
             "chepauk": 0.08,       # Chennai Super Kings (MA Chidambaram Stadium)
-            "punjab cricket": 0.05, # Punjab Kings
+            "punjab_cricket": 0.05, # Punjab Kings
             "brabourne": 0.06,     # Home advantage
+            "dyanmond": 0.08,      # Dyanmond Park advantage
         }
 
         # Populated by create_trained_model / WinProbabilityTrainer.create_win_predictor
