@@ -63,7 +63,7 @@ graph LR
 ### Step 1 — Install
 
 ```bash
-pip install midwicket
+pip install git+https://github.com/CodersAcademy006/Midwicket.git
 ```
 
 ---
