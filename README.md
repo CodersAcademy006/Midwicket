@@ -3,94 +3,86 @@
 
   # Midwicket
   
-  **The Open Source Cricket Intelligence SDK**
+  **The Open-Source Agentic Data SDK for Sports Intelligence**
+
+  <p align="center">
+    <a href="https://colab.research.google.com/github/CodersAcademy006/Midwicket/blob/main/notebooks/quickstart.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab" height="25"></a>
+  </p>
 
   <p align="center">
     <a href="https://pypi.org/project/midwicket/"><img src="https://img.shields.io/pypi/v/midwicket?color=0052CC&style=flat-square&logo=python&logoColor=white" alt="PyPI version" /></a>
     <a href="https://github.com/CodersAcademy006/Midwicket/actions"><img src="https://img.shields.io/github/actions/workflow/status/CodersAcademy006/Midwicket/ci.yml?color=238636&style=flat-square&logo=github&logoColor=white&label=CI" alt="Build Status" /></a>
     <a href="https://pypi.org/project/midwicket/"><img src="https://img.shields.io/pypi/pyversions/midwicket?color=0052CC&style=flat-square&logo=python&logoColor=white" alt="Python Versions" /></a>
-    <a href="https://github.com/CodersAcademy006/Midwicket/blob/main/LICENSE"><img src="https://img.shields.io/github/license/CodersAcademy006/Midwicket?color=238636&style=flat-square" alt="License" /></a>
   </p>
 
   <p align="center">
-    <i>Lightning-fast, deterministic, and scalable cricket analytics built on modern data engineering.</i>
+    <i>Lightning-fast, deterministic, and scalable cricket analytics powered by PyArrow, DuckDB, and AI Agents.</i>
   </p>
 </div>
 
 ---
 
-## About Midwicket
+## The Problem
+Processing unstructured sports telemetry is historically a nightmare. Traditional APIs are slow, schemas constantly break, and calculating complex metrics like "venue bias" or "live win probability" across millions of events requires expensive cloud data warehouses.
 
-Midwicket is an advanced, high-performance cricket intelligence SDK and analytics engine designed for data scientists, application developers, and sports analysts. It moves beyond standard API wrappers by introducing a scalable, agent-based architecture capable of executing sub-millisecond analytical queries. Leveraging vectorized PyArrow operations and DuckDB engines, Midwicket provides a highly optimized environment for analyzing comprehensive ball-by-ball datasets.
+## The Midwicket Solution
+Midwicket solves this by bringing the data warehouse to your laptop. It is an advanced, high-performance intelligence SDK that moves beyond standard API wrappers by introducing a scalable, **agent-based architecture** capable of executing sub-millisecond analytical queries locally. 
 
-### Key Features
+By leveraging vectorized **PyArrow** operations and an embedded **DuckDB** engine, Midwicket processes over 10 years of play-by-play data instantly.
 
-*   **High Performance:** Powered by vectorized PyArrow operations and DuckDB for sub-millisecond analytical queries.
-*   **Agent-Based Architecture:** Specialized internal agents (Gatekeeper, Planner, Archivist) systematically isolate logic, ensuring scalable and maintainable operations.
-*   **Predictive Machine Learning:** Integrates built-in statistical models, including real-time Win Probability calculations.
-*   **Type-Safe and Deterministic:** Employs immutable V1 schemas enforced via Pydantic. Queries are securely hashed and natively cached.
-*   **Production-Ready Deployment:** Ships natively with a FastAPI backend, comprehensive Docker configuration, Prometheus metrics, and Grafana dashboards for enterprise-grade observability.
+### Key Innovations
+
+*   **⚡️ Sub-Millisecond Queries:** Powered by PyArrow and DuckDB for instant aggregations without cloud costs.
+*   **🤖 Agent-Based Architecture:** Specialized internal agents (Gatekeeper, Planner, Archivist) systematically isolate logic, routing queries dynamically.
+*   **🧠 Predictive Machine Learning:** Integrates built-in statistical models, including real-time Win Probability calculations.
+*   **🛡️ Type-Safe & Deterministic:** Employs immutable V1 schemas enforced via Pydantic. Queries are securely hashed and natively cached.
+*   **🚀 Production-Ready:** Ships natively with a FastAPI backend, Docker configurations, Prometheus metrics, and Grafana dashboards.
 
 ---
 
-## Architecture
+## 🏗️ Architecture
 
-The Midwicket engine employs a strict separation of concerns, processing raw telemetry and play-by-play data into highly structured formats suitable for OLAP workloads. Raw JSON data is processed, flattened into Parquet format utilizing PyArrow, and subsequently served analytically by an embedded DuckDB instance.
+The Midwicket engine employs a strict separation of concerns, utilizing an agentic planner to optimize execution paths between raw Parquet scans and materialized DuckDB views.
 
 ```mermaid
 graph LR
     A[Cricsheet JSON] -->|Ingestion| B(PyArrow Pipeline)
     B -->|Parquet| C{DuckDB Cache}
-    C -->|SQL Queries| D[Midwicket Engine]
-    D -->|Express API| E[Jupyter / Scripts]
+    C -->|SQL Queries| D[Agentic Planner]
+    D -->|Express API| E[Jupyter / Colab]
     D -->|FastAPI| F[Web / Mobile Clients]
 ```
 
 ---
 
-## Installation
+## 🚀 Quick Start (Zero Config)
 
-Midwicket is published on the Python Package Index (PyPI). It is recommended to install the package within an isolated virtual environment.
+The easiest way to see Midwicket in action is to use the Express API. It handles data downloading, DuckDB initialization, and agent routing automatically.
 
-### 1. Install the Package
-
+### 1. Install the SDK
 ```bash
 pip install midwicket
 ```
 
-### 2. Data Initialization
-
-Midwicket utilizes the comprehensive ball-by-ball dataset provided by Cricsheet. A one-time initialization process is required to populate the local DuckDB instance.
-
-```python
-from midwicket.data.loader import DataLoader
-
-loader = DataLoader()
-loader.download()
-```
-
----
-
-## API Examples
-
-Midwicket provides an accessible Express API interface for rapid analytical operations alongside lower-level interfaces for complex requirements.
-
-### Player Analytics
+### 2. Download Data & Run Analytics
+Midwicket utilizes the open dataset from Cricsheet. Run this once to populate your local DuckDB instance.
 
 ```python
 import midwicket.express as px
+from midwicket.data.loader import DataLoader
+
+# One-time data initialization (~50MB)
+DataLoader().download()
 
 # Retrieve comprehensive lifetime statistics for a specific player
 stats = px.get_player_stats("Virat Kohli")
-print(f"Player: {stats.name} | Runs: {stats.runs} | Matches: {stats.matches}")
+print(f"Player: {stats.name} | Runs: {stats.runs} | Strike Rate: {stats.strike_rate}")
 ```
 
-### Predictive Modeling (Win Probability)
+### 3. Predictive Modeling (Live Win Probability)
+Calculate live win probability using the built-in ML models based on current match conditions.
 
 ```python
-import midwicket.express as px
-
-# Calculate live win probability based on current match conditions
 result = px.predict_win(
     venue="Wankhede Stadium", 
     target=180, 
@@ -98,40 +90,12 @@ result = px.predict_win(
     wickets_down=5, 
     overs_completed=15.0
 )
-print(f"Win Probability: {result['win_prob']:.4f}")
-```
-
-### Direct SQL Engine Access
-
-For scenarios demanding complex analytical formulations, Midwicket permits direct access to the underlying DuckDB engine.
-
-```python
-from midwicket.storage.engine import QueryEngine
-
-engine = QueryEngine("./data/midwicket.duckdb")
-results = engine.execute_sql("""
-    SELECT batter_id, SUM(runs_batter) AS total_runs
-    FROM ball_events
-    GROUP BY batter_id
-    ORDER BY total_runs DESC 
-    LIMIT 5
-""")
-print(results.to_pandas())
+print(f"Win Probability: {result['win_prob']:.1%}")
 ```
 
 ---
 
-## Data Models
-
-Midwicket utilizes Pydantic to enforce rigorous data validation and structural integrity across its APIs.
-
-*   `PlayerStats`: Encapsulates aggregate player performance metrics (e.g., `runs`, `matches`, `strike_rate`).
-*   `MatchContext`: Represents the contextual parameters of a match required for predictive models (e.g., `venue`, `target`, `current_runs`).
-*   `BallEvent`: The fundamental unit of data representing a single delivery, structured for columnar aggregation.
-
----
-
-## Deployment
+## 🏢 Enterprise Deployment
 
 Midwicket is engineered for scalable production deployments. A comprehensive Dockerized environment is provided.
 
@@ -143,31 +107,17 @@ cd Midwicket
 # Configure environment variables
 cp .env.example .env
 
-# Deploy the FastAPI backend, along with Grafana and Prometheus observability stacks
+# Deploy the FastAPI backend + Grafana observability stack
 docker-compose up -d
 ```
 
-To configure Rate Limiting, API Keys, and CORS for production environments, consult the parameters defined within the `.env.example` file. Alternatively, a standalone REST API server can be initialized directly:
+## 🤝 Contributing
+Contributions are highly encouraged! We are actively looking for help with:
+- Expanding the built-in Machine Learning models.
+- Optimizing DuckDB materialized views.
+- Writing tests for the Agentic Planner.
 
-```bash
-python -c "from midwicket import serve; serve()"
-```
-
----
-
-## Contributing
-
-Contributions to Midwicket are highly encouraged. Areas of active development include the integration of novel data sources, query optimization within the DuckDB layer, and the expansion of internal machine learning models.
-
-Before submitting code, please review the Architecture Guide to familiarize yourself with the internal agent patterns.
-
-1. Fork the repository.
-2. Create a feature branch (`git checkout -b feature/enhancement-name`).
-3. Ensure all tests pass (`pytest`).
-4. Submit a detailed Pull Request.
-
----
+Before submitting code, please review the internal agent patterns.
 
 ## License
-
 Midwicket is open-source software released under the MIT License.
