@@ -86,6 +86,13 @@ class WinPredictor:
         if current_runs < 0 or target < 0:
             raise ValueError("runs must be non-negative")
 
+        # Deterministic match outcomes
+        if current_runs >= target:
+            return 1.0, 1.0
+        if wickets_down >= 10:
+            return 0.0, 1.0
+        if overs_done >= (balls_per_innings / 6.0) and current_runs < target:
+            return 0.0, 1.0
 
         venue_key = self._normalize_venue(venue)
         venue_adjust = self.venue_adjustments.get(venue_key, 0.0)
