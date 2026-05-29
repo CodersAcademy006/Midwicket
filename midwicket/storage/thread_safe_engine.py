@@ -267,6 +267,14 @@ class ThreadSafeQueryEngine:
                     timestamp DOUBLE
                 )
             """)
+            
+            # Schema Migration for v1 additions (e.g. extras_type)
+            cols = self._table_columns_conn(conn, "ball_events")
+            if "extras_type" not in cols:
+                try:
+                    conn.execute("ALTER TABLE ball_events ADD COLUMN extras_type VARCHAR")
+                except Exception:
+                    pass
 
     @property
     def snapshot_id(self) -> str:
@@ -405,8 +413,8 @@ class ThreadSafeQueryEngine:
                         match_id, date, venue_id, inning, over, ball,
                         batter_id, bowler_id, non_striker_id,
                         batting_team_id, bowling_team_id,
-                        runs_batter, runs_extras, is_wicket, wicket_type, phase
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        runs_batter, runs_extras, extras_type, is_wicket, wicket_type, phase
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     [
                         delivery_data["match_id"],
@@ -422,6 +430,7 @@ class ThreadSafeQueryEngine:
                         delivery_data["bowling_team_id"],
                         delivery_data.get("runs_batter", 0),
                         delivery_data.get("runs_extras", 0),
+                        delivery_data.get("extras_type"),
                         bool(delivery_data.get("is_wicket", False)),
                         delivery_data.get("wicket_type"),
                         delivery_data.get("phase", self._infer_phase(delivery_data.get("over"))),

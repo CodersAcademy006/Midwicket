@@ -64,6 +64,19 @@ class DeliveryData(BaseModel):
     venue: Optional[str] = None
     timestamp: Optional[float] = None
 
+import weakref
+
+# Global registry for multi-app draining (MW-048)
+_active_apps = weakref.WeakSet()
+_sigterm_registered = False
+
+def _global_sigterm_handler(*_):
+    logger.info("SIGTERM received — global drain mode active; draining %d apps", len(_active_apps))
+    for app_instance in _active_apps:
+        app_instance._draining = True
+        app_instance._draining_event.set()
+
+
 class MidwicketAPI:
     """
     FastAPI wrapper for Midwicket deployment.
@@ -151,19 +164,19 @@ class MidwicketAPI:
         self._draining_event = threading.Event()
         _PROBE_PATHS = frozenset({"/ready", "/v1/ready", "/live", "/_internal/health"})
 
-        def _handle_sigterm(*_):
-            self._draining = True
-            self._draining_event.set()
-            logger.info("SIGTERM received — drain mode active; rejecting new non-probe requests")
+        _active_apps.add(self)
 
-        # Python only allows signal registration in the main thread.
-        if threading.current_thread() is threading.main_thread():
-            try:
-                signal.signal(signal.SIGTERM, _handle_sigterm)
-            except (ValueError, AttributeError):
-                logger.debug("SIGTERM handler registration unavailable in this runtime")
-        else:
-            logger.debug("Skipping SIGTERM handler registration outside main thread")
+        global _sigterm_registered
+        if not _sigterm_registered:
+            # Python only allows signal registration in the main thread.
+            if threading.current_thread() is threading.main_thread():
+                try:
+                    signal.signal(signal.SIGTERM, _global_sigterm_handler)
+                    _sigterm_registered = True
+                except (ValueError, AttributeError):
+                    logger.debug("SIGTERM handler registration unavailable in this runtime")
+            else:
+                logger.debug("Skipping SIGTERM handler registration outside main thread")
 
         @self.app.middleware("http")
         async def drain_middleware(request: Request, call_next):
@@ -868,7 +881,7 @@ class MidwicketAPI:
                     {
                         "ts": str(rows["ts"][i]),
                         "user_id": rows["user_id"][i],
-                        "query": rows["query_text"][i],
+                        "query": "<redacted for privacy>",
                         "row_count": rows["row_count"][i],
                         "duration_ms": rows["duration_ms"][i],
                         "endpoint": rows["endpoint"][i] if "endpoint" in rows else "unknown",
@@ -1067,7 +1080,7 @@ class MidwicketAPI:
                     self.session.engine.execute_sql(
                         "INSERT INTO audit_log (ts, user_id, query_text, row_count, duration_ms, endpoint, action, ip_address) "
                         "VALUES (current_timestamp, ?, ?, ?, ?, ?, ?, ?)",
-                        [user_id, sql, n, round(duration_ms, 2), "/analyze", "custom_query", client_ip],
+                        [user_id, safe_sql, n, round(duration_ms, 2), "/analyze", "custom_query", client_ip],
                         read_only=False,
                     )
                 except Exception as audit_exc:

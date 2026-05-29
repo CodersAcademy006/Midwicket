@@ -12,7 +12,6 @@ class ExecutionOptions(BaseModel):
 class BaseQuery(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    snapshot_id: str
     execution_opts: ExecutionOptions = Field(default_factory=ExecutionOptions, exclude=True)
 
     @property
@@ -34,11 +33,10 @@ class BaseQuery(BaseModel):
         """
         Generates a deterministic SHA256 hash of the query.
 
-        It excludes execution_opts (pure runtime controls) but INCLUDES
-        snapshot_id: the executor rewrites snapshot_id to the engine's real data
-        version before hashing, and additionally folds derived_versions into the
-        final key (see RuntimeExecutor._bind_derived_version), so cached results
-        are invalidated whenever the underlying data or derived tables change.
+        It excludes execution_opts (pure runtime controls). The executor 
+        folds the engine's real snapshot_id and derived_versions into the
+        final key, so cached results are invalidated whenever the underlying 
+        data or derived tables change.
         """
         # 1. Dump model to dict, excluding runtime opts.
         # Include query type so distinct query classes with identical fields
@@ -62,9 +60,9 @@ class MatchupQuery(BaseQuery):
     @property
     def requires(self) -> Dict[str, Any]:
         return {
-            "preferred_tables": ["matchup_stats", "phase_stats"],
+            "preferred_tables": [],
             "fallback_table": "ball_events",
             "entities": ["batter", "bowler"],
-            "granularity": "ball" 
+            "granularity": "ball"
         }
 

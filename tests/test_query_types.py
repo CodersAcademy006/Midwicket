@@ -35,7 +35,6 @@ class TestQueryClassesExist:
 class TestWinProbQueryValidation:
     # Minimum valid payload — snapshot_id is required by BaseQuery
     BASE = dict(
-        snapshot_id="2024-01-01",
         venue_id=1,
         target_score=180,
         current_runs=120,
