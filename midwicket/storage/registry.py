@@ -197,7 +197,9 @@ class IdentityRegistry:
 
     def _resolve_generic(self, name: str, entity_type: str, match_date: date, auto_ingest: bool = False) -> int:
         prefix = entity_type[0].upper()
-        cache_key = f"{prefix}:{name}:{match_date}"
+        import re
+        norm_name = re.sub(r'\s+', ' ', name).strip()
+        cache_key = f"{prefix}:{norm_name}:{match_date}"
 
         # Cache check and all self.con access happen under the lock: DuckDB
         # connections are not thread-safe and the cache mirrors DB state.
@@ -205,14 +207,14 @@ class IdentityRegistry:
             if cache_key in self._cache:
                 return self._cache[cache_key]
 
-            # Check Aliases
+            # Check Aliases case-insensitively
             res = self.con.execute("""
                 SELECT entity_id
                 FROM aliases
-                WHERE alias = ?
+                WHERE LOWER(alias) = LOWER(?)
                   AND valid_from <= ?
                   AND (valid_to IS NULL OR valid_to >= ?)
-            """, [name, match_date, match_date]).fetchone()
+            """, [norm_name, match_date, match_date]).fetchone()
 
             if res:
                 entity_id = cast(int, res[0])
@@ -234,11 +236,11 @@ class IdentityRegistry:
             entity_id = cast(int, res_seq[0])
 
             self.con.execute("INSERT INTO entities VALUES (?, ?, ?)",
-                             [entity_id, entity_type, name])
+                             [entity_id, entity_type, norm_name])
             self.con.execute("""
                 INSERT INTO aliases (alias, entity_id, valid_from, valid_to)
                 VALUES (?, ?, ?, NULL)
-            """, [name, entity_id, match_date])
+            """, [norm_name, entity_id, match_date])
 
             self._cache[cache_key] = entity_id
             if len(self._cache) > self._cache_max_size:

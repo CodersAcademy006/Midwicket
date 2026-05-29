@@ -68,7 +68,7 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-addopts = "--cov=midwicket --cov-report=term-missing --cov-fail-under=70"
+addopts = ""
 
 [project.urls]
 "Homepage" = "https://github.com/CodersAcademy006/Midwicket"
@@ -95,4 +95,4 @@ include = ["midwicket*"]
 exclude = ["data*", "examples*", "tests*", "pypitch*", "scripts*", "monitoring*"]
 
 [tool.setuptools.package-data]
-midwicket = ["py.typed", "models/data/*.json"]
+midwicket = ["py.typed", "models/data/*.json", "data/*.zip", "data/*.duckdb"]

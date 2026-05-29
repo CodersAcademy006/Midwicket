@@ -1,9 +1,9 @@
 apiVersion: 1
 
 providers:
-  - name: PyPitch
+  - name: Midwicket
     orgId: 1
-    folder: PyPitch
+    folder: Midwicket
     type: file
     disableDeletion: false
     updateIntervalSeconds: 30

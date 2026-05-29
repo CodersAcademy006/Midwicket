@@ -287,6 +287,8 @@ def migrate_on_connect(data_dir: str) -> None:
     Skips migration entirely on fresh installations (no schema_version file
     and no pre-existing DB tables) to avoid misleading warnings.
     """
+    if data_dir == ":memory:":
+        return
     migrator = SchemaMigration(data_dir)
 
     # Fresh install: write current version directly without running any migration.

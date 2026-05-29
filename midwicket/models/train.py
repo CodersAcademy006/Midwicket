@@ -37,7 +37,7 @@ class WinProbabilityTrainer:
         self.scaler = StandardScaler()
         self.feature_columns = list(FEATURE_COLUMNS)
 
-    def prepare_training_data(self, match_data: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series]:
+    def prepare_training_data(self, match_data: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series, List[str]]:
         """
         Prepare cricket match data for training.
 
@@ -45,7 +45,7 @@ class WinProbabilityTrainer:
             match_data: DataFrame with match delivery data
 
         Returns:
-            Tuple of (features_df, target_series)
+            Tuple of (features_df, target_series, match_ids)
         """
         if match_data.empty:
             raise DataValidationError("Training data cannot be empty")
@@ -63,20 +63,39 @@ class WinProbabilityTrainer:
 
         # Feature engineering
         features = []
+        targets = []
+        match_ids = []
+
+        # Group by match and get final result
+        match_results = second_innings.groupby('match_id').agg({
+            'runs_total': 'max',
+            'target': 'first'
+        }).reset_index()
+
+        match_results['won'] = (match_results['runs_total'] >= match_results['target']).astype(int)
 
         for _, delivery in second_innings.iterrows():
             try:
                 overs_done = delivery['over'] + delivery['ball'] / 6.0
                 venue_adjustment = self._get_venue_adjustment(delivery.get('venue', ''))
-                features.append(
-                    compute_chase_features(
-                        target=delivery['target'],
-                        current_runs=delivery['runs_total'],
-                        wickets_down=delivery['wickets_fallen'],
-                        overs_done=overs_done,
-                        venue_adjustment=venue_adjustment,
-                    )
+                feat = compute_chase_features(
+                    target=delivery['target'],
+                    current_runs=delivery['runs_total'],
+                    wickets_down=delivery['wickets_fallen'],
+                    overs_done=overs_done,
+                    venue_adjustment=venue_adjustment,
                 )
+
+                # Determine target for this delivery
+                match_result = match_results[match_results['match_id'] == delivery['match_id']]
+                if not match_result.empty:
+                    target_val = match_result['won'].iloc[0]
+                else:
+                    target_val = 0
+
+                features.append(feat)
+                targets.append(target_val)
+                match_ids.append(str(delivery['match_id']))
 
             except Exception as e:
                 logger.warning(f"Skipping delivery due to error: {e}")
@@ -86,28 +105,9 @@ class WinProbabilityTrainer:
             raise DataValidationError("No valid training samples generated")
 
         features_df = pd.DataFrame(features)
-
-        # Target: whether the team eventually won
-        # Group by match and get final result
-        match_results = second_innings.groupby('match_id').agg({
-            'runs_total': 'max',
-            'target': 'first'
-        }).reset_index()
-
-        match_results['won'] = (match_results['runs_total'] >= match_results['target']).astype(int)
-
-        # For each delivery, determine if the team won
-        targets = []
-        for _, delivery in second_innings.iterrows():
-            match_result = match_results[match_results['match_id'] == delivery['match_id']]
-            if not match_result.empty:
-                targets.append(match_result['won'].iloc[0])
-            else:
-                targets.append(0)  # Default to loss if no result found
-
         target_series = pd.Series(targets, name='won')
 
-        return features_df, target_series
+        return features_df, target_series, match_ids
 
     def prepare_training_dataset(self, ball_events: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series, pd.Series]:
         """Prepare a raw ball_events table for benchmark training.
@@ -166,12 +166,12 @@ class WinProbabilityTrainer:
             raise DataValidationError("Unable to derive targets for second innings samples")
 
         second_innings = second_innings.dropna(subset=["target"])
-        features, target = self.prepare_training_data(
+        features, target, match_ids_list = self.prepare_training_data(
             second_innings[
                 ["match_id", "inning", "over", "ball", "runs_total", "wickets_fallen", "target", "venue"]
             ]
         )
-        groups = pd.Series(second_innings["match_id"].iloc[: len(features)].values, name="match_id")
+        groups = pd.Series(match_ids_list, name="match_id")
         return features, target, groups
 
     def _get_venue_adjustment(self, venue: str) -> float:

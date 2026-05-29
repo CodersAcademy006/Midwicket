@@ -26,12 +26,44 @@ class MidwicketSession:
 
     def __init__(self, data_dir: Optional[str] = None, skip_registry_build: bool = False,
                  engine: Optional[QueryEngine] = None) -> None:
-        self.data_dir = Path(data_dir) if data_dir else DEFAULT_DATA_DIR
-        self.data_dir.mkdir(parents=True, exist_ok=True)
+        if data_dir is None:
+            self.data_dir = Path(":memory:")
+        else:
+            self.data_dir = Path(data_dir)
+            
+        self.is_memory = (str(self.data_dir) == ":memory:")
         
-        self.db_path = str(self.data_dir / "midwicket.duckdb")
-        self.registry_path = str(self.data_dir / "registry.duckdb")
-        self.cache_path = str(self.data_dir / "cache.duckdb")
+        if self.is_memory:
+            import tempfile
+            import shutil
+            self._temp_dir = tempfile.mkdtemp(prefix="midwicket_ram_")
+            temp_path = Path(self._temp_dir)
+            
+            self.db_path = str(temp_path / "midwicket.duckdb")
+            self.registry_path = str(temp_path / "registry.duckdb")
+            self.cache_path = str(temp_path / "cache.duckdb")
+            
+            # Copy pre-packaged databases to the temp folder if they exist
+            pkg_data_dir = Path(__file__).parent.parent / "data"
+            pkg_db = pkg_data_dir / "midwicket.duckdb"
+            pkg_registry = pkg_data_dir / "registry.duckdb"
+            
+            if pkg_db.exists():
+                try:
+                    shutil.copyfile(pkg_db, self.db_path)
+                except Exception as e:
+                    logger.warning("Failed to copy pre-built midwicket.duckdb: %s", e)
+            if pkg_registry.exists():
+                try:
+                    shutil.copyfile(pkg_registry, self.registry_path)
+                except Exception as e:
+                    logger.warning("Failed to copy pre-built registry.duckdb: %s", e)
+        else:
+            self._temp_dir = None
+            self.data_dir.mkdir(parents=True, exist_ok=True)
+            self.db_path = str(self.data_dir / "midwicket.duckdb")
+            self.registry_path = str(self.data_dir / "registry.duckdb")
+            self.cache_path = str(self.data_dir / "cache.duckdb")
         
         # Initialize Components
         self.registry = IdentityRegistry(self.registry_path)
@@ -55,23 +87,28 @@ class MidwicketSession:
             # Only attempt registry build when raw data is actually present.
             # This prevents a NotImplementedError crash on first import when
             # build_registry_stats() has not been implemented yet.
-            raw_data_present = (
-                self.loader.raw_dir.exists()
-                and bool(list(self.loader.raw_dir.glob("*.json")))
-            )
-            registry_empty = not self.registry.get_player_stats(1)
+            if self.is_memory:
+                raw_data_present = self.loader.zip_path.exists()
+            else:
+                raw_data_present = (
+                    self.loader.raw_dir.exists()
+                    and bool(list(self.loader.raw_dir.glob("*.json")))
+                )
+            try:
+                row_count = self.registry.con.execute("SELECT COUNT(*) FROM player_stats").fetchone()[0]
+                registry_empty = (row_count == 0)
+            except Exception:
+                registry_empty = True
 
-            # Also rebuild when matchup_stats is empty (handles schema migration
+            # Also rebuild when matchup_stats table does not exist (handles schema migration
             # from older registry.duckdb files that pre-date matchup tracking).
             try:
-                matchup_count = self.registry.con.execute(
-                    "SELECT count(*) FROM matchup_stats"
-                ).fetchone()
-                matchup_empty = (matchup_count[0] if matchup_count else 0) == 0
-            except (RuntimeError, AttributeError, OSError):
-                matchup_empty = True
+                self.registry.con.execute("SELECT 1 FROM matchup_stats LIMIT 1")
+                matchup_table_missing = False
+            except Exception:
+                matchup_table_missing = True
 
-            needs_build = registry_empty or matchup_empty
+            needs_build = registry_empty or matchup_table_missing
 
             if needs_build:
                 if not raw_data_present:
@@ -265,6 +302,14 @@ class MidwicketSession:
         with MidwicketSession._instance_lock:
             if MidwicketSession._instance is self:
                 MidwicketSession._instance = None
+
+        # Clean up temp directory
+        if getattr(self, "_temp_dir", None) is not None:
+            import shutil
+            try:
+                shutil.rmtree(self._temp_dir, ignore_errors=True)
+            except Exception as e:
+                logger.warning("Failed to clean up in-memory temp directory %s: %s", self._temp_dir, e)
 
     def __enter__(self) -> "MidwicketSession":
         return self
