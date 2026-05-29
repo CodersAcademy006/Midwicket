@@ -23,3 +23,15 @@ def set_debug_mode(enabled: bool):
     """
     global debug_mode
     debug_mode = enabled
+    # Unify duplicate debug flags (MW-033)
+    try:
+        import midwicket.config as config
+        config.debug = enabled
+    except Exception:
+        pass
+    try:
+        import midwicket.express as express
+        with express._debug_lock:
+            express._DEBUG_MODE = enabled
+    except Exception:
+        pass

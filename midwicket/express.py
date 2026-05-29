@@ -37,6 +37,17 @@ def set_debug_mode(enabled: bool = True) -> None:
     global _DEBUG_MODE
     with _debug_lock:
         _DEBUG_MODE = enabled
+    # Unify duplicate debug flags (MW-033)
+    try:
+        import midwicket.config as config
+        config.debug = enabled
+    except Exception:
+        pass
+    try:
+        import midwicket.runtime.modes as modes
+        modes.debug_mode = enabled
+    except Exception:
+        pass
     if enabled:
         print("[Midwicket] Debug mode enabled: Queries will execute eagerly for immediate error feedback.")
 
