@@ -87,3 +87,32 @@ def test_auto_setup_session_rebuilds_for_different_dirs(monkeypatch, tmp_path: P
 
     assert s1 is not s2
     assert created == [str(d1), str(d2)]
+
+
+def test_express_get_player_stats_errors(tmp_path: Path):
+    import pytest
+    from midwicket.storage.registry import EntityNotFoundError
+
+    # 1. No dataset exists in the directory -> Should raise FileNotFoundError
+    with pytest.raises(FileNotFoundError, match="Dataset not loaded"):
+        px.get_player_stats("Virat Kohli", str(tmp_path / "missing-dataset"))
+
+    # 2. Seed dataset but no player exists -> Should raise EntityNotFoundError
+    _seed_local_raw_data(tmp_path / "empty-registry")
+    with pytest.raises(EntityNotFoundError, match="not found in the registry"):
+        px.get_player_stats("Nonexistent Player", str(tmp_path / "empty-registry"))
+
+
+def test_express_get_matchup_errors(tmp_path: Path):
+    import pytest
+    from midwicket.storage.registry import EntityNotFoundError
+
+    # 1. No dataset exists in the directory -> Should raise FileNotFoundError
+    with pytest.raises(FileNotFoundError, match="Dataset not loaded"):
+        px.get_matchup("Virat Kohli", "Jasprit Bumrah", str(tmp_path / "missing-dataset"))
+
+    # 2. Seed dataset but no player exists -> Should raise EntityNotFoundError
+    _seed_local_raw_data(tmp_path / "empty-registry")
+    with pytest.raises(EntityNotFoundError, match="not found in the registry"):
+        px.get_matchup("Nonexistent Batter", "Nonexistent Bowler", str(tmp_path / "empty-registry"))
+

@@ -231,16 +231,21 @@ class MidwicketAPI:
                 if auth_identity:
                     user_id = hashlib.sha256(auth_identity.encode("utf-8")).hexdigest()[:16]
                     client_ip = request.client.host if request.client else "unknown"
-                    try:
-                        self.session.engine.execute_sql(
-                            "INSERT INTO audit_log (ts, user_id, query_text, row_count, duration_ms, endpoint, action, ip_address) "
-                            "VALUES (current_timestamp, ?, ?, ?, ?, ?, ?, ?)",
-                            [user_id, f"API key usage on {path}", 0, round(duration_ms, 2), path, "api_key_usage", client_ip],
-                            read_only=False,
-                        )
-                    except Exception as e:
-                        logger.warning("Failed to log API key usage: %s", e)
-                        
+                    from starlette.background import BackgroundTask
+                    
+                    def log_audit() -> None:
+                        try:
+                            self.session.engine.execute_sql(
+                                "INSERT INTO audit_log (ts, user_id, query_text, row_count, duration_ms, endpoint, action, ip_address) "
+                                "VALUES (current_timestamp, ?, ?, ?, ?, ?, ?, ?)",
+                                [user_id, f"API key usage on {path}", 0, round(duration_ms, 2), path, "api_key_usage", client_ip],
+                                read_only=False,
+                            )
+                        except Exception as _exc:
+                            import logging as _log
+                            _log.getLogger(__name__).warning("Failed to write API key audit log: %s", _exc)
+                    
+                    response.background = BackgroundTask(log_audit)
             return response
 
         # Add request logging

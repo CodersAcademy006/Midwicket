@@ -24,7 +24,6 @@ _FORBIDDEN_TOKENS = {
     "ALTER",
     "CREATE",
     "TRUNCATE",
-    "REPLACE",
     "ATTACH",
     "DETACH",
     "PRAGMA",

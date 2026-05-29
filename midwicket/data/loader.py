@@ -98,20 +98,51 @@ class DataLoader:
     def __init__(self, data_dir: Optional[str] = None):
         """
         Manages raw data storage.
-        Defaults to ~/.midwicket_data/ to keep the user's project clean.
+        Defaults to ":memory:" for high-performance in-memory caching.
         """
-        self.data_dir = Path(data_dir) if data_dir else DEFAULT_DATA_DIR
-        self.raw_dir = self.data_dir / "raw" / "ipl"
-        self.zip_path = self.data_dir / "ipl_json.zip"
+        if data_dir is None:
+            self.data_dir = Path(":memory:")
+        else:
+            self.data_dir = Path(data_dir)
+            
+        self.is_memory = (str(self.data_dir) == ":memory:")
         
-        # Ensure directories exist
-        self.raw_dir.mkdir(parents=True, exist_ok=True)
+        if self.is_memory:
+            self.raw_dir = None
+            self.zip_path = Path(__file__).parent / "ipl_json.zip"
+            self._load_zip_to_memory()
+        else:
+            self.raw_dir = self.data_dir / "raw" / "ipl"
+            self.zip_path = self.data_dir / "ipl_json.zip"
+            # Ensure directories exist
+            self.raw_dir.mkdir(parents=True, exist_ok=True)
+
+    def _load_zip_to_memory(self) -> None:
+        """Validates that the bundled ZIP is present for lazy loading."""
+        if not self.zip_path.exists():
+            # Fallback paths
+            possible_paths = [
+                self.zip_path,
+                Path("./data/ipl_json.zip"),
+                Path.home() / ".midwicket_data" / "ipl_json.zip"
+            ]
+            for path in possible_paths:
+                if path.exists():
+                    self.zip_path = path
+                    break
+            else:
+                logger.warning("Bundled dataset ZIP not found at %s. Running with empty RAM cache.", self.zip_path)
+                return
 
     def download(self, force: bool = False) -> None:
         """
         Downloads the latest dataset from Cricsheet.
         Skips if already exists, unless force=True.
         """
+        if self.is_memory:
+            logger.info("Running in in-memory mode, dataset already pre-cached in RAM.")
+            return
+
         if self.zip_path.exists() and not force:
             logger.info("Data already exists at %s", self.zip_path)
             return
@@ -159,6 +190,8 @@ class DataLoader:
         Guards against zip-slip: any member whose resolved path would escape
         ``self.raw_dir`` is skipped with a warning.
         """
+        if self.is_memory:
+            return
         raw_dir_resolved = self.raw_dir.resolve()
         with zipfile.ZipFile(self.zip_path, "r") as z:
             for member in z.namelist():
@@ -181,6 +214,17 @@ class DataLoader:
         if safe_id != match_id or "/" in match_id or "\\" in match_id:
             raise ValueError(f"Invalid match_id: {match_id!r}")
 
+        if self.is_memory:
+            if not hasattr(self, "_zip_file"):
+                self._zip_file = zipfile.ZipFile(self.zip_path, "r")
+            
+            filename = f"{safe_id}.json"
+            try:
+                content = self._zip_file.read(filename)
+                return json.loads(content.decode("utf-8"))
+            except Exception:
+                raise FileNotFoundError(f"Match {match_id} not found in in-memory zip cache")
+
         file_path = self.raw_dir / f"{safe_id}.json"
         if not file_path.exists():
             raise FileNotFoundError(f"Match {match_id} not found in {self.raw_dir}")
@@ -193,6 +237,23 @@ class DataLoader:
         Yields match data one by one.
         Generator pattern prevents RAM overflow when processing 10k+ matches.
         """
+        if self.is_memory:
+            if not hasattr(self, "_zip_file"):
+                self._zip_file = zipfile.ZipFile(self.zip_path, "r")
+                
+            json_members = [m for m in self._zip_file.namelist() if m.endswith(".json") and "/" not in m and "\\" not in m]
+            logger.info("Found %d matches in RAM zip cache", len(json_members))
+            for member in json_members:
+                try:
+                    content = self._zip_file.read(member)
+                    data = json.loads(content.decode("utf-8"))
+                    CricsheetMatchSchema(**data)
+                    yield data
+                except Exception as e:
+                    logger.warning(f"Schema validation failed for in-memory match {member}: {e}")
+                    continue
+            return
+
         json_files = list(self.raw_dir.glob("*.json"))
         
         if not json_files:
