@@ -135,14 +135,13 @@ class QueryEngine:
         with self._state_lock:
             con.execute("BEGIN TRANSACTION")
             try:
-                con.execute("CREATE SCHEMA IF NOT EXISTS derived_new")
                 con.execute("DROP SCHEMA IF EXISTS derived CASCADE")
-                con.execute("ALTER SCHEMA derived_new RENAME TO derived")
+                con.execute("CREATE SCHEMA derived")
+                self._derived_versions.clear()
                 con.execute("COMMIT")
             except Exception:
                 con.execute("ROLLBACK")
                 raise
-            self._derived_versions.clear()
 
     def execute_sql(
         self,
