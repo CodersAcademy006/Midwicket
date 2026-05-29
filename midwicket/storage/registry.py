@@ -195,10 +195,42 @@ class IdentityRegistry:
                 "INSERT INTO matchup_stats VALUES (?, ?, ?, ?, ?, ?, ?, ?)", data
             )
 
+    @staticmethod
+    def _normalize_name(name: str) -> str:
+        import string
+        name = name.lower()
+        if "," in name:
+            parts = [p.strip() for p in name.split(",", 1)]
+            if len(parts) == 2 and parts[0] and parts[1]:
+                name = f"{parts[1]} {parts[0]}"
+        name = "".join(" " if c in string.punctuation else c for c in name)
+        tokens = name.split()
+        return " ".join(tokens)
+
+    @staticmethod
+    def _names_compatible(name1: str, name2: str) -> bool:
+        if name1 == name2:
+            return True
+        tokens1 = name1.split()
+        tokens2 = name2.split()
+        if len(tokens1) != len(tokens2) or not tokens1:
+            return False
+        
+        if tokens1[-1] != tokens2[-1]:
+            return False
+            
+        for t1, t2 in zip(tokens1[:-1], tokens2[:-1]):
+            if t1 == t2:
+                continue
+            if len(t1) == 1 and t2.startswith(t1):
+                continue
+            return False
+            
+        return True
+
     def _resolve_generic(self, name: str, entity_type: str, match_date: date, auto_ingest: bool = False) -> int:
         prefix = entity_type[0].upper()
-        import re
-        norm_name = re.sub(r'\s+', ' ', name).strip()
+        norm_name = self._normalize_name(name)
         cache_key = f"{prefix}:{norm_name}:{match_date}"
 
         # Cache check and all self.con access happen under the lock: DuckDB
@@ -207,11 +239,11 @@ class IdentityRegistry:
             if cache_key in self._cache:
                 return self._cache[cache_key]
 
-            # Check Aliases case-insensitively
+            # Check Aliases (exact or case-insensitive)
             res = self.con.execute("""
                 SELECT entity_id
                 FROM aliases
-                WHERE LOWER(alias) = LOWER(?)
+                WHERE LOWER(alias) = ?
                   AND valid_from <= ?
                   AND (valid_to IS NULL OR valid_to >= ?)
             """, [norm_name, match_date, match_date]).fetchone()
@@ -222,6 +254,34 @@ class IdentityRegistry:
                 if len(self._cache) > self._cache_max_size:
                     del self._cache[next(iter(self._cache))]
                 return entity_id
+
+            # Compatibility check for initials (e.g. V Kohli -> Virat Kohli)
+            if entity_type == "player":
+                candidates = self.con.execute("""
+                    SELECT DISTINCT a.alias, a.entity_id
+                    FROM aliases a
+                    JOIN entities e ON a.entity_id = e.id
+                    WHERE e.type = 'player'
+                      AND a.valid_from <= ?
+                      AND (a.valid_to IS NULL OR a.valid_to >= ?)
+                """, [match_date, match_date]).fetchall()
+
+                compatible_ids = set()
+                for alias_val, eid in candidates:
+                    norm_alias = self._normalize_name(alias_val)
+                    if self._names_compatible(norm_name, norm_alias):
+                        compatible_ids.add(eid)
+
+                if len(compatible_ids) == 1:
+                    entity_id = list(compatible_ids)[0]
+                    self.con.execute("""
+                        INSERT OR IGNORE INTO aliases (alias, entity_id, valid_from, valid_to)
+                        VALUES (?, ?, ?, NULL)
+                    """, [name, entity_id, match_date])
+                    self._cache[cache_key] = entity_id
+                    if len(self._cache) > self._cache_max_size:
+                        del self._cache[next(iter(self._cache))]
+                    return entity_id
 
             if not auto_ingest:
                 raise EntityNotFoundError(
@@ -238,7 +298,7 @@ class IdentityRegistry:
             self.con.execute("INSERT INTO entities VALUES (?, ?, ?)",
                              [entity_id, entity_type, norm_name])
             self.con.execute("""
-                INSERT INTO aliases (alias, entity_id, valid_from, valid_to)
+                INSERT OR IGNORE INTO aliases (alias, entity_id, valid_from, valid_to)
                 VALUES (?, ?, ?, NULL)
             """, [norm_name, entity_id, match_date])
 

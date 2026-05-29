@@ -324,6 +324,37 @@ class QueryEngine:
                 return
 
             if schema_v1_cols.issubset(columns):
+                # Resolve names to IDs via IdentityRegistry if missing
+                if any(delivery_data.get(f) is None for f in ["venue_id", "batter_id", "bowler_id", "non_striker_id", "batting_team_id", "bowling_team_id"]):
+                    import contextlib
+                    from midwicket.storage.registry import IdentityRegistry
+                    from pathlib import Path
+                    
+                    if self.db_path == ":memory:":
+                        reg_path = ":memory:"
+                    else:
+                        reg_path = str(Path(self.db_path).parent / "registry.duckdb")
+                    
+                    with contextlib.closing(IdentityRegistry(reg_path)) as registry:
+                        match_date = delivery_data.get("date")
+                        if not match_date:
+                            match_date = date.today()
+                        elif isinstance(match_date, str):
+                            match_date = date.fromisoformat(match_date)
+                        
+                        if delivery_data.get("batter_id") is None and delivery_data.get("batter") is not None:
+                            delivery_data["batter_id"] = registry.resolve_player(delivery_data["batter"], match_date, auto_ingest=True)
+                        if delivery_data.get("bowler_id") is None and delivery_data.get("bowler") is not None:
+                            delivery_data["bowler_id"] = registry.resolve_player(delivery_data["bowler"], match_date, auto_ingest=True)
+                        if delivery_data.get("non_striker_id") is None and delivery_data.get("non_striker") is not None:
+                            delivery_data["non_striker_id"] = registry.resolve_player(delivery_data["non_striker"], match_date, auto_ingest=True)
+                        if delivery_data.get("venue_id") is None and delivery_data.get("venue") is not None:
+                            delivery_data["venue_id"] = registry.resolve_venue(delivery_data["venue"], match_date, auto_ingest=True)
+                        if delivery_data.get("batting_team_id") is None and delivery_data.get("batting_team") is not None:
+                            delivery_data["batting_team_id"] = registry.resolve_team(delivery_data["batting_team"], match_date, auto_ingest=True)
+                        if delivery_data.get("bowling_team_id") is None and delivery_data.get("bowling_team") is not None:
+                            delivery_data["bowling_team_id"] = registry.resolve_team(delivery_data["bowling_team"], match_date, auto_ingest=True)
+
                 required_schema_v1 = [
                     "match_id",
                     "inning",
@@ -347,34 +378,53 @@ class QueryEngine:
                         + ", ".join(missing)
                     )
 
+                insert_cols = [
+                    "match_id", "date", "venue_id", "inning", "over", "ball",
+                    "batter_id", "bowler_id", "non_striker_id",
+                    "batting_team_id", "bowling_team_id",
+                    "runs_batter", "runs_extras", "extras_type", "is_wicket", "wicket_type", "phase"
+                ]
+                
+                match_date = delivery_data.get("date")
+                if not match_date:
+                    match_date = date.today()
+                elif isinstance(match_date, str):
+                    match_date = date.fromisoformat(match_date)
+
+                values = [
+                    delivery_data["match_id"],
+                    match_date,
+                    delivery_data["venue_id"],
+                    delivery_data["inning"],
+                    delivery_data["over"],
+                    delivery_data["ball"],
+                    delivery_data["batter_id"],
+                    delivery_data["bowler_id"],
+                    delivery_data["non_striker_id"],
+                    delivery_data["batting_team_id"],
+                    delivery_data["bowling_team_id"],
+                    delivery_data.get("runs_batter", 0),
+                    delivery_data.get("runs_extras", 0),
+                    delivery_data.get("extras_type"),
+                    bool(delivery_data.get("is_wicket", False)),
+                    delivery_data.get("wicket_type"),
+                    delivery_data.get("phase", self._infer_phase(delivery_data.get("over"))),
+                ]
+                
+                if "batter" in columns:
+                    insert_cols.append("batter")
+                    values.append(delivery_data.get("batter", ""))
+                if "bowler" in columns:
+                    insert_cols.append("bowler")
+                    values.append(delivery_data.get("bowler", ""))
+                if "venue" in columns:
+                    insert_cols.append("venue")
+                    values.append(delivery_data.get("venue", "Unknown Venue"))
+
+                placeholders = ", ".join("?" for _ in values)
                 con.execute(
-                    """
-                    INSERT INTO ball_events (
-                        match_id, date, venue_id, inning, over, ball,
-                        batter_id, bowler_id, non_striker_id,
-                        batting_team_id, bowling_team_id,
-                        runs_batter, runs_extras, extras_type, is_wicket, wicket_type, phase
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    [
-                        delivery_data["match_id"],
-                        delivery_data.get("date", date.today()),
-                        delivery_data["venue_id"],
-                        delivery_data["inning"],
-                        delivery_data["over"],
-                        delivery_data["ball"],
-                        delivery_data["batter_id"],
-                        delivery_data["bowler_id"],
-                        delivery_data["non_striker_id"],
-                        delivery_data["batting_team_id"],
-                        delivery_data["bowling_team_id"],
-                        delivery_data.get("runs_batter", 0),
-                        delivery_data.get("runs_extras", 0),
-                        delivery_data.get("extras_type"),
-                        bool(delivery_data.get("is_wicket", False)),
-                        delivery_data.get("wicket_type"),
-                        delivery_data.get("phase", self._infer_phase(delivery_data.get("over"))),
-                    ],
+                    f"INSERT INTO ball_events ({', '.join(insert_cols)}) VALUES ({placeholders})",
+                    values,
                 )
                 return
 
