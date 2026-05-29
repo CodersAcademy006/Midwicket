@@ -56,8 +56,9 @@ class WinPredictor:
             "eden_gardens": 0.12,  # Kolkata Knight Riders
             "chinnaswamy": 0.10,   # Royal Challengers Bangalore
             "chepauk": 0.08,       # Chennai Super Kings (MA Chidambaram Stadium)
-            "punjab cricket": 0.05, # Punjab Kings
+            "punjab_cricket": 0.05, # Punjab Kings
             "brabourne": 0.06,     # Home advantage
+            "dyanmond": 0.08,      # Dyanmond Park advantage
         }
 
         # Populated by create_trained_model / WinProbabilityTrainer.create_win_predictor
@@ -316,13 +317,7 @@ class WinPredictor:
             df = training_data
 
         trainer = WinProbabilityTrainer()
-        features, target = trainer.prepare_training_data(df)
-
-        # Build match_ids list aligned with the feature rows (second innings only).
-        # prepare_training_data may skip malformed rows; truncate to match features length.
-        second_innings = df[df['inning'] == 2]
-        raw_ids: List[str] = [str(mid) for mid in second_innings['match_id']]
-        match_ids: List[str] = raw_ids[:len(features)]
+        features, target, match_ids = trainer.prepare_training_data(df)
 
         model, metrics = trainer.train_model(features, target, match_ids=match_ids)
         predictor = trainer.create_win_predictor(model, metrics)
