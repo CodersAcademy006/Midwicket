@@ -1080,7 +1080,7 @@ class MidwicketAPI:
                     self.session.engine.execute_sql(
                         "INSERT INTO audit_log (ts, user_id, query_text, row_count, duration_ms, endpoint, action, ip_address) "
                         "VALUES (current_timestamp, ?, ?, ?, ?, ?, ?, ?)",
-                        [user_id, "<redacted for privacy>", n, round(duration_ms, 2), "/analyze", "custom_query", client_ip],
+                        [user_id, safe_sql, n, round(duration_ms, 2), "/analyze", "custom_query", client_ip],
                         read_only=False,
                     )
                 except Exception as audit_exc:

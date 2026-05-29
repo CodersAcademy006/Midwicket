@@ -267,6 +267,14 @@ class ThreadSafeQueryEngine:
                     timestamp DOUBLE
                 )
             """)
+            
+            # Schema Migration for v1 additions (e.g. extras_type)
+            cols = self._table_columns_conn(conn, "ball_events")
+            if "extras_type" not in cols:
+                try:
+                    conn.execute("ALTER TABLE ball_events ADD COLUMN extras_type VARCHAR")
+                except Exception:
+                    pass
 
     @property
     def snapshot_id(self) -> str:

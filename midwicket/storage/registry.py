@@ -195,25 +195,7 @@ class IdentityRegistry:
                 "INSERT INTO matchup_stats VALUES (?, ?, ?, ?, ?, ?, ?, ?)", data
             )
 
-    @staticmethod
-    def _normalize_name(name: str) -> str:
-        import string
-        name = name.lower()
-        name = "".join(" " if c in string.punctuation else c for c in name)
-        tokens = name.split()
-        if not tokens:
-            return name
-        
-        if len(tokens) >= 2 and len(tokens[-1]) == 1:
-            tokens = [tokens[-1]] + tokens[:-1]
-            
-        if len(tokens) >= 2:
-            tokens[0] = tokens[0][0]
-            
-        return " ".join(tokens)
-
     def _resolve_generic(self, name: str, entity_type: str, match_date: date, auto_ingest: bool = False) -> int:
-        name = self._normalize_name(name)
         prefix = entity_type[0].upper()
         cache_key = f"{prefix}:{name}:{match_date}"
 

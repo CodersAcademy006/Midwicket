@@ -99,8 +99,12 @@ def career_batting(player_name: str) -> Dict[str, Any]:
         if not row or row[0] == 0:
             return {"player": player_name, "matches": 0, "message": "no data"}
 
-        matches, innings, runs, balls, _not_outs, _high, dots, fours, sixes = row
-        dismissals = innings  # upper bound; not_out calc is approximate without full scorecard
+        matches, innings, runs, balls, not_outs, _high, dots, fours, sixes = row
+        # is_wicket is per-delivery and isn't attributed to the dismissed player,
+        # so a non-striker run-out on a ball this batter faced can push the raw
+        # wicket count past the innings count; clamp so the figures stay valid.
+        dismissals = max(0, min(innings, innings - not_outs))
+        not_outs = innings - dismissals
 
         avg = _r(runs / dismissals) if dismissals else None
         sr = _r((runs / balls) * 100) if balls else None
@@ -129,6 +133,7 @@ def career_batting(player_name: str) -> Dict[str, Any]:
             "innings": innings,
             "runs": runs,
             "balls_faced": balls,
+            "not_outs": not_outs,
             "average": avg,
             "strike_rate": sr,
             "highest_score": highest,

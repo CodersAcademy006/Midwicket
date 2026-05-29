@@ -103,7 +103,7 @@ def main() -> None:
     cache    = MemoryCache()
     executor = RuntimeExecutor(cache=cache, engine=engine)
 
-    q = MatchupQuery(batter_id="1", bowler_id="2", snapshot_id="demo_2023")
+    q = MatchupQuery(batter_id="1", bowler_id="2", )
     res = executor.execute(q)
 
     df = res.data.to_pandas() if hasattr(res.data, "to_pandas") else res.data
