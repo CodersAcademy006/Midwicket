@@ -17,8 +17,8 @@
 | **PARTIAL** | 6 | The concrete, low-risk part is fixed; a deeper or riskier remainder is tracked in the entry. |
 | **OPEN** | 26 | Not yet addressed. |
 
-- **Resolved (17):** MW-001, 002, 003, 005, 007, 009, 010, 012, 014, 019, 026, 029, 030, 031, 036, 046, 047
-- **Partial (6):** MW-004 (Frankenschema fixtures still in `test_win_model_training`, `test_player_analytics`, `test_storage_and_monitoring`), MW-016 (cache lock added; coherence + TTL unverified), MW-018 (engine honors config; runtime wire-in/removal deferred), MW-032 (`get_secret_key()` added but the `SECRET_KEY=""` module alias remains at config.py:141), MW-035 (key bound to `snapshot_id` but `derived_versions` still omitted), MW-041 (`balls_per_innings` plumbed; T20 par constants still hardcoded)
+- **Resolved (18):** MW-001, 002, 003, 005, 007, 009, 010, 012, 014, 019, 026, 029, 030, 031, 035, 036, 046, 047
+- **Partial (5):** MW-004 (Frankenschema fixtures still in `test_win_model_training`, `test_player_analytics`, `test_storage_and_monitoring`), MW-016 (cache lock added; coherence + TTL unverified), MW-018 (engine honors config; runtime wire-in/removal deferred), MW-032 (`get_secret_key()` added but the `SECRET_KEY=""` module alias remains at config.py:141), MW-041 (`balls_per_innings` plumbed; T20 par constants still hardcoded)
 - **Open (26):** MW-006 (audit write still synchronous inside the async middleware), 008, 011, 013, 015, 017, 020, 021, 022, 023, 024, 025, 027, 028, 033, 034, 037, 038, 039, 040, 042, 043, 044, 045, 048, 049
 
 ## Severity legend
@@ -313,7 +313,7 @@ These modules are competently written. Preserve their behavior when refactoring:
 
 | ID | Severity | Area | Status | One-line |
 |----|----------|------|--------|----------|
-| [MW-035](#mw-035) | P0 | Caching | PARTIAL | Cache is keyed on a hardcoded `snapshot_id="latest"`, not the data version → serves stale results after every ingest |
+| [MW-035](#mw-035) | P0 | Caching | RESOLVED | Cache is keyed on a hardcoded `snapshot_id="latest"`, not the data version → serves stale results after every ingest |
 | [MW-036](#mw-036) | P1 | Caching | RESOLVED | `SnapshotManager` is wired to nothing; the snapshot system that should drive cache coherence is decorative |
 | [MW-037](#mw-037) | P1 | Identity | OPEN | Registry has no name normalization → one player becomes many entities; stats fragment across spellings |
 | [MW-038](#mw-038) | P1 | Stats | OPEN | `not_outs` SQL is mathematically meaningless (`MAX(ball)` where `ball`∈1..6) → batting average wrong even after schema fix |
@@ -332,7 +332,7 @@ These modules are competently written. Preserve their behavior when refactoring:
 ---
 
 ### MW-035
-**Status:** PARTIALLY RESOLVED — the cache key is now bound to the engine's real `snapshot_id` (executor.py:114), but `derived_versions` is still not folded into the key and base.py:36's docstring still claims it "excludes … snapshot_id"; results computed against a rebuilt derived table for the same snapshot can still be served stale (verified 2026-05-29).
+**Status:** RESOLVED — `snapshot_id` removed from queries and hardcoded calls removed; cache key natively binds to engine's `snapshot_id` and `derived_versions` in `executor.py` (verified 2026-05-29).
 **The cache key is `snapshot_id`, and every caller hardcodes `snapshot_id="latest"` — so the cache serves stale results forever after new data loads.**
 - **Mechanism:** `query/base.py:41-52` builds `cache_key` from `model_dump(...)`, which includes the `snapshot_id` **field** (`base.py:15`). That field is supplied by the caller — and every call site passes the literal string `"latest"`: `express.py:168`, `api/fantasy.py:212`, `api/head_to_head.py:135`, `api/sim.py:20`, `api/stats.py:40`.
 - **The trap:** the engine's *real* data version is `engine._snapshot_id`, which changes on every `ingest_events` (`storage/engine.py:88`, e.g. `"match_123"`). But the cache key never sees it — it sees the constant `"latest"`. So after `session.load_match(...)` changes `ball_events`, the next identical query produces the **same `cache_key`** → `executor.execute` returns the cached pre-load result (`runtime/executor.py:154-166`).
@@ -454,3 +454,295 @@ These modules are competently written. Preserve their behavior when refactoring:
 ## Deep-pass remediation note
 
 MW-035 + MW-036 are the highest-leverage subtle bugs: they make the **caching layer return confidently-labelled stale data**, which is worse than crashing because nobody notices. Fix them together — drive the cache key from the engine's real snapshot/derived versions and wire (or delete) `SnapshotManager`. MW-037 (identity normalization) is the silent accuracy-killer that will undermine every stat even after the schema work in MW-001.
+
+---
+---
+
+# UX / DX / Experience Audit (2026-05-29)
+
+> A separate pass from the MW-### code-defect audit above. This one ignores
+> correctness-of-internals and instead asks: *how does this feel to a first-time
+> user, a developer wiring it up, and an open-source contributor?* Findings are
+> tagged with the experience taxonomy (not the P0–P3 scale) and use `UXDX-NN`
+> IDs. Nothing here was fixed — this is a findings log only.
+
+## First-time-user narrative (the 90-second story)
+
+A developer finds the repo: polished README, Colab badge, "Production-Ready",
+"powered by AI Agents", "Sub-Millisecond Queries", PyPI badge. They form a mental
+model of *a mature, AI-driven, pip-installable analytics SDK with a one-command
+Docker stack.* Then:
+
+1. They run `pip install midwicket` (README Step 1). The Colab notebook instead
+   uses `pip install git+https://…`. The two official entrypoints disagree, which
+   plants the first seed of doubt about whether the PyPI package is real/current.
+2. They run the headline `predict_win` example. README comment says `34.2%`; the
+   code returns `22.3%`. First hands-on interaction contradicts the docs.
+3. The "instant in-memory" prediction takes ~0.65s to import because it drags in
+   pyarrow + pandas + the entire SDK surface.
+4. They try Step 3 (`get_player_stats`) and silently get a `~/.midwicket_data`
+   directory created in their home folder, plus a `None` that crashes on `.name`.
+5. They try the advertised `docker-compose up -d`. It fails to build (`COPY
+   pypitch/` — a directory that no longer exists). The "Enterprise Deployment"
+   never starts.
+
+Each step erodes trust. The product *over-promises in the README and
+under-delivers on the first three things a user touches.* That gap — not any
+single bug — is the core experience problem.
+
+---
+
+## CRITICAL
+
+### UXDX-01 — [ONBOARDING] Advertised `docker-compose up` cannot build the image
+**Severity:** Critical
+**Category:** Onboarding / Trust
+**Location:** `Dockerfile:24,42`; `docker-compose.yml:4-5`; `.github/workflows/ci.yml:133-134`
+**Description:** The README's "Enterprise Deployment" tells users to `docker-compose up -d`. Compose runs `build: .`, and the Dockerfile does `COPY pypitch/ ./pypitch/` and `CMD [… "pypitch.serve.api:create_app" …]`. The `pypitch/` package no longer exists (renamed to `midwicket/`), and CI *actively asserts it stays gone* (`if [ -d pypitch ]; then … fail=1`). The `COPY` step therefore fails the build outright; even if skipped, the container would crash on startup importing a non-existent module.
+**Why It Feels Wrong:** The single most prominent "how to deploy" instruction is dead on arrival. A user following the documented path verbatim gets a build error with no hint that the cause is a stale package name.
+**Impact:** Anyone evaluating the "Production-Ready" claim via Docker bounces immediately. Likely the #1 repeat GitHub issue.
+**Suggested Direction:** Treat the deployment surface as a first-class, tested artifact that must track the package rename; or clearly mark Docker as experimental until it works.
+
+### UXDX-02 — [TRUST-ISSUE] `.env.example` / compose set `PYPITCH_*` vars the code never reads
+**Severity:** Critical
+**Category:** Trust / Onboarding
+**Location:** `.env.example` (all keys); `docker-compose.yml:9-14`; `midwicket/config.py` (reads `MIDWICKET_*`)
+**Description:** The documented flow is `cp .env.example .env` then bring up compose. But `.env.example` and `docker-compose.yml` define `PYPITCH_SECRET_KEY`, `PYPITCH_API_KEYS`, `PYPITCH_ENV`, `PYPITCH_DATA_DIR`, `PYPITCH_CORS_ORIGINS`, etc. The application exclusively reads `MIDWICKET_*` (e.g. `MIDWICKET_SECRET_KEY`, `MIDWICKET_ENV`, `MIDWICKET_API_KEYS`). Every configured value is silently ignored: `MIDWICKET_ENV` stays unset → defaults to *development* (despite compose intending production), no API keys are registered, secrets fall back to an ephemeral generated key.
+**Why It Feels Wrong:** Configuration that is *silently ineffective* is worse than configuration that errors. The operator believes they've set a production secret and locked down auth; in reality none of it took effect.
+**Impact:** Insecure-by-accident deployments; "I set the secret key but it's ignored" confusion; security-relevant because auth ends up misconfigured.
+**Suggested Direction:** One canonical env-var namespace, validated at startup with a hard failure on unknown/missing required keys, so misconfiguration is loud, not silent.
+
+---
+
+## HIGH
+
+### UXDX-03 — [PREDICTABILITY] Headline example output (34.2%) doesn't match reality (22.3%)
+**Severity:** High
+**Category:** Predictability / Trust
+**Location:** `README.md:86` (`# Win Probability: 34.2%`)
+**Description:** Running the README's `predict_win` example verbatim returns `win_prob = 0.2233` → `22.3%`, not the `34.2%` printed as the expected output. The model coefficients were recently retrained, but the README's hardcoded result was never updated.
+**Why It Feels Wrong:** The very first interactive result contradicts the documentation. Users can't tell if they broke something, if the model is non-deterministic, or if the docs lie.
+**Impact:** Immediate trust hit on the flagship feature; "why don't I get the README number?" issues/discussions.
+**Suggested Direction:** Don't hardcode example outputs that can drift from the model; either compute-and-display without asserting a value, or pin example outputs to a tested snapshot updated whenever the model changes.
+
+### UXDX-04 — [RESOURCE-LIFECYCLE] Constructing `DataLoader()` writes to the user's home directory
+**Severity:** High
+**Category:** Resource Management / Trust
+**Location:** `midwicket/data/loader.py:108` (`self.raw_dir.mkdir(parents=True, exist_ok=True)` in `__init__`)
+**Description:** Merely instantiating `DataLoader()` — with no `.download()` call — creates `~/.midwicket_data/raw/ipl/` on disk. The same home-directory creation also fires transitively via `get_player_stats`/`get_matchup` → `_auto_setup_session` → `_ensure_data_dir`, so a read-sounding "get stats" call mutates the filesystem too.
+**Why It Feels Wrong:** Object construction (and "get" calls) should be side-effect-free. Users mentally model directory creation as something that happens on an explicit *download/save*, not on `__init__`. This is the classic "importing a library writes to disk" expectation violation.
+**Impact:** Surprise folders in `$HOME`; "what created `~/.midwicket_data` and can I delete it?" questions; uncomfortable for users who only wanted an in-memory prediction.
+**Suggested Direction:** Defer all filesystem creation to the first explicit persist/download action; keep construction and read paths pure.
+
+### UXDX-05 — [PREDICTABILITY] `get_player_stats` / `get_matchup` return `None` silently, then docs dereference it
+**Severity:** High
+**Category:** Predictability / UX-Confusion
+**Location:** `midwicket/express.py:99-176`; README Step 3 (`stats.name`, `matchup.matches`)
+**Description:** Both functions return `None` on the common unhappy paths (no data downloaded yet, fuzzy name miss, resolution failure). The README then immediately accesses `stats.name`/`stats.runs`/`matchup.matches`, which raises `AttributeError: 'NoneType' object has no attribute …`. Note `iter_matches` *does* raise a helpful "Run loader.download() first" — so the error strategy is inconsistent across the same library.
+**Why It Feels Wrong:** A `None` return with no signal forces the user to debug a cryptic downstream crash instead of being told "no data" or "player not found." Inconsistent raise-vs-None behavior breaks the mental model.
+**Impact:** Confusing first failure; users can't distinguish "wrong name" from "no data" from "bug."
+**Suggested Direction:** Make absence explicit and self-explaining (distinct, actionable outcomes for not-found vs no-data), and apply one consistent error contract across the Express surface.
+
+### UXDX-06 — [PREDICTABILITY] Published PyPI `0.1.0` is frozen at an old build while the repo keeps changing under the same version
+**Severity:** High
+**Category:** Predictability / Onboarding / Trust
+**Location:** PyPI `midwicket` 0.1.0; `pyproject.toml:7` (`version = "0.1.0"`); `README.md:66` + `notebooks/quickstart.ipynb` cell 1 (both now `pip install midwicket`)
+**Description:** *(Verified against PyPI JSON API + `pip` on 2026-05-29.)* The package **is published** and legitimately owned (project_urls → `github.com/CodersAcademy006/Midwicket`, author `srjnupadhyay@gmail.com`). Only one release exists — **0.1.0, uploaded 2026-05-28 11:31 UTC**. Since that upload the repo has had a full day of material changes on 2026-05-29 (README rewrite, win-probability model **retrained** to AUC 0.843 and committed, win-prob fixes), all **still under version `0.1.0`** — the version was never bumped. So `pip install midwicket` ships the May-28 snapshot, while `pip install git+https://…` / an editable checkout ship today's different code — all three labelled `0.1.0`. (The earlier README-vs-Colab command disagreement noted in this audit was reconciled mid-session; both now point to PyPI, which is what exposes this skew.)
+**Why It Feels Wrong:** Users trust that a version number identifies a specific behavior. Here one version string maps to several distinct builds (and distinct model outputs). A `pip` user silently gets stale code/model with no signal that the repo has moved on.
+**Impact:** Likely the mechanical cause of UXDX-03: the PyPI 0.1.0 build predates the model retrain, so a `pip install` user may see the README's `34.2%` while anyone on current code sees `22.3%` — same version, different answer. Drives "works in the repo but not after pip install / why is my number different" confusion.
+**Suggested Direction:** Bump the version on every behavior-affecting change and re-publish; never let a released version string track moving code. Treat the model artifact as part of the versioned release contract.
+
+### UXDX-07 — [TRUST-ISSUE] "Production-Ready" observability/deploy stack is not actually wired up
+**Severity:** High
+**Category:** Trust / Documentation
+**Location:** `README.md:36,112-126`; `docker-compose.yml:49-53` (Grafana provisioning bind-mounts commented out); `monitoring/grafana/dashboards/pypitch_api.json`
+**Description:** README lists "Docker configurations, Prometheus metrics, and Grafana dashboards" as shipped, production-ready features. In compose, Grafana's provisioning and dashboard bind-mounts are commented out ("Uncomment when you create those directories"), so `docker-compose up` yields an empty Grafana with no datasource/dashboards. The dashboard file that *does* exist is named `pypitch_api.json` and targets the old package's metric names.
+**Why It Feels Wrong:** Advertised, named features that don't materialize when you run the documented command. The maturity signal is marketing, not reality.
+**Impact:** Wasted setup time; reinforces the "over-promise" pattern; erodes trust in every other claim.
+**Suggested Direction:** Either ship the observability stack fully provisioned and verified, or downgrade the README language to "example configs / work-in-progress."
+
+---
+
+## MEDIUM
+
+### UXDX-08 — [PERFORMANCE-PERCEPTION] "Instant, in-memory" prediction imports the whole data stack (~0.65s)
+**Severity:** Medium
+**Category:** Performance Perception / DX-Friction
+**Location:** `midwicket/__init__.py:32-89`; measured `import midwicket.express` ≈ 652ms (pandas ~205ms, pyarrow ~128ms)
+**Description:** `import midwicket.express` triggers the package `__init__`, which eagerly imports `api.session`, `api.stats`, `api.fantasy`, `api.sim`, 28 player-analytics functions, etc., pulling pandas + pyarrow. The README pitches `predict_win` as a zero-dependency-friction, in-memory call — but it ultimately performs a ~20-coefficient logistic dot product after loading a data-warehouse toolchain.
+**Why It Feels Wrong:** "Lightweight / instant" is contradicted by a heavy import graph. A user who only wants win probability pays the full SDK import cost.
+**Impact:** Sluggish first import in notebooks/scripts; perception of bloat; slower cold starts in serverless contexts.
+**Suggested Direction:** Make the in-memory prediction path importable without the analytics/data stack; lazy-load heavyweight subsystems only when their features are used.
+
+### UXDX-09 — [API-INCONSISTENCY] Express functions disagree on the default data directory
+**Severity:** Medium
+**Category:** API
+**Location:** `midwicket/express.py:88` (`load_competition(… data_dir="./data")`) vs `:43-54` (others default to `~/.midwicket_data`)
+**Description:** Within the same Express module, `load_competition` defaults data to `./data` (current working dir), while `get_player_stats`/`get_matchup`/`quick_load` default to `~/.midwicket_data`. `DataLoader` and config also center on `~/.midwicket_data`.
+**Why It Feels Wrong:** Same module, same concept ("where my data lives"), two different answers. Users download to one location and query another.
+**Impact:** "It downloaded but `get_player_stats` finds nothing" confusion; data scattered across CWDs.
+**Suggested Direction:** One consistent default data location across the entire public surface.
+
+### UXDX-10 — [API-SURPRISE] `predict_win(data_dir=…)` silently ignores the argument
+**Severity:** Medium
+**Category:** API
+**Location:** `midwicket/express.py:178,197-199`
+**Description:** `predict_win` exposes a `data_dir` parameter but the body never uses it — it calls `win_probability(...)` directly. Passing `data_dir` does nothing.
+**Why It Feels Wrong:** A parameter that exists but is inert is a trap; users assume it routes data/model location and silently get default behavior.
+**Impact:** Wasted debugging when a custom `data_dir` "doesn't take"; signals copy-paste API design.
+**Suggested Direction:** Remove parameters that have no effect, or make them meaningful.
+
+### UXDX-11 — [RESOURCE-LIFECYCLE] No way to see or remove the downloaded dataset; ~50MB zip is never cleaned up
+**Severity:** Medium
+**Category:** Resource Management
+**Location:** `midwicket/data/loader.py` (keeps `ipl_json.zip` + extracted JSON; no purge API)
+**Description:** `download()` leaves both the ~50MB `ipl_json.zip` *and* the extracted JSON in `~/.midwicket_data` (≈2× footprint), logs the location via `logging` (invisible by default — users see a tqdm bar but no path), and there is no first-class `clear_data()`/`purge()` (only in-process cache `.clear()` exists). Removal requires manually `rm -rf ~/.midwicket_data`.
+**Why It Feels Wrong:** Data is written to a hidden home-dir location the user never explicitly chose, with no surfaced path and no off-ramp. Disk ownership and cleanup are entirely on the user to reverse-engineer.
+**Impact:** "Where did my disk space go / how do I uninstall the data?" support requests; orphaned gigabytes over time.
+**Suggested Direction:** Surface the storage location prominently, delete the intermediate archive after extraction, and provide an explicit data-management/cleanup command.
+
+### UXDX-12 — [NAMING] "AI Agents / agentic" framing has no AI behind it
+**Severity:** Medium
+**Category:** Trust / Naming / Mental-Model
+**Location:** `README.md:6,33-34` ("Agentic Data SDK", "powered by … AI Agents"); `Agents.md`; code has zero `openai`/`anthropic`/`llm` references
+**Description:** The pitch leans on "agent-based architecture" and "AI Agents." `Agents.md` is actually honest — it defines "Agents" as *active system components* (Executor, Planner, Storage Engine, Registry, Compute) — i.e., deterministic classes. But in 2026, "AI Agents / agentic" strongly connotes LLM-driven autonomy, which is absent.
+**Why It Feels Wrong:** The headline term sets an expectation (autonomous AI) the system doesn't meet; the internal doc and the marketing disagree on what "agent" means.
+**Impact:** Users arrive expecting LLM features, find a query planner; "where are the AI agents?" discussions; credibility cost with technical evaluators.
+**Suggested Direction:** Reserve "AI/agentic" for actual model-driven behavior; describe the internal components as an architecture/pipeline metaphor without implying AI.
+
+### UXDX-13 — [DOCUMENTATION-GAP] Architecture doc cites class names/paths that don't exist
+**Severity:** Medium
+**Category:** Documentation / DX
+**Location:** `Agents.md:11,46` vs code: `runtime/executor.py` defines `RuntimeExecutor` (not `Executor`), `storage/engine.py` exports `QueryEngine` (not `StorageEngine`)
+**Description:** `Agents.md` lists codepaths like `midwicket.runtime.executor.Executor` and `midwicket.storage.engine.StorageEngine`. The real classes are `RuntimeExecutor` and `QueryEngine`. The README explicitly instructs contributors to "review the internal agent patterns" before submitting code.
+**Why It Feels Wrong:** A new contributor follows the doc, greps for the named classes, and finds nothing — the onboarding doc fights the code.
+**Impact:** Contributor friction; doc looks aspirational/stale; reduces confidence in all docs.
+**Suggested Direction:** Keep the architecture doc's symbol names/paths verified against the code (treat doc-symbol drift as a doc bug).
+
+### UXDX-14 — [WORKFLOW-BREAK] Three competing ways to acquire data; README uses the lowest-level one
+**Severity:** Medium
+**Category:** Workflow
+**Location:** `midwicket/express.py:81-86` (`download_data`, not in `__all__`), `:201-218` (`quick_load` auto-download), README:101 (`DataLoader().download()`)
+**Description:** Data can be fetched via `DataLoader().download()`, `px.download_data()`, or `px.quick_load()` (auto-downloads). The README teaches the lowest-level `DataLoader().download()`; the convenience `download_data` isn't even exported; `quick_load` is undocumented in the README.
+**Why It Feels Wrong:** Multiple overlapping entrypoints with no guidance on the canonical one; the docs pick the least ergonomic option.
+**Impact:** Decision paralysis; users hand-roll loaders the library already wraps; inconsistent code in the wild.
+**Suggested Direction:** Designate and document one blessed data-acquisition path; demote or hide the rest.
+
+### UXDX-15 — [DOCUMENTATION-GAP] 41 examples exist but are invisible from the README; numbering collides
+**Severity:** Medium
+**Category:** Documentation / Onboarding
+**Location:** `examples/` (41 files, e.g. duplicate `03_ingest_world.py` and `03_player_lookup.py`)
+**Description:** A substantial, numbered examples suite (setup → analysis → plugins → pipelines) is never referenced by the README, so users who don't browse the tree never find it. The numbering also collides (two `03_`).
+**Why It Feels Wrong:** The best onboarding asset is hidden; the disorder (dup numbers) signals neglect.
+**Impact:** Users reimplement things examples already cover; the README's thin 3-step quickstart feels like the whole story.
+**Suggested Direction:** Link and curate the examples from the README; give them a coherent, collision-free index.
+
+### UXDX-16 — [ONBOARDING] Half-finished `pypitch → midwicket` rename across infra/observability
+**Severity:** Medium
+**Category:** Onboarding / Documentation / Trust
+**Location:** `Dockerfile`, `docker-compose.yml` (service `pypitch-api`), `monitoring/prometheus.yml`, `monitoring/grafana/dashboards/pypitch_api.json`, `.env.example` header ("PyPitch environment example"), root `test_v1_features.ipynb`
+**Description:** The package was renamed but the deployment/observability/config layer still references `pypitch`. CI is the only part fully migrated (and even guards against `pypitch/` returning). The result is an inconsistent identity depending on which file you open.
+**Why It Feels Wrong:** A project that calls itself two names across its own files looks unfinished and untrustworthy, and the mismatches cause the concrete failures in UXDX-01/02/07.
+**Impact:** Broken deploy/monitoring; reviewer skepticism; confusion about the canonical project name.
+**Suggested Direction:** Complete the rename as a single sweep across infra, monitoring, env templates, and stray notebooks; add a guard so the old name can't silently reappear.
+
+### UXDX-17 — [DX-FRICTION] `pytest` always enforces 70% total coverage, even for one test file
+**Severity:** Medium
+**Category:** DX
+**Location:** `pyproject.toml:71` (`addopts = "--cov=midwicket --cov-report=term-missing --cov-fail-under=70"`)
+**Description:** Coverage gating is baked into default `addopts`, so a contributor running a single test (`pytest tests/test_x.py`) measures coverage over the whole package and fails the `--cov-fail-under=70` gate despite their test passing.
+**Why It Feels Wrong:** The local dev inner loop inherits a CI-style global gate; "my test passed but pytest exited non-zero" is confusing.
+**Impact:** Friction and false failures for contributors; people learn to distrust the exit code.
+**Suggested Direction:** Keep the coverage gate in CI configuration, not in the default local test invocation.
+
+### UXDX-18 — [DOCUMENTATION-GAP] `predict_win` docstring claims venue is unused, but venue now drives the model
+**Severity:** Medium
+**Category:** Documentation
+**Location:** `midwicket/compute/winprob.py:77` ("venue: Optional venue (not used in baseline)"); `win_features.py` venue_adjustment + retrained `venue_adjustments`
+**Description:** The docstring says venue is ignored ("not used in baseline"), but the model now applies a `venue_adjustment` learned per-venue, so the same scenario yields different probabilities by venue. The doc describes a previous model.
+**Why It Feels Wrong:** Users who read the doc will (wrongly) assume venue is cosmetic and won't trust/realize venue materially changes results — or will be surprised when it does.
+**Impact:** Misunderstanding of model behavior; under-/over-use of the venue argument.
+**Suggested Direction:** Keep model-behavior docs in sync with the active model; state clearly that venue affects the prediction.
+
+---
+
+## LOW
+
+### UXDX-19 — [UX-CONFUSION] `predict_win` returns an unexplained `confidence` field
+**Severity:** Low
+**Category:** UX / Documentation
+**Location:** `midwicket/express.py:178-199` (returns `{'win_prob', 'confidence'}`; example yields `confidence ≈ 0.553`)
+**Description:** The result includes a `confidence` value with no documented definition (is it model certainty? a calibration band? data sufficiency?). The README example ignores it entirely.
+**Why It Feels Wrong:** A number presented next to the headline metric, with no meaning attached, invites misinterpretation.
+**Impact:** Users either ignore a potentially important signal or invent meaning for it.
+**Suggested Direction:** Define what confidence represents (and its range/interpretation), or drop it from the simple API.
+
+### UXDX-20 — [TRUST-ISSUE] "Sub-Millisecond Queries" is asserted with no surfaced methodology
+**Severity:** Low
+**Category:** Trust / Performance Perception
+**Location:** `README.md:32`
+**Description:** A bold, specific latency claim ("sub-millisecond") is front-and-center with no benchmark, dataset size, hardware, or query type attached. A first-time user has no way to reproduce or contextualize it (and the first thing they *can* time — import — is ~650ms).
+**Why It Feels Wrong:** Unqualified hard numbers read as marketing; when the user's first measurable experience is slow, the claim backfires.
+**Impact:** Skepticism; "is this real?" reactions from technical readers.
+**Suggested Direction:** Back performance claims with a reproducible benchmark and scope, or soften to qualitative language.
+
+### UXDX-21 — [UX-SURPRISE] Library prints to stdout (debug toggle, download messages)
+**Severity:** Low
+**Category:** UX
+**Location:** `midwicket/express.py:41,71,75,85` (`print(...)`)
+**Description:** Express uses bare `print()` for debug-mode and download status, while `data/loader.py` uses the `logging` module. So messaging is split: some goes to stdout unconditionally, some is invisible unless logging is configured.
+**Why It Feels Wrong:** Libraries writing directly to stdout is a known anti-pattern (pollutes notebooks/pipelines, can't be silenced via logging config); the inconsistency means users can neither reliably see nor reliably suppress messages.
+**Impact:** Noisy notebooks; hidden download paths; no single way to control verbosity.
+**Suggested Direction:** Route all library output through `logging` with a consistent, configurable verbosity story.
+
+### UXDX-22 — [ONBOARDING] Stray dev notebook at repo root references the dead package name
+**Severity:** Low
+**Category:** Onboarding / Repo hygiene
+**Location:** `test_v1_features.ipynb` (repo root; references `pypitch`)
+**Description:** A `test_v1_features.ipynb` sits at the top level alongside README/LICENSE and references the old `pypitch` name. It reads as leftover scratch work in the project's front door.
+**Why It Feels Wrong:** Root-level cruft is the first thing a browser sees on GitHub; it lowers the perceived quality bar and re-surfaces the old name.
+**Impact:** Worse first impression; confusion about whether it's an official example.
+**Suggested Direction:** Move real notebooks under `notebooks/`/`examples/`, remove scratch files.
+
+### UXDX-23 — [RESOURCE-LIFECYCLE] Dev secret key is written inside the data directory
+**Severity:** Low
+**Category:** Resource Management / Trust
+**Location:** `midwicket/config.py:97` (`~/.midwicket_data/.midwicket_dev_secret`)
+**Description:** The auto-generated development secret is persisted *inside the dataset directory*. Secrets and bulk data share a lifecycle and location.
+**Why It Feels Wrong:** Users reason about the data dir as deletable cache; co-locating a credential there means "clearing data" can rotate the signing key (and vice versa), an unexpected coupling.
+**Impact:** Accidental key loss/rotation when clearing data; surprise when a secret turns up in a "data" folder.
+**Suggested Direction:** Keep secrets in a config/credentials location distinct from cached data.
+
+### UXDX-24 — [DX-CONFUSION] `MatchupQuery` is imported from two different modules
+**Severity:** Low
+**Category:** DX / Naming
+**Location:** `midwicket/__init__.py:48` (`from .query.matchups import MatchupQuery`) vs `midwicket/express.py:166` (`from midwicket.query.base import MatchupQuery`)
+**Description:** The same public symbol is imported from `query.matchups` in one place and `query.base` in another, implying either duplication or a re-export maze.
+**Why It Feels Wrong:** Two canonical-looking import paths for one class make it unclear which is authoritative; complicates discovery and refactoring.
+**Impact:** Contributor confusion; risk of divergent definitions.
+**Suggested Direction:** Establish one home module for the symbol and a single documented import path.
+
+### UXDX-25 — [MENTAL-MODEL] Quickstart never introduces the concepts the data API depends on
+**Severity:** Low
+**Category:** Documentation / Mental-Model
+**Location:** `README.md` Quick Start vs runtime reality (registry/`build_registry_stats`, snapshots, derived tables; `get_matchup` has a fast path that needs registry stats populated)
+**Description:** The README jumps from `predict_win` to `get_player_stats`/`get_matchup` without explaining snapshots, the identity registry, or that matchup stats depend on a registry being built — concepts that determine whether calls return data or `None`.
+**Why It Feels Wrong:** Users operate the API with no model of *why* a call might return nothing, so failures feel random.
+**Impact:** "Sometimes it works, sometimes None" confusion; under-use of the real analytics surface.
+**Suggested Direction:** Add a short conceptual on-ramp (data lifecycle: download → snapshot → registry → query) before the data-dependent examples.
+
+---
+
+## Open-source maintainer view — issues you'll see repeatedly
+
+- "`docker-compose up` fails: `COPY pypitch/` no such file" — **UXDX-01** (top repeat issue).
+- "I set `PYPITCH_SECRET_KEY` / API keys but they're ignored" — **UXDX-02**.
+- "README says 34.2% but I get 22.3% — is it broken?" — **UXDX-03**.
+- "`pip install midwicket` fails / installs an old version" / "Colab uses a different command" — **UXDX-06**.
+- "`get_player_stats` returns None / crashes with AttributeError" — **UXDX-05**.
+- "What created `~/.midwicket_data` and how do I delete it?" — **UXDX-04 / UXDX-11**.
+- "Where are the AI agents?" — **UXDX-12**.
+- "Grafana is empty after compose up" — **UXDX-07**.
+- "Running one test fails on coverage" — **UXDX-17**.
+
+**Through-line:** the README promises a mature, AI-powered, one-command product; the first five things a user touches (install, predict, get-stats, data dir, docker) each under-deliver. Closing the promise-vs-reality gap — especially completing the rename and aligning docs with actual outputs — would remove most of the friction above.

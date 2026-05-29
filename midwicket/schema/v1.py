@@ -91,6 +91,7 @@ BALL_EVENT_SCHEMA = pa.schema([
     # Upcasted to int32 to prevent DuckDB SUM() overflow
     ('runs_batter', pa.int32()),
     ('runs_extras', pa.int32()),
+    ('extras_type', pa.string()),
     ('is_wicket', pa.bool_()),
     ('wicket_type', pa.string()),
     

@@ -132,7 +132,6 @@ def head_to_head(
         v_id = str(reg.resolve_venue(venue, date_context))
 
     query = MatchupQuery(
-        snapshot_id="latest",
         batter_id=b_id,
         bowler_id=bo_id,
         venue_id=v_id,

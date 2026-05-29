@@ -16,8 +16,7 @@ def predict_win(venue: str, target: int, current_runs: int, wickets_down: int, o
         target_score=target,
         current_runs=current_runs,
         current_wickets=wickets_down,
-        overs_remaining=20.0 - overs_done,
-        snapshot_id="latest"
+        overs_remaining=20.0 - overs_done
     )
     
     # For Stage 1, this will likely hit a 'NotImplemented' in executor 

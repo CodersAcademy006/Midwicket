@@ -168,7 +168,6 @@ def get_matchup(batter: str, bowler: str, data_dir: Optional[str] = None) -> Opt
         query = MatchupQuery(
             batter_id=str(batter_id),
             bowler_id=str(bowler_id),
-            snapshot_id="latest",
         )
         result = session.executor.execute(query)
         return result.data

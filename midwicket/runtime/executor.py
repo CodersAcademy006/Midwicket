@@ -95,20 +95,18 @@ class RuntimeExecutor:
         except Exception:
             return False
 
-    def _bind_derived_version(self, query_hash: str) -> str:
-        """Mix the engine's derived-table versions into the cache key.
+    def _bind_data_versions(self, query_hash: str, engine_snap: str) -> str:
+        """Mix the engine's data version (snapshot_id) and derived-table versions into the cache key.
 
-        Binding only the snapshot_id (MW-035) is not enough: a derived table can
-        be rebuilt for the *same* snapshot, after which cached results computed
-        against the old derived table would still be served. Folding a
-        deterministic signature of ``derived_versions`` in closes that gap.
-        Returns the key unchanged when no derived tables are materialized.
+        Binding both the snapshot_id and derived_versions ensures that cached results
+        computed against old data or old derived tables are correctly invalidated.
         """
         derived = getattr(self.engine, "derived_versions", None)
         if not derived:
-            return query_hash
-        derived_sig = json.dumps(derived, sort_keys=True, default=str)
-        return hashlib.sha256(f"{query_hash}|{derived_sig}".encode("utf-8")).hexdigest()
+            derived_sig = "none"
+        else:
+            derived_sig = json.dumps(derived, sort_keys=True, default=str)
+        return hashlib.sha256(f"{query_hash}|snap:{engine_snap}|derived:{derived_sig}".encode("utf-8")).hexdigest()
 
     def execute(self, query: BaseQuery, mode: ExecutionMode = ExecutionMode.EXACT) -> ExecutionResult:
         """
@@ -133,13 +131,10 @@ class RuntimeExecutor:
         # the same snapshot) can never serve a stale cached result.
         engine_snap = getattr(self.engine, "snapshot_id", "latest")
         if not isinstance(engine_snap, str):
-            engine_snap = getattr(query, "snapshot_id", "latest")
-        if isinstance(query, BaseQuery):
-            resolved_query = query.model_copy(update={"snapshot_id": engine_snap})
-            query_hash = resolved_query.cache_key
-        else:
-            query_hash = getattr(query, "cache_key", "latest")
-        query_hash = self._bind_derived_version(query_hash)
+            engine_snap = "latest"
+            
+        query_hash = getattr(query, "cache_key", "latest")
+        query_hash = self._bind_data_versions(query_hash, engine_snap)
 
         # Import here to avoid circular dependencies at module import time.
         from midwicket.query.defs import WinProbQuery
@@ -308,14 +303,11 @@ class RuntimeExecutor:
         # MW-035: Bind the cache key to the engine's actual snapshot_id
         engine_snap = getattr(self.engine, "snapshot_id", "latest")
         if not isinstance(engine_snap, str):
-            engine_snap = getattr(query, "snapshot_id", "latest")
-        from midwicket.query.base import BaseQuery
-        if isinstance(query, BaseQuery):
-            resolved_query = query.model_copy(update={"snapshot_id": engine_snap})
-            resolved_key = resolved_query.cache_key
-        else:
-            resolved_key = getattr(query, "cache_key", "latest")
+            engine_snap = "latest"
+
+        resolved_key = getattr(query, "cache_key", "latest")
         query_hash = f"{resolved_key}:{metric_module}.{metric_qualname}"
+        query_hash = self._bind_data_versions(query_hash, engine_snap)
 
         cached = self.cache.get(query_hash)
         if cached is not None:
