@@ -8,7 +8,7 @@ import pyarrow as pa
 from tqdm import tqdm
 
 # Internal Imports
-from midwicket.storage.engine import QueryEngine
+from midwicket.storage.thread_safe_engine import ThreadSafeQueryEngine as QueryEngine
 from midwicket.storage.registry import IdentityRegistry
 from midwicket.storage.snapshots import SnapshotManager
 from midwicket.runtime.executor import RuntimeExecutor
@@ -168,18 +168,8 @@ class MidwicketSession:
             player_id_int = int(player_id)
             entity_id = player_id_int
         except (TypeError, ValueError):
-            # It's a name, try to resolve with different dates
-            dates_to_try = [date.today(), date(2024, 1, 1), date(2023, 1, 1), date(2022, 1, 1)]
-            entity_id = None
-            for try_date in dates_to_try:
-                try:
-                    resolved_id = self.registry.resolve_player(player_id, try_date)
-                    if resolved_id:
-                        entity_id = resolved_id
-                        break
-                except Exception as _exc:  # nosec B112
-                    logger.debug("resolve_player attempt failed for date=%s: %s", try_date, _exc)
-                    continue
+            # Use centralized name-to-id helper from IdentityRegistry (MW-033)
+            entity_id = self.registry.resolve_player_without_date(player_id)
         
         if entity_id is None:
             return None

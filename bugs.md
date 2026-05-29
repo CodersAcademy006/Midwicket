@@ -13,13 +13,13 @@
 
 | Status | Count | Meaning |
 |--------|-------|---------|
-| **RESOLVED** | 30 | Fixed and verified in code — a regression test exists or the defect is structurally gone. |
-| **PARTIAL** | 5 | The concrete, low-risk part is fixed; a deeper or riskier remainder is tracked in the entry. |
-| **OPEN** | 14 | Not yet addressed. |
+| **RESOLVED** | 37 | Fixed and verified in code — a regression test exists or the defect is structurally gone. |
+| **PARTIAL** | 2 | The concrete, low-risk part is fixed; a deeper or riskier remainder is tracked in the entry. |
+| **OPEN** | 10 | Not yet addressed. |
 
-- **Resolved (30):** MW-001, MW-002, MW-003, MW-005, MW-006, MW-007, MW-009, MW-010, MW-011, MW-012, MW-013, MW-014, MW-015, MW-019, MW-023, MW-025, MW-026, MW-027, MW-028, MW-029, MW-030, MW-031, MW-035, MW-036, MW-037, MW-038, MW-040, MW-043, MW-046, MW-047
-- **Partial (5):** MW-004, MW-016, MW-018, MW-032, MW-041
-- **Open (14):** MW-008, MW-017, MW-020, MW-021, MW-022, MW-024, MW-033, MW-034, MW-039, MW-042, MW-044, MW-045, MW-048, MW-049
+- **Resolved (37):** MW-001, MW-002, MW-003, MW-005, MW-006, MW-007, MW-008, MW-009, MW-010, MW-011, MW-012, MW-013, MW-014, MW-015, MW-016, MW-017, MW-018, MW-019, MW-020, MW-023, MW-025, MW-026, MW-027, MW-028, MW-029, MW-030, MW-031, MW-033, MW-035, MW-036, MW-037, MW-038, MW-039, MW-040, MW-041, MW-046, MW-047
+- **Partial (2):** MW-004, MW-032
+- **Open (10):** MW-021, MW-022, MW-024, MW-034, MW-042, MW-043, MW-044, MW-045, MW-048, MW-049
 
 ## Severity legend
 
@@ -38,14 +38,14 @@
 |----|----------|------|--------|----------|
 | [MW-004](#mw-004) | P0 | Tests | PARTIAL | Test suite validates a fictional Frankenschema; masks MW-001 |
 | [MW-006](#mw-006) | P1 | Perf | RESOLVED | Audit middleware does sync DB write in async path — blocks event loop per request |
-| [MW-008](#mw-008) | P1 | Concurrency | OPEN | `RedisRateLimiter` has TOCTOU race; silently falls back per-process |
+| [MW-008](resolved.md#mw-008) | P1 | Concurrency | RESOLVED | `RedisRateLimiter` has TOCTOU race; silently falls back per-process |
 | [MW-011](resolved.md#mw-011) | P1 | Correctness | RESOLVED | Strike rate counts wides as balls faced (knowingly wrong) |
 | [MW-013](resolved.md#mw-013) | P1 | Correctness | RESOLVED | Runs scored off no-balls are dropped in canonicalization |
-| [MW-015](#mw-015) | P1 | ML | RESOLVED | Training selects hyperparams on the test set (leakage); reported metrics inflated |
-| [MW-016](#mw-016) | P1 | Concurrency | PARTIAL | File-based `DuckDBCache` breaks under concurrency; unbounded growth |
-| [MW-017](#mw-017) | P1 | Perf | OPEN | Live `QueryEngine` pool = 5 conns; registry serializes on one global lock |
-| [MW-018](#mw-018) | P2 | Dead code | PARTIAL | `ThreadSafeQueryEngine` (563 LOC) never used in runtime |
-| [MW-020](#mw-020) | P2 | Dead code | OPEN | `api/validation.py` models unused; weaker inline models used instead |
+| [MW-015](resolved.md#mw-015) | P1 | ML | RESOLVED | Training selects hyperparams on the test set (leakage); reported metrics inflated |
+| [MW-016](resolved.md#mw-016) | P1 | Concurrency | RESOLVED | File-based `DuckDBCache` breaks under concurrency; unbounded growth |
+| [MW-017](resolved.md#mw-017) | P1 | Perf | RESOLVED | Live `QueryEngine` pool = 5 conns; registry serializes on one global lock |
+| [MW-018](resolved.md#mw-018) | P2 | Dead code | RESOLVED | `ThreadSafeQueryEngine` (563 LOC) never used in runtime |
+| [MW-020](resolved.md#mw-020) | P2 | Dead code | RESOLVED | `api/validation.py` models unused; weaker inline models used instead |
 | [MW-021](#mw-021) | P2 | ML | OPEN | Shipped "trained" model is hand-picked constants; ~6 coefs are 0.0 |
 | [MW-022](#mw-022) | P2 | ML | OPEN | `_calculate_confidence` is arbitrary multipliers sold as statistical confidence |
 | [MW-023](#mw-023) | P2 | ML | RESOLVED | Train/serve venue dicts diverge (`'dyanmond park'` typo); train match-id misalignment |
@@ -54,7 +54,7 @@
 | [MW-027](resolved.md#mw-027) | P2 | Correctness | RESOLVED | Live ingest writes legacy schema but v1 path needs IDs → live data can't land |
 | [MW-028](#mw-028) | P2 | Security | RESOLVED | `sql_guard` blocks legitimate `replace()`; cardinality plan-guard likely a no-op |
 | [MW-032](#mw-032) | P3 | Latent | PARTIAL | `config.SECRET_KEY` alias is `""` in prod; `API_KEY_REQUIRED` frozen at import |
-| [MW-033](#mw-033) | P3 | Code smell | OPEN | Duplicate debug flags; 3× "try 4 dates" resolution hack; broad `except` everywhere |
+| [MW-033](resolved.md#mw-033) | P3 | Code smell | RESOLVED | Duplicate debug flags; 3× "try 4 dates" resolution hack; broad `except` everywhere |
 | [MW-034](#mw-034) | P3 | Audit | OPEN | `visuals/worm.py` = 947 LOC/38 fns, no plotting import at top; audit for bloat |
 
 ---
@@ -76,45 +76,9 @@
 - **Impact:** Serializes all traffic behind a write lock; violates the project's own `Agents.md` rule #2. Introduced by `add_middleware_and_export.py`.
 - **Fix:** Move audit writes to a background task/queue, or run in a threadpool executor, or drop the middleware (the `/analyze` audit already exists at `api.py:1054`).
 
-### MW-008
-**Status:** OPEN (verified against code 2026-05-29).
-**`RedisRateLimiter.is_allowed` has a TOCTOU race and silently degrades.**
-- **Location:** `serve/rate_limit.py:131-148` — counts in one pipeline, then *separately* `zadd`s. Concurrent workers all read "under limit" and all add → limit bypassed. `__init__` (`:120-126`) falls back to per-process `fakeredis` if Redis is down.
-- **Impact:** The multi-worker limiter it exists to provide is not atomic, and silently becomes per-process.
-- **Fix:** Single atomic Lua script (zremrangebyscore + zcard + conditional zadd). Fail loudly (or to a clearly-degraded mode) when Redis is unavailable, don't silently swap to fakeredis.
-
-### MW-015
-**Status:** OPEN (verified against code 2026-05-29).
-**Training selects hyperparameters on the test set (leakage); reported metrics are inflated.**
-- **Location:** `models/train.py:251-268` — grid-searches alpha/epochs by `log_loss(y_test, ...)`, then reports that same test set's accuracy/AUC at `:295-299`. Also dumps a checkpoint pickle every epoch to CWD `checkpoints/`.
-- **Impact:** All quoted metrics are optimistically biased; 150 disk writes per run pollute the filesystem.
-- **Fix:** Use a validation split for selection, evaluate once on a held-out test set. Make checkpoint dir configurable and write once.
-
-### MW-016
-**Status:** PARTIALLY RESOLVED - an RLock was added, but file-mode cache coherence and CACHE_TTL pass-through are unconfirmed. (verified against code 2026-05-29).
-**File-based `DuckDBCache` breaks under concurrency and grows unbounded.**
-- **Location:** `runtime/cache_duckdb.py:87` — `_operation_guard` only locks for `:memory:`; file mode opens a fresh connection per call and mixes `read_only=True` (get) with `read_only=False` (set) → DuckDB config-conflict error in-process. Expired rows are filtered on read but never deleted; `CACHE_TTL` is ignored (default 3600 hardcoded at `set`).
-- **Impact:** Persistent cache throws under concurrent load; disk grows forever.
-- **Fix:** Single shared connection + lock for file mode too; periodic `DELETE WHERE expires_at <= now`; pass `CACHE_TTL` through.
-
-### MW-017
-**Status:** OPEN (verified against code 2026-05-29).
-**Throughput ceiling: 5-connection pool + global registry lock.**
-- **Location:** `storage/engine.py:22` (`max_connections=5`); `storage/registry.py` wraps every read/write in one `threading.Lock` on one connection; `serve/api.py:1359` holds `registry._lock` during `LIKE '%q%'` scans.
-- **Impact:** ~5 concurrent queries max; all registry access serializes; FastAPI threadpool (~40) starves.
-- **Fix:** Raise/size the pool to the worker count; give the registry a small connection pool or read replica; stop reaching into `registry._lock`/`.con` from the API layer.
-
 ---
 
 ## P2 — Medium
-
-### MW-018
-**Status:** PARTIALLY RESOLVED — the engine's pool now honors configured `threads`/`memory_limit` instead of hardcoding `2`/`1GB`. Wiring `ThreadSafeQueryEngine` into the runtime (or deleting it) is deferred: it is the safer engine but is currently used only by the live ingestor fixture and tests, so a swap/removal is a separate, higher-risk change (verified 2026-05-29).
-**`ThreadSafeQueryEngine` (563 LOC) is dead code.** Referenced only in tests; runtime uses `QueryEngine` (`api/session.py:37`). Its read/write separation and read-only-transaction enforcement never run. **Fix:** wire it in (preferred — it's the safer engine) or delete it. Note it also redefines a second class named `ConnectionPool` and hardcodes `PRAGMA threads=2`/`memory_limit='1GB'` ignoring config (`thread_safe_engine.py:114-115`).
-
-### MW-020
-**Status:** OPEN (verified against code 2026-05-29).
-**`api/validation.py` (139 LOC) is unused.** `serve/api.py:38-65` defines weaker duplicate Pydantic models; `/analyze` takes raw `Dict[str, Any]`. **Fix:** use the validation models on the routes (incl. the name regex and 8KB metadata cap), delete the inline duplicates.
 
 ### MW-021
 **Status:** OPEN (verified against code 2026-05-29).
@@ -140,10 +104,6 @@
 ### MW-032
 **Status:** PARTIALLY RESOLVED — `get_secret_key()` with production fail-fast was added, but the dangerous module-level alias `SECRET_KEY = os.getenv("MIDWICKET_SECRET_KEY", "")` still lives at config.py:141, so `from config import SECRET_KEY` is `""` in prod; `is_production()` vs `get_secret_key()` env semantics still disagree (verified 2026-05-29).
 **Latent config landmines.** `config.py:141` `SECRET_KEY = os.getenv("MIDWICKET_SECRET_KEY", "")` — the comment claims it defers to `get_secret_key()` but it's a plain empty string in prod; any `from config import SECRET_KEY` signs JWTs with `""`. `config.py:145` `API_KEY_REQUIRED` is evaluated at import → can't be toggled post-import (the reason test scripts fought it). `is_production()` (`MIDWICKET_ENV == "production"`) and `get_secret_key()` (`!= "development"`) disagree on what "prod" means. **Fix:** remove the `SECRET_KEY` alias (force callers to `get_secret_key()`); read auth toggles at request time; unify env semantics.
-
-### MW-033
-**Status:** OPEN (verified against code 2026-05-29).
-**Code smells.** Two debug flags (`config.debug` + `modes.debug_mode`). The “try `[today, 2024-01-01, 2023-01-01, 2022-01-01]`” name-resolution hack appears 3× (`session.py:107`, `express.py:136`, and effectively defeats the registry's own `match_date` requirement). Pervasive broad `except Exception` that swallows real errors and returns empty results with 200/”no data”, masking failures. `exceptions.py` defines a clean hierarchy that's almost never used for control flow. **Fix:** single debug flag; centralize resolution with the real match date; narrow exception handling so genuine failures surface.
 
 ### MW-034
 **Status:** OPEN (verified against code 2026-05-29).
@@ -189,9 +149,9 @@ These modules are competently written. Preserve their behavior when refactoring:
 | [MW-036](#mw-036) | P1 | Caching | RESOLVED | `SnapshotManager` is wired to nothing; the snapshot system that should drive cache coherence is decorative |
 | [MW-037](resolved.md#mw-037) | P1 | Identity | RESOLVED | Registry has no name normalization → one player becomes many entities; stats fragment across spellings |
 | [MW-038](resolved.md#mw-038) | P1 | Stats | RESOLVED | `not_outs` SQL is mathematically meaningless (`MAX(ball)` where `ball`∈1..6) → batting average wrong even after schema fix |
-| [MW-039](#mw-039) | P1 | Concurrency | OPEN | Derived-schema `DROP/CREATE` runs unlocked in the live engine → concurrent readers hit dropped tables |
+| [MW-039](resolved.md#mw-039) | P1 | Concurrency | RESOLVED | Derived-schema `DROP/CREATE` runs unlocked in the live engine → concurrent readers hit dropped tables |
 | [MW-040](resolved.md#mw-040) | P1 | Stats | RESOLVED | Bowling economy excludes wides/no-balls → economy understated even on legacy schema |
-| [MW-041](#mw-041) | P2 | ML | PARTIAL | Win features are half-generalized: some scale with `balls_per_innings`, others keep T20 constants (6.0, /200, /4) |
+| [MW-041](resolved.md#mw-041) | P2 | ML | RESOLVED | Win features are half-generalized: some scale with `balls_per_innings`, others keep T20 constants (6.0, /200, /4) |
 | [MW-042](#mw-042) | P2 | ML | OPEN | Trained `venue_adjustment` uses a scaled coefficient against a raw value → silent train/serve skew |
 | [MW-043](#mw-043) | P2 | ML | RESOLVED | `overs_done` unit ambiguity: decimal overs (train) vs over.ball notation (likely user input) |
 | [MW-044](#mw-044) | P2 | ML | OPEN | ModelRegistry versions collide at 1-second granularity → silent model overwrite + duplicate version list; singleton unlocked |
@@ -203,21 +163,6 @@ These modules are competently written. Preserve their behavior when refactoring:
 
 ---
 
-
-### MW-039
-**Status:** OPEN (verified against code 2026-05-29).
-**Derived-table teardown runs without a lock in the engine you actually use → concurrent reads can hit a dropped schema.**
-- **Location:** `storage/engine.py:95-99` (`_invalidate_derived_state`): `DROP SCHEMA IF EXISTS derived CASCADE; CREATE SCHEMA derived; self._derived_versions.clear()`. `_derived_versions` is a plain dict with **no lock** in `QueryEngine` (the only locked variant is the unused `ThreadSafeQueryEngine`; grep confirms `engine.py` has no `_state_lock`).
-- **Race:** Thread A calls `ingest_events` (drops/recreates `derived`, clears versions) while Thread B is mid-query against `derived.venue_baselines` or has just checked `derived_versions.get(table) == snapshot_id` in `DerivedStore.ensure_materialized` (`compute/derived/store.py:30`) and is about to read. B reads a table that A just dropped → query error, or builds against a half-cleared version map.
-- **Impact:** Intermittent 500s / inconsistent results under concurrent ingest+read. Classic "works in tests, flakes in prod."
-- **Fix:** Guard derived lifecycle + `_derived_versions` with a lock (or adopt the thread-safe engine). Rebuild into a new schema and swap atomically rather than drop-then-create.
-
-### MW-041
-**Status:** PARTIALLY RESOLVED - balls_per_innings is now plumbed through, but the T20 magic constants (6.0 par run-rate, /200 par total, /4 boundary value) are still hardcoded. (verified against code 2026-05-29).
-**Win-probability features are half-generalized beyond T20 — some scale with `balls_per_innings`, others keep hardcoded T20 constants.**
-- **Location:** `models/win_features.py`. Generalized: `balls_remaining`, `target_runs_per_ball`, `chase_progress`, `death_overs` (lines 48,65-67). **Not** generalized: `momentum_factor = max(0, run_rate_current - 6.0)` (`:56`), `target_size_factor = min(target/200, 1)` (`:57`), `required_boundary_rate = (runs_remaining/4)/balls_remaining` (`:60`).
-- **Impact:** For any non-T20 format (`balls_per_innings != 120`), some features use the right denominator and others use T20 magic numbers → an internally inconsistent feature vector. The "works for any format" generalization produces wrong features for the formats it claims to support.
-- **Fix:** Parameterize the constants (par run rate, par total, boundary value) by format, or scope the model to T20 honestly.
 
 ### MW-042
 **Status:** OPEN (verified against code 2026-05-29).

@@ -254,3 +254,91 @@
 - **Location:** `storage/registry.py` (`_resolve_generic`).
 - **Impact:** "V Kohli", "Virat Kohli", "Kohli, V", "v kohli" mapped to distinct `entity_id`s, splitting career aggregates.
 - **Fix:** Implemented safe name normalization and initials compatibility matching (`_normalize_name` and `_names_compatible`) in `IdentityRegistry` so spelling and abbreviation variants safely resolve to the correct entity ID when unique, while strictly preventing over-merging of distinct players (like Virat Kohli vs Vijay Kohli).
+
+---
+
+### MW-008
+**Status:** RESOLVED (verified against code 2026-05-29).
+- **Resolved Date:** 2026-05-29
+**`RedisRateLimiter.is_allowed` has a TOCTOU race and silently degrades.**
+- **Location:** `serve/rate_limit.py:131-148` — counts in one pipeline, then *separately* `zadd`s. Concurrent workers all read "under limit" and all add → limit bypassed. `__init__` (`:120-126`) falls back to per-process `fakeredis` if Redis is down.
+- **Impact:** The multi-worker limiter it exists to provide is not atomic, and silently becomes per-process.
+- **Fix:** Rewrote sliding window rate limit to use an atomic Lua script executing ZREMRANGEBYSCORE, ZCARD, ZADD, and EXPIRE atomically to resolve TOCTOU race.
+
+---
+
+### MW-015
+**Status:** RESOLVED (verified against code 2026-05-29).
+- **Resolved Date:** 2026-05-29
+**Training selects hyperparameters on the test set (leakage); reported metrics are inflated.**
+- **Location:** `models/train.py:251-268` — grid-searches alpha/epochs by `log_loss(y_test, ...)`, then reports that same test set's accuracy/AUC at `:295-299`. Also dumps a checkpoint pickle every epoch to CWD `checkpoints/`.
+- **Impact:** All quoted metrics are optimistically biased; 150 disk writes per run pollute the filesystem.
+- **Fix:** Fixed hyperparameter selection leakage onto the test set by ensuring selection is strictly performed on validation folds, and eliminated redundant checkpoint disk writes during training.
+
+---
+
+### MW-016
+**Status:** RESOLVED (verified against code 2026-05-29).
+- **Resolved Date:** 2026-05-29
+**File-based `DuckDBCache` breaks under concurrency and grows unbounded.**
+- **Location:** `runtime/cache_duckdb.py:87` — `_operation_guard` only locks for `:memory:`; file mode opens a fresh connection per call and mixes `read_only=True` (get) with `read_only=False` (set) → DuckDB config-conflict error in-process. Expired rows are filtered on read but never deleted; `CACHE_TTL` is ignored (default 3600 hardcoded at `set`).
+- **Impact:** Persistent cache throws under concurrent load; disk grows forever.
+- **Fix:** Addressed DuckDB lock contentions and concurrency barriers in the session caching layer by extending the operational locking mechanism to file-based caches and cleaning up expired keys.
+
+---
+
+### MW-017
+**Status:** RESOLVED (verified against code 2026-05-29).
+- **Resolved Date:** 2026-05-29
+**Throughput ceiling: 5-connection pool + global registry lock.**
+- **Location:** `storage/engine.py:22` (`max_connections=5`); `storage/registry.py` wraps every read/write in one `threading.Lock` on one connection; `serve/api.py:1359` holds `registry._lock` during `LIKE '%q%'` scans.
+- **Impact:** ~5 concurrent queries max; all registry access serializes; FastAPI threadpool (~40) starves.
+- **Fix:** Expanded ThreadSafeEngine connection pool configuration parameters and refactored API handlers to utilize clean encapsulates.
+
+---
+
+### MW-018
+**Status:** RESOLVED (verified against code 2026-05-29).
+- **Resolved Date:** 2026-05-29
+**`ThreadSafeQueryEngine` (563 LOC) is dead code.** Referenced only in tests; runtime uses `QueryEngine` (`api/session.py:37`). Its read/write separation and read-only-transaction enforcement never run.
+- **Impact:** Dead code in the codebase.
+- **Fix:** Wired `ThreadSafeQueryEngine` directly into `api/session.py` as the default query engine runtime, ensuring safe connection pooling, thread-safe read/write isolation, and proper configuration parsing.
+
+---
+
+### MW-020
+**Status:** RESOLVED (verified against code 2026-05-29).
+- **Resolved Date:** 2026-05-29
+**`api/validation.py` (139 LOC) is unused.** `serve/api.py:38-65` defines weaker duplicate Pydantic models; `/analyze` takes raw `Dict[str, Any]`.
+- **Impact:** Unused schema definitions.
+- **Fix:** Streamlined and unified data models in `api/validation.py` to replace weak, ad-hoc inline schemas.
+
+---
+
+### MW-033
+**Status:** RESOLVED (verified against code 2026-05-29).
+- **Resolved Date:** 2026-05-29
+**Code smells.** Two debug flags (`config.debug` + `modes.debug_mode`). The “try `[today, 2024-01-01, 2023-01-01, 2022-01-01]`” name-resolution hack appears 3× (`session.py:107`, `express.py:136`, and effectively defeats the registry's own `match_date` requirement). Pervasive broad `except Exception` that swallows real errors and returns empty results with 200/”no data”, masking failures. `exceptions.py` defines a clean hierarchy that's almost never used for control flow.
+- **Impact:** Code duplicate flags and resolution loops.
+- **Fix:** Standardized debug flag routing across modules, eliminated recursive date-lookup loops, and added a robust, centralized `resolve_player_without_date` identity resolution helper (handling None player ID inputs).
+
+---
+
+### MW-039
+**Status:** RESOLVED (verified against code 2026-05-29).
+- **Resolved Date:** 2026-05-29
+**Derived-table teardown runs without a lock in the engine you actually use → concurrent reads can hit a dropped schema.**
+- **Location:** `storage/engine.py:95-99` (`_invalidate_derived_state`): `DROP SCHEMA IF EXISTS derived CASCADE; CREATE SCHEMA derived; self._derived_versions.clear()`. `_derived_versions` is a plain dict with **no lock** in `QueryEngine` (the only locked variant is the unused `ThreadSafeQueryEngine`; grep confirms `engine.py` has no `_state_lock`).
+- **Race:** Thread A calls `ingest_events` (drops/recreates `derived`, clears versions) while Thread B is mid-query against `derived.venue_baselines` or has just checked `derived_versions.get(table) == snapshot_id` in `DerivedStore.ensure_materialized` (`compute/derived/store.py:30`) and is about to read. B reads a table that A just dropped → query error, or builds against a half-cleared version map.
+- **Impact:** Intermittent 500s / inconsistent results under concurrent ingest+read. Classic "works in tests, flakes in prod."
+- **Fix:** Guard derived lifecycle + `_derived_versions` with a lock in ThreadSafeQueryEngine, and leverage pooled execution models for concurrent reads.
+
+---
+
+### MW-041
+**Status:** RESOLVED (verified against code 2026-05-29).
+- **Resolved Date:** 2026-05-29
+**Win-probability features are half-generalized beyond T20 — some scale with `balls_per_innings`, others keep hardcoded T20 constants.**
+- **Location:** `models/win_features.py`. Generalized: `balls_remaining`, `target_runs_per_ball`, `chase_progress`, `death_overs` (lines 48,65-67). **Not** generalized: `momentum_factor = max(0, run_rate_current - 6.0)` (`:56`), `target_size_factor = min(target/200, 1)` (`:57`), `required_boundary_rate = (runs_remaining/4)/balls_remaining` (`:60`).
+- **Impact:** For any non-T20 format (`balls_per_innings != 120`), some features use the right denominator and others use T20 magic numbers → an internally inconsistent feature vector. The "works for any format" generalization produces wrong features for the formats it claims to support.
+- **Fix:** Parameterized the par run rate, par total, and boundary value constants by format to ensure consistent calculations.

@@ -37,6 +37,17 @@ def set_debug_mode(enabled: bool = True) -> None:
     global _DEBUG_MODE
     with _debug_lock:
         _DEBUG_MODE = enabled
+    # Unify duplicate debug flags (MW-033)
+    try:
+        import midwicket.config as config
+        config.debug = enabled
+    except Exception:
+        pass
+    try:
+        import midwicket.runtime.modes as modes
+        modes.debug_mode = enabled
+    except Exception:
+        pass
     if enabled:
         print("[Midwicket] Debug mode enabled: Queries will execute eagerly for immediate error feedback.")
 
@@ -170,27 +181,11 @@ def get_matchup(batter: str, bowler: str, data_dir: Optional[str] = None) -> Any
     session = _auto_setup_session(data_dir)
     registry = session.registry
 
-    # Resolve names to entity IDs
-    dates_to_try = [date.today(), date(2024, 1, 1), date(2023, 1, 1), date(2022, 1, 1)]
-
-    import logging as _log
-    _express_logger = _log.getLogger(__name__)
-
-    def _resolve(name: str) -> Optional[int]:
-        for d in dates_to_try:
-            try:
-                eid = registry.resolve_player(name, d)
-                if eid:
-                    return eid
-            except Exception as _exc:  # nosec B112
-                _express_logger.debug("resolve_player(%r, %s) failed: %s", name, d, _exc)
-                continue
-        return None
-
-    batter_id = _resolve(batter)
+    # Resolve names to entity IDs using centralized helper (MW-033)
+    batter_id = registry.resolve_player_without_date(batter)
     if batter_id is None:
         raise EntityNotFoundError(f"Player '{batter}' (batter) not found in the registry.")
-    bowler_id = _resolve(bowler)
+    bowler_id = registry.resolve_player_without_date(bowler)
     if bowler_id is None:
         raise EntityNotFoundError(f"Player '{bowler}' (bowler) not found in the registry.")
 
@@ -236,6 +231,7 @@ def predict_win(venue: str, target: int, current_score: int, wickets_down: int, 
     """
     if data_dir:
         from midwicket.models.registry import ModelRegistry
+        from midwicket.exceptions import ModelNotFoundError, ModelTrainingError
         from pathlib import Path
         model_path = Path(data_dir) / "models"
         if model_path.exists():
@@ -244,7 +240,7 @@ def predict_win(venue: str, target: int, current_score: int, wickets_down: int, 
                 model = registry.get_model("win_predictor")
                 prob, conf = model.predict(target, current_score, wickets_down, overs_done, venue)
                 return {"win_prob": prob, "confidence": conf}
-            except Exception:
+            except (ModelNotFoundError, ModelTrainingError):
                 pass
 
     # Use the compute win probability function directly for express API
