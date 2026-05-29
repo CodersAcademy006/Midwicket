@@ -102,7 +102,7 @@ def canonicalize_match(match_data: Dict[str, Any], registry: IdentityRegistry, m
                     run_component = RunComponent.from_wide(extras_data['wides'])
                     extras_type = 'wides'
                 elif 'noballs' in extras_data:
-                    run_component = RunComponent.from_no_ball(extras_data['noballs'])
+                    run_component = RunComponent.from_no_ball(extras_data['noballs'], runs_data.get('batter', 0))
                     extras_type = 'noballs'
                 elif 'byes' in extras_data:
                     run_component = RunComponent.from_bye(extras_data['byes'])

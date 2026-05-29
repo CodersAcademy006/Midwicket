@@ -36,11 +36,14 @@ def strike_rate(events: pa.Table) -> float:
     # Total Runs (Batter runs only for SR)
     total_runs = cast(float, pc.sum(events['runs_batter']).as_py())
     
-    # Legal Balls: Not Wide
-    # Note: NoBalls count as balls faced. Wides do not.
-    # Assuming all rows are balls for now to satisfy the immediate task.
-    
-    balls_faced = len(events) 
+    if 'extras_type' in events.column_names:
+        is_wide = pc.equal(events['extras_type'], 'wides')
+        is_wide = pc.fill_null(is_wide, False)
+        balls_faced = pc.sum(pc.if_else(is_wide, 0, 1)).as_py()
+        if balls_faced is None:
+            balls_faced = 0
+    else:
+        balls_faced = len(events)
     
     if balls_faced == 0:
         return 0.0
