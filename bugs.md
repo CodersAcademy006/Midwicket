@@ -153,7 +153,7 @@ These modules are competently written. Preserve their behavior when refactoring:
 | [MW-040](resolved.md#mw-040) | P1 | Stats | RESOLVED | Bowling economy excludes wides/no-balls → economy understated even on legacy schema |
 | [MW-041](resolved.md#mw-041) | P2 | ML | RESOLVED | Win features are half-generalized: some scale with `balls_per_innings`, others keep T20 constants (6.0, /200, /4) |
 | [MW-042](#mw-042) | P2 | ML | OPEN | Trained `venue_adjustment` uses a scaled coefficient against a raw value → silent train/serve skew |
-| [MW-043](#mw-043) | P2 | ML | OPEN | `overs_done` unit ambiguity: decimal overs (train) vs over.ball notation (likely user input) |
+| [MW-043](#mw-043) | P2 | ML | RESOLVED | `overs_done` unit ambiguity: decimal overs (train) vs over.ball notation (likely user input) |
 | [MW-044](#mw-044) | P2 | ML | OPEN | ModelRegistry versions collide at 1-second granularity → silent model overwrite + duplicate version list; singleton unlocked |
 | [MW-045](#mw-045) | P2 | Derived | OPEN | Derived builders are orphaned and unfinished (`build_venue_stats` "logic would go here"; `build_phase_stats` counts run-outs as batter outs) |
 | [MW-046](#mw-046) | P2 | Stats | RESOLVED | Three divergent phase definitions; analytics ignore the stored `phase` column and recompute from `over` |

@@ -200,57 +200,48 @@ class WinProbabilityTrainer:
         if len(features) < 100:
             raise DataValidationError("Insufficient training data (minimum 100 samples)")
 
-        # Grouped-by-match split when match_ids provided
+        # 3-way split: Train (70%), Val (15%), Test (15%) to prevent hyperparameter leakage (MW-015)
         split_strategy = "grouped_by_match"
         training_matches: Optional[int] = None
         if match_ids is not None and len(match_ids) == len(features):
             unique_ids = list(dict.fromkeys(match_ids))  # preserve order, deduplicate
-            n_test = max(1, int(len(unique_ids) * test_size))
             rng = np.random.RandomState(random_state)
             rng.shuffle(unique_ids)
+            
+            n_test = max(1, int(len(unique_ids) * 0.15))
+            n_val = max(1, int(len(unique_ids) * 0.15))
+            
             test_ids = set(unique_ids[:n_test])
-            train_ids = set(unique_ids[n_test:])
-            mask_train = pd.Series([mid not in test_ids for mid in match_ids], index=features.index)
+            val_ids = set(unique_ids[n_test:n_test+n_val])
+            train_ids = set(unique_ids[n_test+n_val:])
+            
+            mask_train = pd.Series([mid in train_ids for mid in match_ids], index=features.index)
+            mask_val = pd.Series([mid in val_ids for mid in match_ids], index=features.index)
+            mask_test = pd.Series([mid in test_ids for mid in match_ids], index=features.index)
+            
             X_train = features[mask_train]
-            X_test = features[~mask_train]
             y_train = target[mask_train]
-            y_test = target[~mask_train]
+            X_val = features[mask_val]
+            y_val = target[mask_val]
+            X_test = features[mask_test]
+            y_test = target[mask_test]
+            
             training_matches = len(train_ids)
         else:
-            # Split data
-            X_train, X_test, y_train, y_test = train_test_split(
-                features, target, test_size=test_size, random_state=random_state, stratify=target
+            split_strategy = "random_stratified"
+            # 3-way stratified split
+            X_train_val, X_test, y_train_val, y_test = train_test_split(
+                features, target, test_size=0.15, random_state=random_state, stratify=target
+            )
+            X_train, X_val, y_train, y_val = train_test_split(
+                X_train_val, y_train_val, test_size=15.0/85.0, random_state=random_state, stratify=y_train_val
             )
             training_matches = None
 
-        # Split X_train further into a validation set to select hyperparams (MW-015)
-        # to avoid data leakage onto the final held-out test set (X_test / y_test).
-        if match_ids is not None and len(match_ids) == len(features):
-            unique_train_ids = list(train_ids)
-            n_val = max(1, int(len(unique_train_ids) * 0.2))  # 20% validation
-            rng_val = np.random.RandomState(random_state + 1)
-            rng_val.shuffle(unique_train_ids)
-            val_ids = set(unique_train_ids[:n_val])
-            
-            mask_val = pd.Series([mid in val_ids for mid in match_ids], index=features.index)
-            # mask_true_train must be inside mask_train (which is mid not in test_ids)
-            mask_true_train = mask_train & ~mask_val
-            
-            X_true_train = features[mask_true_train]
-            X_val = features[mask_val]
-            y_true_train = target[mask_true_train]
-            y_val = target[mask_val]
-        else:
-            # Simple stratified split of X_train into true train and validation
-            X_true_train, X_val, y_true_train, y_val = train_test_split(
-                X_train, y_train, test_size=0.2, random_state=random_state + 1, stratify=y_train
-            )
-
-        # Scale features for validation phase
-        from sklearn.preprocessing import StandardScaler
-        scaler_temp = StandardScaler()
-        X_true_train_scaled = scaler_temp.fit_transform(X_true_train)
-        X_val_scaled = scaler_temp.transform(X_val)
+        # Scale features using only training parameters to avoid leakages
+        X_train_scaled = self.scaler.fit_transform(X_train)
+        X_val_scaled = self.scaler.transform(X_val)
+        X_test_scaled = self.scaler.transform(X_test)
 
         # Grid search / hyperparameter tuning and Epochs training on validation set
         best_loss = float('inf')
@@ -267,9 +258,9 @@ class WinProbabilityTrainer:
                                   warm_start=True, learning_rate='optimal')
             
             for epoch in range(1, max_epochs + 1):
-                model.partial_fit(X_true_train_scaled, y_true_train, classes=np.array([0, 1]))
+                model.partial_fit(X_train_scaled, y_train, classes=np.array([0, 1]))
                 
-                # Evaluate on validation set (no leakage!)
+                # Evaluate on Validation Set to select hyperparameters
                 try:
                     val_pred = model.predict_proba(X_val_scaled)[:, 1]
                     val_loss = log_loss(y_val, val_pred, labels=[0, 1])
@@ -299,6 +290,7 @@ class WinProbabilityTrainer:
         
         # Evaluate final
         train_pred = model.predict_proba(X_train_scaled)[:, 1]
+        val_pred = model.predict_proba(X_val_scaled)[:, 1]
         test_pred = model.predict_proba(X_test_scaled)[:, 1]
 
         # Compute metrics; guard against single-class test sets (small grouped splits)
@@ -319,12 +311,16 @@ class WinProbabilityTrainer:
 
         metrics = {
             'train_accuracy': accuracy_score(y_train, train_pred > 0.5),
+            'val_accuracy': accuracy_score(y_val, val_pred > 0.5),
             'test_accuracy': accuracy_score(y_test, test_pred > 0.5),
             'train_log_loss': _safe_log_loss(y_train, train_pred),
+            'val_log_loss': _safe_log_loss(y_val, val_pred),
             'test_log_loss': _safe_log_loss(y_test, test_pred),
             'train_auc': _safe_auc(y_train, train_pred),
+            'val_auc': _safe_auc(y_val, val_pred),
             'test_auc': _safe_auc(y_test, test_pred),
             'training_samples': len(X_train),
+            'val_samples': len(X_val),
             'test_samples': len(X_test),
             'feature_importance': dict(zip(features.columns, model.coef_[0])),
             'split_strategy': split_strategy,
