@@ -389,6 +389,8 @@ class IdentityRegistry:
 
     def resolve_player_without_date(self, name: str) -> Optional[int]:
         """Try to resolve a player name without a match date by checking common/fallback dates (thread-safe)."""
+        if not name:
+            return None
         norm_name = self._normalize_name(name)
         with self._lock:
             res = self.con.execute(
