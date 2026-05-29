@@ -52,38 +52,29 @@ graph LR
 
 ---
 
-## Quick Start (Zero Config)
+## Quick Start
 
-The easiest way to see Midwicket in action is to use the Express API. It handles data downloading, DuckDB initialization, and agent routing automatically.
+**Try it instantly in your browser — no install required:**
 
-If you prefer an interactive walkthrough, open the maintained Colab notebook:
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/CodersAcademy006/Midwicket/blob/main/notebooks/quickstart.ipynb)
 
-- **Colab Quickstart:** https://colab.research.google.com/github/CodersAcademy006/Midwicket/blob/main/notebooks/quickstart.ipynb
+---
 
-### 1. Install the SDK
+### Step 1 — Install
+
 ```bash
 pip install midwicket
 ```
 
-### 2. Download Data & Run Analytics
-Midwicket utilizes the open dataset from Cricsheet. Run this once to populate your local DuckDB instance.
+---
+
+### Step 2 — Run a prediction (no data download needed)
+
+The win probability model runs entirely in memory. No dataset, no waiting.
 
 ```python
 import midwicket.express as px
-from midwicket.data.loader import DataLoader
 
-# One-time data initialization (~50MB)
-DataLoader().download()
-
-# Retrieve comprehensive lifetime statistics for a specific player
-stats = px.get_player_stats("Virat Kohli")
-print(f"Player: {stats.name} | Runs: {stats.runs} | Strike Rate: {stats.strike_rate}")
-```
-
-### 3. Predictive Modeling (Live Win Probability)
-Calculate live win probability using the built-in ML models based on current match conditions.
-
-```python
 result = px.predict_win(
     venue="Wankhede Stadium",
     target=180,
@@ -92,6 +83,28 @@ result = px.predict_win(
     overs_done=15.0,
 )
 print(f"Win Probability: {result['win_prob']:.1%}")
+# Win Probability: 34.2%
+```
+
+---
+
+### Step 3 — Load the full historical dataset (optional)
+
+When you are ready to query player stats, head-to-head records, and venue analysis
+across 10+ years of IPL data, run the one-time download (~50 MB from Cricsheet):
+
+```python
+from midwicket.data.loader import DataLoader
+import midwicket.express as px
+
+# Downloads once, cached locally at ~/.midwicket_data
+DataLoader().download()
+
+stats = px.get_player_stats("Virat Kohli")
+print(f"Player: {stats.name} | Runs: {stats.runs} | Strike Rate: {stats.strike_rate}")
+
+matchup = px.get_matchup("V Kohli", "JJ Bumrah")
+print(f"Head-to-head | Matches: {matchup.matches} | Average: {matchup.average:.1f}")
 ```
 
 ---
