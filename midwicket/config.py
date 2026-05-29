@@ -163,6 +163,18 @@ def set_debug(value: bool = True) -> None:
         _log.info("[Midwicket] Debug mode ON: Forcing eager execution and verbose errors.")
     else:
         _log.info("[Midwicket] Debug mode OFF.")
+    # Unify duplicate debug flags (MW-033)
+    try:
+        import midwicket.runtime.modes as modes
+        modes.debug_mode = value
+    except Exception:
+        pass
+    try:
+        import midwicket.express as express
+        with express._debug_lock:
+            express._DEBUG_MODE = value
+    except Exception:
+        pass
 
 def is_debug() -> bool:
     return debug
