@@ -13,15 +13,13 @@
 
 | Status | Count | Meaning |
 |--------|-------|---------|
-| Status | Count | Meaning |
-|--------|-------|---------|
-| **RESOLVED** | 27 | Fixed and verified in code — a regression test exists or the defect is structurally gone. |
+| **RESOLVED** | 30 | Fixed and verified in code — a regression test exists or the defect is structurally gone. |
 | **PARTIAL** | 5 | The concrete, low-risk part is fixed; a deeper or riskier remainder is tracked in the entry. |
-| **OPEN** | 17 | Not yet addressed. |
+| **OPEN** | 14 | Not yet addressed. |
 
-- **Resolved (27):** MW-001, MW-002, MW-003, MW-005, MW-006, MW-007, MW-009, MW-010, MW-011, MW-012, MW-013, MW-014, MW-019, MW-025, MW-026, MW-027, MW-028, MW-029, MW-030, MW-031, MW-035, MW-036, MW-037, MW-038, MW-040, MW-046, MW-047
+- **Resolved (30):** MW-001, MW-002, MW-003, MW-005, MW-006, MW-007, MW-009, MW-010, MW-011, MW-012, MW-013, MW-014, MW-015, MW-019, MW-023, MW-025, MW-026, MW-027, MW-028, MW-029, MW-030, MW-031, MW-035, MW-036, MW-037, MW-038, MW-040, MW-043, MW-046, MW-047
 - **Partial (5):** MW-004, MW-016, MW-018, MW-032, MW-041
-- **Open (17):** MW-008, MW-015, MW-017, MW-020, MW-021, MW-022, MW-023, MW-024, MW-033, MW-034, MW-039, MW-042, MW-043, MW-044, MW-045, MW-048, MW-049
+- **Open (14):** MW-008, MW-017, MW-020, MW-021, MW-022, MW-024, MW-033, MW-034, MW-039, MW-042, MW-044, MW-045, MW-048, MW-049
 
 
 ## Severity legend
@@ -44,7 +42,7 @@
 | [MW-008](#mw-008) | P1 | Concurrency | OPEN | `RedisRateLimiter` has TOCTOU race; silently falls back per-process |
 | [MW-011](resolved.md#mw-011) | P1 | Correctness | RESOLVED | Strike rate counts wides as balls faced (knowingly wrong) |
 | [MW-013](resolved.md#mw-013) | P1 | Correctness | RESOLVED | Runs scored off no-balls are dropped in canonicalization |
-| [MW-015](#mw-015) | P1 | ML | OPEN | Training selects hyperparams on the test set (leakage); reported metrics inflated |
+| [MW-015](#mw-015) | P1 | ML | RESOLVED | Training selects hyperparams on the test set (leakage); reported metrics inflated |
 | [MW-016](#mw-016) | P1 | Concurrency | PARTIAL | File-based `DuckDBCache` breaks under concurrency; unbounded growth |
 | [MW-017](#mw-017) | P1 | Perf | OPEN | Live `QueryEngine` pool = 5 conns; registry serializes on one global lock |
 | [MW-018](#mw-018) | P2 | Dead code | PARTIAL | `ThreadSafeQueryEngine` (563 LOC) never used in runtime |
@@ -196,7 +194,7 @@ These modules are competently written. Preserve their behavior when refactoring:
 | [MW-040](resolved.md#mw-040) | P1 | Stats | RESOLVED | Bowling economy excludes wides/no-balls → economy understated even on legacy schema |
 | [MW-041](#mw-041) | P2 | ML | PARTIAL | Win features are half-generalized: some scale with `balls_per_innings`, others keep T20 constants (6.0, /200, /4) |
 | [MW-042](#mw-042) | P2 | ML | OPEN | Trained `venue_adjustment` uses a scaled coefficient against a raw value → silent train/serve skew |
-| [MW-043](#mw-043) | P2 | ML | OPEN | `overs_done` unit ambiguity: decimal overs (train) vs over.ball notation (likely user input) |
+| [MW-043](#mw-043) | P2 | ML | RESOLVED | `overs_done` unit ambiguity: decimal overs (train) vs over.ball notation (likely user input) |
 | [MW-044](#mw-044) | P2 | ML | OPEN | ModelRegistry versions collide at 1-second granularity → silent model overwrite + duplicate version list; singleton unlocked |
 | [MW-045](#mw-045) | P2 | Derived | OPEN | Derived builders are orphaned and unfinished (`build_venue_stats` "logic would go here"; `build_phase_stats` counts run-outs as batter outs) |
 | [MW-046](#mw-046) | P2 | Stats | RESOLVED | Three divergent phase definitions; analytics ignore the stored `phase` column and recompute from `over` |
