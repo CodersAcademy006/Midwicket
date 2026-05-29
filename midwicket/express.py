@@ -44,22 +44,27 @@ def _get_default_data_dir() -> Path:
     """Get default data directory (~/.midwicket_data)."""
     return Path.home() / ".midwicket_data"
 
-def _ensure_data_dir(data_dir: Optional[str] = None) -> Path:
-    """Ensure data directory exists."""
-    if data_dir:
-        path = Path(data_dir)
-    else:
-        path = _get_default_data_dir()
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+def _ensure_data_dir(data_dir: Optional[str] = None) -> str:
+    """Ensure data directory exists or return ':memory:'."""
+    if data_dir is None:
+        return ":memory:"
+    path = Path(data_dir)
+    if str(path) != ":memory:":
+        path.mkdir(parents=True, exist_ok=True)
+    return str(path)
 
 def _auto_setup_session(data_dir: Optional[str] = None, auto_download: bool = False) -> MidwicketSession:
     """Auto-setup session with caching. Does not download data by default."""
     global _cached_session, _cached_session_dir
 
-    resolved = str(_ensure_data_dir(data_dir))
+    resolved = _ensure_data_dir(data_dir)
     with _session_lock:
         if _cached_session is not None and _cached_session_dir == resolved:
+            return _cached_session
+
+        if resolved == ":memory:":
+            _cached_session = MidwicketSession(":memory:")
+            _cached_session_dir = resolved
             return _cached_session
 
         data_path = Path(resolved)
@@ -81,11 +86,14 @@ def _auto_setup_session(data_dir: Optional[str] = None, auto_download: bool = Fa
 def download_data(data_dir: Optional[str] = None) -> None:
     """Explicitly download the historical dataset."""
     path = _ensure_data_dir(data_dir)
-    loader = DataLoader(str(path))
+    if path == ":memory:":
+        print("Running in in-memory mode, dataset already pre-cached in RAM.")
+        return
+    loader = DataLoader(path)
     print("Downloading historical dataset...")
     loader.download()
 
-def load_competition(competition: str, season: int, data_dir: str = "./data") -> CricsheetLoader:
+def load_competition(competition: str, season: int, data_dir: Optional[str] = None) -> CricsheetLoader:
     """
     Returns a CricsheetLoader filtered to a specific competition and season.
 
@@ -94,9 +102,23 @@ def load_competition(competition: str, season: int, data_dir: str = "./data") ->
         ipl = px.load_competition("ipl", 2023)
         match_ids = ipl.get_match_ids()
     """
-    return CricsheetLoader(data_dir, competition=competition, season=season)
+    if data_dir is None:
+        loader_dir = ":memory:"
+    else:
+        loader_dir = data_dir
+    return CricsheetLoader(loader_dir, competition=competition, season=season)
 
-def get_player_stats(player_name: str, data_dir: Optional[str] = None) -> Optional[Any]:
+def _check_dataset_exists(data_dir: Optional[str] = None) -> None:
+    resolved = _ensure_data_dir(data_dir)
+    if resolved == ":memory:":
+        # In memory mode, the dataset is always loaded from bundled zip in RAM, so it always exists!
+        return
+    path = Path(resolved)
+    raw_dir = path / "raw" / "ipl"
+    if not raw_dir.exists() or not any(raw_dir.glob("*.json")):
+        raise FileNotFoundError("Dataset not loaded. Please run DataLoader().download() or px.download_data() first.")
+
+def get_player_stats(player_name: str, data_dir: Optional[str] = None) -> Any:
     """
     Get player statistics by name.
 
@@ -105,16 +127,24 @@ def get_player_stats(player_name: str, data_dir: Optional[str] = None) -> Option
         data_dir: Optional custom data directory
 
     Returns:
-        PlayerStats dataclass or None
+        PlayerStats dataclass
 
     Example:
         stats = px.get_player_stats("Virat Kohli")
         print(f"Matches: {stats.matches}, Runs: {stats.runs}")
     """
+    _check_dataset_exists(data_dir)
+    if not player_name:
+        raise ValueError("Player name cannot be empty.")
+    
     session = _auto_setup_session(data_dir)
-    return session.get_player_stats(player_name)
+    stats = session.get_player_stats(player_name)
+    if stats is None:
+        from midwicket.storage.registry import EntityNotFoundError
+        raise EntityNotFoundError(f"Player '{player_name}' not found in the registry.")
+    return stats
 
-def get_matchup(batter: str, bowler: str, data_dir: Optional[str] = None) -> Optional[Any]:
+def get_matchup(batter: str, bowler: str, data_dir: Optional[str] = None) -> Any:
     """
     Get head-to-head matchup statistics.
 
@@ -124,13 +154,18 @@ def get_matchup(batter: str, bowler: str, data_dir: Optional[str] = None) -> Opt
         data_dir: Optional custom data directory
 
     Returns:
-        MatchupResult dataclass or None
+        MatchupResult dataclass
 
     Example:
         result = px.get_matchup("V Kohli", "JJ Bumrah")
         print(f"Matches: {result.matches}, Avg: {result.average}")
     """
     from datetime import date
+    from midwicket.storage.registry import EntityNotFoundError
+
+    _check_dataset_exists(data_dir)
+    if not batter or not bowler:
+        raise ValueError("Batter and bowler names cannot be empty.")
 
     session = _auto_setup_session(data_dir)
     registry = session.registry
@@ -153,9 +188,11 @@ def get_matchup(batter: str, bowler: str, data_dir: Optional[str] = None) -> Opt
         return None
 
     batter_id = _resolve(batter)
+    if batter_id is None:
+        raise EntityNotFoundError(f"Player '{batter}' (batter) not found in the registry.")
     bowler_id = _resolve(bowler)
-    if batter_id is None or bowler_id is None:
-        return None
+    if bowler_id is None:
+        raise EntityNotFoundError(f"Player '{bowler}' (bowler) not found in the registry.")
 
     # Fast path: query registry matchup_stats (populated by build_registry_stats)
     stats = registry.get_matchup_stats(batter_id, bowler_id)
@@ -170,9 +207,13 @@ def get_matchup(batter: str, bowler: str, data_dir: Optional[str] = None) -> Opt
             bowler_id=str(bowler_id),
         )
         result = session.executor.execute(query)
+        if result.data is None:
+            raise EntityNotFoundError(f"No matchup data found between '{batter}' and '{bowler}'.")
         return result.data
-    except Exception:
-        return None
+    except Exception as exc:
+        if isinstance(exc, EntityNotFoundError):
+            raise
+        raise EntityNotFoundError(f"No matchup data found between '{batter}' and '{bowler}': {exc}") from exc
 
 def predict_win(venue: str, target: int, current_score: int, wickets_down: int, overs_done: float, data_dir: Optional[str] = None) -> Dict[str, float]:
     """
@@ -193,6 +234,19 @@ def predict_win(venue: str, target: int, current_score: int, wickets_down: int, 
         prob = px.predict_win("Wankhede", 180, 120, 5, 15.0)
         print(f"Win probability: {prob['win_prob']:.2%}, Confidence: {prob['confidence']:.1%}")
     """
+    if data_dir:
+        from midwicket.models.registry import ModelRegistry
+        from pathlib import Path
+        model_path = Path(data_dir) / "models"
+        if model_path.exists():
+            try:
+                registry = ModelRegistry(str(model_path))
+                model = registry.get_model("win_predictor")
+                prob, conf = model.predict(target, current_score, wickets_down, overs_done, venue)
+                return {"win_prob": prob, "confidence": conf}
+            except Exception:
+                pass
+
     # Use the compute win probability function directly for express API
     from midwicket.compute.winprob import win_probability
     return win_probability(target, current_score, wickets_down, overs_done, venue)
