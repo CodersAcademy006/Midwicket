@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from typing import Dict, Optional
 
+# Constants used during model training
+PAR_RUN_RATE = 6.0
+RUNS_PER_BOUNDARY = 4.0
+_T20_PAR_TOTAL = 200.0
+_T20_BALLS = 120.0
+
 
 FEATURE_COLUMNS = [
     "runs_remaining",
@@ -83,14 +89,15 @@ def compute_chase_features(
     run_rate_current = float(current_runs) / float(overs_done) if overs_done > 0 else 0.0
 
     wickets_pressure = 1.0 if wickets_down >= 3 and overs_done < 10 else 0.0
-    # Format-aware constants
-    par_total = (float(balls_per_innings) / 120.0) * 200.0
-    par_run_rate = (par_total / balls_per_innings) * 6.0 if balls_per_innings > 0 else 6.0
-    momentum_factor = max(0.0, run_rate_current - par_run_rate)
+    # Par total scales with format (extensive); par run rate and runs-per-boundary
+    # do not (intensive / universal). For T20 (120 balls) par_total == 200.0, so
+    # this is identical to the old hardcoded behavior (MW-041).
+    par_total = (float(balls_per_innings) / _T20_BALLS) * _T20_PAR_TOTAL
+    momentum_factor = max(0.0, run_rate_current - PAR_RUN_RATE)
     target_size_factor = min(float(target) / par_total, 1.0) if par_total > 0 else 0.0
 
     rr_gap = run_rate_required - run_rate_current
-    required_boundary_rate = (runs_remaining / 4.0) / balls_remaining
+    required_boundary_rate = (runs_remaining / RUNS_PER_BOUNDARY) / balls_remaining
     runs_per_wicket_remaining = runs_remaining / max(1.0, wickets_remaining)
     wickets_per_over_remaining = wickets_remaining / overs_remaining
     wickets_in_hand_ratio = wickets_remaining / 10.0
