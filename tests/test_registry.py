@@ -31,8 +31,6 @@ def test_auto_ingest_explicit(registry):
     id2 = registry.resolve_player("Virat Kohli", d1)
     assert id1 == id2
 
-import pytest
-@pytest.mark.skip(reason='Broken by UX fixes')
 def test_temporal_resolution(registry):
     # 1. "Delhi Daredevils" exists in 2012
     # Note: We need to manually seed aliases for this test since auto-ingest 
@@ -55,8 +53,6 @@ def test_temporal_resolution(registry):
     with pytest.raises(EntityNotFoundError):
         registry.resolve_team("Delhi Daredevils", date(2020, 5, 1))
 
-import pytest
-@pytest.mark.skip(reason='Broken by UX fixes')
 def test_cache_behavior(registry):
     d1 = date(2021, 1, 1)
     name = "Rishabh Pant"

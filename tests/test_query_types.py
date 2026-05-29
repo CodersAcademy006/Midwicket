@@ -35,7 +35,6 @@ class TestQueryClassesExist:
 class TestWinProbQueryValidation:
     # Minimum valid payload — snapshot_id is required by BaseQuery
     BASE = dict(
-        snapshot_id="2024-01-01",
         venue_id=1,
         target_score=180,
         current_runs=120,
@@ -43,20 +42,14 @@ class TestWinProbQueryValidation:
         overs_remaining=5.0,
     )
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_valid_overs_remaining(self):
         q = WinProbQuery(**self.BASE)
         assert q.overs_remaining == 5.0
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_overs_remaining_zero(self):
         q = WinProbQuery(**{**self.BASE, "overs_remaining": 0.0})
         assert q.overs_remaining == 0.0
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_overs_remaining_max(self):
         q = WinProbQuery(**{**self.BASE, "overs_remaining": 20.0})
         assert q.overs_remaining == 20.0

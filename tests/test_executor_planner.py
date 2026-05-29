@@ -14,7 +14,7 @@ from midwicket.runtime.planner import (
     _table_ref,
     _QUERY_PREFERRED_TABLES,
 )
-from midwicket.query.base import MatchupQuery
+from midwicket.query.base import MatchupQuery, BaseQuery
 
 
 # ---------------------------------------------------------------------------
@@ -48,7 +48,7 @@ def _make_engine(
 
 
 def _matchup_query(**kw) -> MatchupQuery:
-    defaults = dict(snapshot_id="snap-1", batter_id="101", bowler_id="202")
+    defaults = dict(batter_id="101", bowler_id="202")
     defaults.update(kw)
     return MatchupQuery(**defaults)
 
@@ -96,8 +96,6 @@ class TestResultMetadata:
 # ---------------------------------------------------------------------------
 
 class TestRuntimeExecutorCacheHit:
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_cache_hit_returns_cached_data(self):
         cache = _FakeCache()
         cached_value = {"already": "computed"}
@@ -107,7 +105,8 @@ class TestRuntimeExecutorCacheHit:
         baseline_calls = engine.execute_sql.call_count
 
         query = _matchup_query()
-        cache.set(query.cache_key, cached_value)
+        bound_key = executor._bind_data_versions(query.cache_key, "latest")
+        cache.set(bound_key, cached_value)
 
         result = executor.execute(query)
         assert result.data == cached_value
@@ -115,13 +114,11 @@ class TestRuntimeExecutorCacheHit:
         # No additional calls beyond init baseline
         assert engine.execute_sql.call_count == baseline_calls
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_cache_miss_then_hit_on_second_call(self):
         cache = _FakeCache()
         engine = _make_engine()
         executor = RuntimeExecutor(cache, engine)
-        query = _matchup_query(snapshot_id="snap-abc")
+        query = _matchup_query()
 
         # First call — miss
         result1 = executor.execute(query)
@@ -133,19 +130,16 @@ class TestRuntimeExecutorCacheHit:
         assert result2.meta.source == "cache"
         assert engine.execute_sql.call_count == call_count_after_first  # no new call
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_result_has_meta_with_snapshot_id(self):
         cache = _FakeCache()
         engine = _make_engine()
+        engine.snapshot_id = "snap-99"
         executor = RuntimeExecutor(cache, engine)
-        query = _matchup_query(snapshot_id="snap-99")
+        query = _matchup_query()
 
         result = executor.execute(query)
         assert result.meta.snapshot_id == "snap-99"
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_result_has_positive_execution_time(self):
         cache = _FakeCache()
         engine = _make_engine()
@@ -155,8 +149,6 @@ class TestRuntimeExecutorCacheHit:
         result = executor.execute(query)
         assert result.meta.execution_time_ms >= 0
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_concurrent_cache_miss_singleflight(self):
         cache = _FakeCache()
         engine = _make_engine()
@@ -168,7 +160,7 @@ class TestRuntimeExecutorCacheHit:
         engine.execute_sql.side_effect = _slow_execute
         executor = RuntimeExecutor(cache, engine)
         baseline_calls = engine.execute_sql.call_count
-        query = _matchup_query(snapshot_id="snap-concurrent")
+        query = _matchup_query()
 
         barrier = threading.Barrier(2)
         results: list[ExecutionResult] = []
@@ -193,27 +185,23 @@ class TestRuntimeExecutorCacheHit:
         assert sorted(r.meta.source for r in results) == ["cache", "compute"]
         assert engine.execute_sql.call_count == baseline_calls + 1
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_execute_forwards_query_timeout_to_engine(self):
         cache = _FakeCache()
         engine = _make_engine()
         executor = RuntimeExecutor(cache, engine)
-        query = _matchup_query(snapshot_id="timeout-forward", execution_opts={"timeout": 7})
+        query = _matchup_query(execution_opts={"timeout": 7})
 
         executor.execute(query)
 
         kwargs = engine.execute_sql.call_args.kwargs
         assert kwargs.get("timeout") == pytest.approx(7.0)
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_execute_times_out_while_waiting_for_inflight_leader(self):
         cache = _FakeCache()
         engine = _make_engine()
         executor = RuntimeExecutor(cache, engine)
         baseline_calls = engine.execute_sql.call_count
-        query = _matchup_query(snapshot_id="wait-timeout", execution_opts={"timeout": 0.01})
+        query = _matchup_query(execution_opts={"timeout": 0.01})
 
         def _force_follower(_key: str):
             return False, threading.Event()
@@ -224,19 +212,18 @@ class TestRuntimeExecutorCacheHit:
 
         assert engine.execute_sql.call_count == baseline_calls
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_execute_zero_timeout_waits_for_inflight_cache(self):
         cache = _FakeCache()
         engine = _make_engine()
         executor = RuntimeExecutor(cache, engine)
         baseline_calls = engine.execute_sql.call_count
-        query = _matchup_query(snapshot_id="zero-timeout-follower", execution_opts={"timeout": 0})
+        query = _matchup_query(execution_opts={"timeout": 0})
         inflight_event = threading.Event()
 
         def _release() -> None:
             time.sleep(0.02)
-            cache.set(query.cache_key, {"ok": True})
+            bound_key = executor._bind_data_versions(query.cache_key, "latest")
+            cache.set(bound_key, {"ok": True})
             inflight_event.set()
 
         releaser = threading.Thread(target=_release)
@@ -253,13 +240,11 @@ class TestRuntimeExecutorCacheHit:
 
 
 class TestRuntimeExecutorMetricCaching:
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_execute_metric_caches_falsy_value(self):
         cache = _FakeCache()
         engine = _make_engine()
         executor = RuntimeExecutor(cache, engine)
-        query = _matchup_query(snapshot_id="metric-cache-snap")
+        query = _matchup_query()
 
         calls = {"n": 0}
 
@@ -278,13 +263,11 @@ class TestRuntimeExecutorMetricCaching:
         assert calls["n"] == 1
         assert engine.execute_sql.call_count == call_count_after_first
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_execute_metric_cache_key_uses_function_identity(self):
         cache = _FakeCache()
         engine = _make_engine()
         executor = RuntimeExecutor(cache, engine)
-        query = _matchup_query(snapshot_id="metric-key-snap")
+        query = _matchup_query()
 
         def metric_alpha(_events):
             return 1.0
@@ -302,13 +285,11 @@ class TestRuntimeExecutorMetricCaching:
         assert second.data == 2.0
         assert second.meta.source == "compute"
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_execute_metric_forwards_query_timeout_to_engine(self):
         cache = _FakeCache()
         engine = _make_engine()
         executor = RuntimeExecutor(cache, engine)
-        query = _matchup_query(snapshot_id="metric-timeout", execution_opts={"timeout": 3})
+        query = _matchup_query(execution_opts={"timeout": 3})
 
         def metric_alpha(_events):
             return 1.0
@@ -318,14 +299,12 @@ class TestRuntimeExecutorMetricCaching:
         kwargs = engine.execute_sql.call_args.kwargs
         assert kwargs.get("timeout") == pytest.approx(3.0)
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_execute_metric_times_out_while_waiting_for_inflight_leader(self):
         cache = _FakeCache()
         engine = _make_engine()
         executor = RuntimeExecutor(cache, engine)
         baseline_calls = engine.execute_sql.call_count
-        query = _matchup_query(snapshot_id="metric-wait-timeout", execution_opts={"timeout": 0.01})
+        query = _matchup_query(execution_opts={"timeout": 0.01})
 
         def metric_alpha(_events):
             return 1.0
@@ -339,14 +318,12 @@ class TestRuntimeExecutorMetricCaching:
 
         assert engine.execute_sql.call_count == baseline_calls
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_execute_metric_zero_timeout_waits_for_inflight_cache(self):
         cache = _FakeCache()
         engine = _make_engine()
         executor = RuntimeExecutor(cache, engine)
         baseline_calls = engine.execute_sql.call_count
-        query = _matchup_query(snapshot_id="zero-timeout-metric", execution_opts={"timeout": 0})
+        query = _matchup_query(execution_opts={"timeout": 0})
         inflight_event = threading.Event()
 
         def metric_alpha(_events):
@@ -359,7 +336,8 @@ class TestRuntimeExecutorMetricCaching:
 
         def _release() -> None:
             time.sleep(0.02)
-            cache.set(metric_cache_key, 3.14)
+            bound_key = executor._bind_data_versions(metric_cache_key, "latest")
+            cache.set(bound_key, 3.14)
             inflight_event.set()
 
         releaser = threading.Thread(target=_release)
@@ -383,7 +361,6 @@ class TestRuntimeExecutorWinProb:
     def _win_prob_query(self, snapshot_id: str = "s1"):
         from midwicket.query.defs import WinProbQuery
         return WinProbQuery(
-            snapshot_id=snapshot_id,
             venue_id=1,
             target_score=180,
             current_runs=90,
@@ -391,8 +368,6 @@ class TestRuntimeExecutorWinProb:
             overs_remaining=10.0,
         )
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_winprobquery_routes_to_model_not_sql(self):
         cache = _FakeCache()
         engine = _make_engine()
@@ -410,8 +385,6 @@ class TestRuntimeExecutorWinProb:
         # No calls beyond DerivedStore init
         assert engine.execute_sql.call_count == baseline_calls
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_winprobquery_result_cached(self):
         cache = _FakeCache()
         engine = _make_engine()
@@ -431,7 +404,6 @@ class TestRuntimeExecutorWinProb:
         from pydantic import ValidationError
         with pytest.raises(ValidationError):
             WinProbQuery(
-                snapshot_id="s1",
                 venue_id=1,
                 target_score=180,
                 current_runs=90,
@@ -445,8 +417,6 @@ class TestRuntimeExecutorWinProb:
 # ---------------------------------------------------------------------------
 
 class TestExecutionModeEnforcement:
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_budget_mode_raises_on_raw_scan(self):
         cache = _FakeCache()
         engine = _make_engine(derived_versions={})
@@ -457,8 +427,6 @@ class TestExecutionModeEnforcement:
         with pytest.raises(RuntimeError, match="BUDGET"):
             executor.execute(query, mode=ExecutionMode.BUDGET)
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_approx_mode_logs_warning_on_raw_scan(self, caplog):
         import logging
         cache = _FakeCache()
@@ -472,8 +440,6 @@ class TestExecutionModeEnforcement:
         assert result.meta.source == "compute"
         assert any("APPROX" in r.message or "raw_scan" in r.message for r in caplog.records)
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_exact_mode_succeeds_with_raw_scan(self):
         cache = _FakeCache()
         engine = _make_engine()
@@ -483,25 +449,11 @@ class TestExecutionModeEnforcement:
         result = executor.execute(query, mode=ExecutionMode.EXACT)
         assert result.meta.source == "compute"
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
-    def test_budget_mode_succeeds_with_materialized_view(self):
-        cache = _FakeCache()
-        # Make matchup_stats available
-        engine = _make_engine(derived_versions={"matchup_stats": "v1", "phase_stats": "v1"})
-        executor = RuntimeExecutor(cache, engine)
-        query = _matchup_query()
-
-        result = executor.execute(query, mode=ExecutionMode.BUDGET)
-        assert result.meta.source == "compute"
-
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_budget_mode_does_not_bypass_guardrail_with_cache(self):
         cache = _FakeCache()
         engine = _make_engine(derived_versions={})
         executor = RuntimeExecutor(cache, engine)
-        query = _matchup_query(snapshot_id="budget-cache-guard")
+        query = _matchup_query()
 
         # EXACT allows raw_scan and seeds the cache.
         exact = executor.execute(query, mode=ExecutionMode.EXACT)
@@ -512,19 +464,17 @@ class TestExecutionModeEnforcement:
         with pytest.raises(RuntimeError, match="BUDGET"):
             executor.execute(query, mode=ExecutionMode.BUDGET)
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_exact_mode_falls_back_when_materialized_table_missing_at_execution(self):
         cache = _FakeCache()
-        engine = _make_engine(derived_versions={"matchup_stats": "v1"}, table_exists=False)
+        engine = _make_engine(derived_versions={"venue_baselines": "v1"}, table_exists=False)
         executor = RuntimeExecutor(cache, engine)
-        query = _matchup_query(snapshot_id="stale-mv-fallback")
+        query = _matchup_query()
 
         with patch.object(executor.planner, "plan") as mock_plan:
             mock_plan.return_value = {
                 "strategy": "materialized_view",
-                "target_table": "matchup_stats",
-                "sql": "SELECT * FROM derived.matchup_stats WHERE batter_id = ? AND bowler_id = ?",
+                "target_table": "venue_baselines",
+                "sql": "SELECT * FROM derived.venue_baselines WHERE batter_id = ? AND bowler_id = ?",
                 "params": [query.batter_id, query.bowler_id],
                 "cost": "low",
             }
@@ -534,19 +484,17 @@ class TestExecutionModeEnforcement:
         executed_sql = engine.execute_sql.call_args[0][0]
         assert "FROM ball_events" in executed_sql
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_budget_mode_raises_when_materialized_table_missing_at_execution(self):
         cache = _FakeCache()
-        engine = _make_engine(derived_versions={"matchup_stats": "v1"}, table_exists=False)
+        engine = _make_engine(derived_versions={"venue_baselines": "v1"}, table_exists=False)
         executor = RuntimeExecutor(cache, engine)
-        query = _matchup_query(snapshot_id="stale-mv-budget")
+        query = _matchup_query()
 
         with patch.object(executor.planner, "plan") as mock_plan:
             mock_plan.return_value = {
                 "strategy": "materialized_view",
-                "target_table": "matchup_stats",
-                "sql": "SELECT * FROM derived.matchup_stats WHERE batter_id = ? AND bowler_id = ?",
+                "target_table": "venue_baselines",
+                "sql": "SELECT * FROM derived.venue_baselines WHERE batter_id = ? AND bowler_id = ?",
                 "params": [query.batter_id, query.bowler_id],
                 "cost": "low",
             }
@@ -559,46 +507,50 @@ class TestExecutionModeEnforcement:
 # ---------------------------------------------------------------------------
 
 class TestQueryPlannerLegacy:
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_prefers_materialized_view(self):
-        engine = _make_engine(derived_versions={"matchup_stats": "v1"})
+        engine = _make_engine(derived_versions={"venue_baselines": "v1"})
         planner = QueryPlanner(engine)
-        query = _matchup_query()
+        class VenueQuery(BaseQuery):
+            @property
+            def requires(self):
+                return {"preferred_tables": ["venue_baselines"], "fallback_table": "ball_events"}
+        query = VenueQuery()
 
         plan = planner.create_legacy_plan(query)
         assert plan["strategy"] == "materialized_view"
-        assert plan["target_table"] == "matchup_stats"
+        assert plan["target_table"] == "venue_baselines"
         assert plan["cost"] == "low"
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_prefers_materialized_view_checks_derived_schema(self):
-        engine = _make_engine(derived_versions={"matchup_stats": "v1"})
+        engine = _make_engine(derived_versions={"venue_baselines": "v1"})
         planner = QueryPlanner(engine)
-        query = _matchup_query()
+        class VenueQuery(BaseQuery):
+            @property
+            def requires(self):
+                return {"preferred_tables": ["venue_baselines"], "fallback_table": "ball_events"}
+        query = VenueQuery()
 
         planner.create_legacy_plan(query)
 
-        engine.table_exists.assert_called_with("matchup_stats", schema="derived")
+        engine.table_exists.assert_called_with("venue_baselines", schema="derived")
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_stale_derived_metadata_falls_back_to_raw_scan(self):
         engine = _make_engine(
-            derived_versions={"matchup_stats": "v1"},
+            derived_versions={"venue_baselines": "v1"},
             table_exists=False,
         )
         planner = QueryPlanner(engine)
-        query = _matchup_query()
+        class VenueQuery(BaseQuery):
+            @property
+            def requires(self):
+                return {"preferred_tables": ["venue_baselines"], "fallback_table": "ball_events"}
+        query = VenueQuery()
 
         plan = planner.create_legacy_plan(query)
         assert plan["strategy"] == "raw_scan"
         assert plan["target_table"] == "ball_events"
         assert plan["cost"] == "high"
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_falls_back_to_raw_scan(self):
         engine = _make_engine(derived_versions={})
         planner = QueryPlanner(engine)
@@ -609,8 +561,6 @@ class TestQueryPlannerLegacy:
         assert plan["target_table"] == "ball_events"
         assert plan["cost"] == "high"
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_plan_contains_sql_and_params(self):
         engine = _make_engine()
         planner = QueryPlanner(engine)
@@ -621,8 +571,6 @@ class TestQueryPlannerLegacy:
         assert "params" in plan
         assert isinstance(plan["params"], list)
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_sql_contains_batter_and_bowler_placeholders(self):
         engine = _make_engine()
         planner = QueryPlanner(engine)
@@ -637,8 +585,6 @@ class TestQueryPlannerLegacy:
 # ---------------------------------------------------------------------------
 
 class TestPlannerWhereClause:
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_where_clause_with_matchup_query(self):
         engine = _make_engine()
         planner = QueryPlanner(engine)
@@ -649,27 +595,21 @@ class TestPlannerWhereClause:
         assert "101" in params
         assert "202" in params
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_where_clause_with_venue_id(self):
         engine = _make_engine()
         planner = QueryPlanner(engine)
-        query = MatchupQuery(snapshot_id="s", batter_id="1", bowler_id="2", venue_id="V1")
+        query = MatchupQuery(batter_id="1", bowler_id="2", venue_id="V1")
         where, params = planner._build_where_clause(query)
         assert "venue_id = ?" in where
         assert "V1" in params
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_where_clause_without_venue_id(self):
         engine = _make_engine()
         planner = QueryPlanner(engine)
-        query = MatchupQuery(snapshot_id="s", batter_id="1", bowler_id="2")
+        query = MatchupQuery(batter_id="1", bowler_id="2")
         where, params = planner._build_where_clause(query)
         assert "venue_id" not in where
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_where_clause_no_filters_returns_1_eq_1(self):
         engine = _make_engine()
         planner = QueryPlanner(engine)
@@ -696,7 +636,6 @@ class TestPlannerWhereClause:
         # Direct call to build_where_clause with a mock that has phase attr
         class MockQuery:
             phase = "nonsense"
-            snapshot_id = "s"
         with pytest.raises((ValueError, AttributeError)):
             planner._build_where_clause(MockQuery())
 
@@ -706,8 +645,6 @@ class TestPlannerWhereClause:
 # ---------------------------------------------------------------------------
 
 class TestPlannerGenerateSQL:
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_matchup_query_generates_sql(self):
         engine = _make_engine()
         planner = QueryPlanner(engine)
@@ -718,35 +655,33 @@ class TestPlannerGenerateSQL:
         assert "101" in params
         assert "202" in params
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
-    def test_matchup_materialized_sql_uses_derived_schema(self):
+    def test_venue_baselines_materialized_sql_uses_derived_schema(self):
         engine = _make_engine()
         planner = QueryPlanner(engine)
-        query = _matchup_query(batter_id="101", bowler_id="202")
-        sql, _ = planner._generate_sql(query, "matchup_stats")
-        assert "FROM derived.matchup_stats" in sql
+        from midwicket.query.base import BaseQuery
+        class VenueQuery(BaseQuery):
+            @property
+            def requires(self):
+                return {"preferred_tables": ["venue_baselines"], "fallback_table": "ball_events"}
+        query = VenueQuery()
+        sql, _ = planner._generate_sql(query, "venue_baselines")
+        assert "FROM derived.venue_baselines" in sql
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_fantasy_query_generates_sql(self):
         from midwicket.query.defs import FantasyQuery
         engine = _make_engine()
         planner = QueryPlanner(engine)
-        q = FantasyQuery(snapshot_id="s", venue_id=99)
+        q = FantasyQuery(venue_id=99)
         sql, params = planner._generate_sql(q, "ball_events")
         assert "venue_id" in sql
         assert 99 in params
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_unknown_query_logs_warning(self, caplog):
         import logging
         from midwicket.query.defs import WinProbQuery
         engine = _make_engine()
         planner = QueryPlanner(engine)
         q = WinProbQuery(
-            snapshot_id="s",
             venue_id=1,
             target_score=180,
             current_runs=90,
@@ -763,10 +698,8 @@ class TestPlannerGenerateSQL:
 # ---------------------------------------------------------------------------
 
 class TestValidateTable:
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_known_tables_pass(self):
-        for table in ("ball_events", "matchup_stats", "phase_stats", "venue_baselines"):
+        for table in ("ball_events", "venue_baselines"):
             assert _validate_table(table) == table
 
     def test_unknown_table_raises(self):
@@ -796,12 +729,15 @@ class TestValidateTable:
 class TestUnifiedPlanMethod:
     """planner.plan() is the promoted interface; must be equivalent to create_legacy_plan."""
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_plan_returns_same_as_legacy(self):
-        engine = _make_engine(derived_versions={"matchup_stats": "v1"})
+        engine = _make_engine(derived_versions={"venue_baselines": "v1"})
         planner = QueryPlanner(engine)
-        query = _matchup_query()
+        from midwicket.query.base import BaseQuery
+        class VenueQuery(BaseQuery):
+            @property
+            def requires(self):
+                return {"preferred_tables": ["venue_baselines"], "fallback_table": "ball_events"}
+        query = VenueQuery()
 
         via_plan = planner.plan(query)
         via_legacy = planner.create_legacy_plan(query)
@@ -810,27 +746,22 @@ class TestUnifiedPlanMethod:
         assert via_plan["target_table"] == via_legacy["target_table"]
         assert via_plan["cost"] == via_legacy["cost"]
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_plan_uses_builtin_preferred_tables(self):
-        """MatchupQuery prefers matchup_stats from the built-in map even without query.requires."""
+        """MatchupQuery has no built-in preferred tables anymore, so it falls back to raw_scan."""
         engine = _make_engine(derived_versions={"matchup_stats": "v2"})
         planner = QueryPlanner(engine)
         query = _matchup_query()
 
         plan = planner.plan(query)
-        assert plan["strategy"] == "materialized_view"
-        assert plan["target_table"] == "matchup_stats"
+        assert plan["strategy"] == "raw_scan"
+        assert plan["target_table"] == "ball_events"
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_plan_falls_back_for_unregistered_query_type(self):
         """A query type not in _QUERY_PREFERRED_TABLES falls back to raw_scan."""
         from midwicket.query.defs import WinProbQuery
         engine = _make_engine(derived_versions={})
         planner = QueryPlanner(engine)
         q = WinProbQuery(
-            snapshot_id="s",
             venue_id=1,
             target_score=180,
             current_runs=90,
@@ -841,8 +772,6 @@ class TestUnifiedPlanMethod:
         # WinProbQuery maps to [] preferred tables → always raw_scan
         assert plan["strategy"] == "raw_scan"
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_executor_uses_plan_not_legacy(self):
         """executor.execute() should call planner.plan(), not create_legacy_plan."""
         cache = _FakeCache()
@@ -851,7 +780,7 @@ class TestUnifiedPlanMethod:
 
         with patch.object(executor.planner, "plan", wraps=executor.planner.plan) as mock_plan, \
              patch.object(executor.planner, "create_legacy_plan", wraps=executor.planner.create_legacy_plan) as mock_legacy:
-            query = _matchup_query(snapshot_id="probe-snap")
+            query = _matchup_query()
             executor.execute(query)
 
         mock_plan.assert_called_once()
@@ -860,29 +789,13 @@ class TestUnifiedPlanMethod:
 class TestQueryPreferredTablesRegistry:
     """_QUERY_PREFERRED_TABLES covers all supported query types."""
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
-    def test_matchup_prefers_matchup_stats(self):
-        assert "matchup_stats" in _QUERY_PREFERRED_TABLES["MatchupQuery"]
-
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
-    def test_fantasy_prefers_fantasy_points_avg(self):
-        assert "fantasy_points_avg" in _QUERY_PREFERRED_TABLES["FantasyQuery"]
-
     def test_winprobquery_has_empty_preference(self):
         # WinProbQuery routes to model, never SQL — empty preferred tables
         assert _QUERY_PREFERRED_TABLES["WinProbQuery"] == []
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
-    def test_phase_query_registered(self):
-        assert "PhaseQuery" in _QUERY_PREFERRED_TABLES
-
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
-    def test_venue_bias_registered(self):
-        assert "VenueBiasQuery" in _QUERY_PREFERRED_TABLES
+    def test_only_winprobquery_registered(self):
+        # Matchup/Fantasy/etc are removed from registry, only WinProbQuery remains
+        assert list(_QUERY_PREFERRED_TABLES.keys()) == ["WinProbQuery"]
 
     def test_all_entries_reference_valid_tables(self):
         """Every table listed in preferred tables is in _VALID_TABLES (or empty)."""

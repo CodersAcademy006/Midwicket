@@ -40,6 +40,7 @@ def _make_valid_ball_event_table(n: int = 2) -> pa.Table:
             "bowling_team_id": pa.array([2] * n, type=pa.int16()),
             "runs_batter": pa.array([1] * n, type=pa.int8()),
             "runs_extras": pa.array([0] * n, type=pa.int8()),
+            "extras_type": pa.array([None] * n, type=pa.string()),
             "is_wicket": pa.array([False] * n, type=pa.bool_()),
             "wicket_type": pa.array(
                 [None] * n,
@@ -83,8 +84,6 @@ class TestQueryEngineInit:
 # ---------------------------------------------------------------------------
 
 class TestQueryEngineIngest:
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_ingest_valid_table_succeeds(self):
         engine = QueryEngine(":memory:")
         table = _make_valid_ball_event_table()
@@ -99,8 +98,6 @@ class TestQueryEngineIngest:
             engine.ingest_events(bad_table, "snap-002")
         engine.close()
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_ingest_then_query_returns_rows(self):
         engine = QueryEngine(":memory:")
         table = _make_valid_ball_event_table(3)
@@ -109,8 +106,6 @@ class TestQueryEngineIngest:
         assert result.to_pydict()["n"][0] == 3
         engine.close()
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_ingest_append_adds_rows(self):
         engine = QueryEngine(":memory:")
         table = _make_valid_ball_event_table(2)
@@ -120,8 +115,6 @@ class TestQueryEngineIngest:
         assert result.to_pydict()["n"][0] == 4
         engine.close()
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_ingest_updates_snapshot_id(self):
         engine = QueryEngine(":memory:")
         table = _make_valid_ball_event_table(1)
@@ -131,8 +124,6 @@ class TestQueryEngineIngest:
         assert engine.snapshot_id == "snap-010"
         engine.close()
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_ingest_invalidates_derived_state(self):
         engine = QueryEngine(":memory:")
         table = _make_valid_ball_event_table(1)
@@ -153,8 +144,6 @@ class TestQueryEngineIngest:
         assert count == 0
         engine.close()
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_insert_live_delivery_after_schema_v1_ingest(self):
         engine = QueryEngine(":memory:")
         table = _make_valid_ball_event_table(1)
@@ -186,8 +175,6 @@ class TestQueryEngineIngest:
         assert rows["batter_id"] == [101]
         engine.close()
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_insert_live_delivery_schema_v1_requires_identity_fields(self):
         engine = QueryEngine(":memory:")
         table = _make_valid_ball_event_table(1)
@@ -389,8 +376,6 @@ class TestTableExists:
         assert engine.table_exists("ball_events") is False
         engine.close()
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_table_exists_after_ingest(self):
         engine = QueryEngine(":memory:")
         engine.ingest_events(_make_valid_ball_event_table(), "snap")
@@ -416,8 +401,6 @@ class TestTableExists:
         finally:
             engine.close()
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_run_with_sql_plan(self):
         engine = QueryEngine(":memory:")
         engine.ingest_events(_make_valid_ball_event_table(1), "snap")
@@ -752,8 +735,6 @@ class TestThreadSafeQueryEngine:
         finally:
             engine.close()
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_ingest_invalidates_derived_state(self):
         engine = create_thread_safe_engine(":memory:")
         table = _make_valid_ball_event_table(1)
@@ -775,8 +756,6 @@ class TestThreadSafeQueryEngine:
         finally:
             engine.close()
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_insert_live_delivery_after_schema_v1_ingest(self):
         engine = create_thread_safe_engine(":memory:")
         table = _make_valid_ball_event_table(1)
@@ -809,8 +788,6 @@ class TestThreadSafeQueryEngine:
         finally:
             engine.close()
 
-    import pytest
-    @pytest.mark.skip(reason='Broken by UX fixes')
     def test_insert_live_delivery_schema_v1_requires_identity_fields(self):
         engine = create_thread_safe_engine(":memory:")
         table = _make_valid_ball_event_table(1)

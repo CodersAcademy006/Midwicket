@@ -25,7 +25,6 @@ def main():
         venue_id=venue_id,
         roles=["all"],
         min_matches=2,
-        
     )
     
     print(f"Fetching fantasy stats for {venue_name}...")

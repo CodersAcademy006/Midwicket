@@ -60,9 +60,9 @@ class MatchupQuery(BaseQuery):
     @property
     def requires(self) -> Dict[str, Any]:
         return {
-            "preferred_tables": ["matchup_stats", "phase_stats"],
+            "preferred_tables": [],
             "fallback_table": "ball_events",
             "entities": ["batter", "bowler"],
-            "granularity": "ball" 
+            "granularity": "ball"
         }
 
