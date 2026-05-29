@@ -241,6 +241,9 @@ class TestQueryEngineExecuteSQL:
             def arrow(self):
                 return pa.table({"x": [1]})
 
+            def to_arrow_reader(self, batch_size=None):
+                return self.arrow().to_reader()
+
         class _Conn:
             def execute(self, sql, params):
                 return _FakeResult()
@@ -290,6 +293,9 @@ class TestQueryEngineExecuteSQL:
             def arrow(self):
                 return pa.table({"x": [1]})
 
+            def to_arrow_reader(self, batch_size=None):
+                return self.arrow().to_reader()
+
         class _SlowConn:
             def __init__(self) -> None:
                 self.interrupted = False
@@ -321,6 +327,40 @@ class TestQueryEngineExecuteSQL:
             # Timer callback never fired in this test setup, so this verifies
             # elapsed-time fallback enforcement.
             assert slow_conn.interrupted is False
+        finally:
+            engine.close()
+
+    def test_read_only_blocks_write_statements(self):
+        """MW-007: read_only=True refuses write/DDL; read_only=False allows it."""
+        from midwicket.exceptions import QueryExecutionError
+
+        engine = QueryEngine(":memory:")
+        try:
+            with pytest.raises(QueryExecutionError):
+                engine.execute_sql("CREATE TABLE t (x INTEGER)")
+            with pytest.raises(QueryExecutionError):
+                engine.execute_sql("INSERT INTO t VALUES (1)")
+            # A leading comment must not smuggle a write past the guard.
+            with pytest.raises(QueryExecutionError):
+                engine.execute_sql("  -- harmless\n  DROP TABLE t")
+            # The same writes succeed when the caller explicitly opts in.
+            engine.execute_sql("CREATE TABLE t (x INTEGER)", read_only=False)
+            engine.execute_sql("INSERT INTO t VALUES (1)", read_only=False)
+            # Reads still work under the default read_only.
+            result = engine.execute_sql("SELECT COUNT(*) AS c FROM t")
+            assert result.to_pydict()["c"] == [1]
+        finally:
+            engine.close()
+
+    def test_result_is_capped_at_max_result_rows(self, monkeypatch):
+        """MW-010: reads truncate at MAX_RESULT_ROWS instead of materializing all."""
+        import midwicket.storage.engine as engine_mod
+
+        monkeypatch.setattr(engine_mod, "MAX_RESULT_ROWS", 5)
+        engine = QueryEngine(":memory:")
+        try:
+            result = engine.execute_sql("SELECT * FROM range(20) AS t(x)")
+            assert result.num_rows == 5
         finally:
             engine.close()
 
@@ -522,6 +562,9 @@ class TestThreadSafeQueryEngine:
             def arrow(self):
                 return pa.table({"x": [1]})
 
+            def to_arrow_reader(self, batch_size=None):
+                return self.arrow().to_reader()
+
         class _SlowConn:
             def __init__(self) -> None:
                 self.interrupted = False
@@ -626,6 +669,9 @@ class TestThreadSafeQueryEngine:
             def arrow(self):
                 return pa.table({"x": [1]})
 
+            def to_arrow_reader(self, batch_size=None):
+                return self.arrow().to_reader()
+
         class _SlowConn:
             def __init__(self) -> None:
                 self.interrupted = False
@@ -658,6 +704,9 @@ class TestThreadSafeQueryEngine:
         class _FakeResult:
             def arrow(self):
                 return pa.table({"x": [1]})
+
+            def to_arrow_reader(self, batch_size=None):
+                return self.arrow().to_reader()
 
         class _Conn:
             def execute(self, sql, params):
