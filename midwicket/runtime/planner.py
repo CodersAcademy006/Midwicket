@@ -6,17 +6,12 @@ logger = logging.getLogger(__name__)
 
 # Whitelist of valid table identifiers to prevent SQL injection via table names.
 _VALID_TABLES = frozenset({
-    "ball_events", "matchup_stats", "phase_stats", "fantasy_points_avg",
-    "venue_bias", "chase_history", "venue_baselines",
+    "ball_events", "venue_baselines",
 })
 
 # Map from query class name → preferred materialized table.
 # The executor will pick "materialized_view" strategy when the table is loaded.
 _QUERY_PREFERRED_TABLES: Dict[str, List[str]] = {
-    "MatchupQuery": ["matchup_stats"],
-    "FantasyQuery": ["fantasy_points_avg"],
-    "PhaseQuery": ["phase_stats"],
-    "VenueBiasQuery": ["venue_bias", "chase_history"],
     "WinProbQuery": [],  # routed directly to win_probability(), never hits SQL
 }
 
@@ -116,6 +111,11 @@ class QueryPlanner:
         preferred_tables = builtin_preferred + [
             t for t in query_preferred if t not in builtin_preferred
         ]
+        # Defence-in-depth: a query's `requires` may still name a materialized
+        # table that has since been retired from `_VALID_TABLES`. Drop unknown
+        # tables here so a stale declaration falls back to a raw scan instead of
+        # crashing later in `_generate_sql` -> `_validate_table`.
+        preferred_tables = [t for t in preferred_tables if t in _VALID_TABLES]
 
         strategy = "raw_scan"
         target_table = reqs.get("fallback_table", "ball_events")

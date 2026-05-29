@@ -27,7 +27,6 @@ def main():
 
     # Build Query Object
     query = MatchupQuery(
-        snapshot_id="latest",
         batter_id=batter_id,
         bowler_id=bowler_id,
         venue_id=None,  # Global stats

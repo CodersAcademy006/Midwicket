@@ -40,6 +40,7 @@ def _make_valid_ball_event_table(n: int = 2) -> pa.Table:
             "bowling_team_id": pa.array([2] * n, type=pa.int16()),
             "runs_batter": pa.array([1] * n, type=pa.int8()),
             "runs_extras": pa.array([0] * n, type=pa.int8()),
+            "extras_type": pa.array([None] * n, type=pa.string()),
             "is_wicket": pa.array([False] * n, type=pa.bool_()),
             "wicket_type": pa.array(
                 [None] * n,

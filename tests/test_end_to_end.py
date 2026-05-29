@@ -86,7 +86,6 @@ class TestMidwicketPlatform(unittest.TestCase):
         q = MatchupQuery(
             batter_id=str(kohli_id),
             bowler_id=str(bumrah_id),
-            snapshot_id="test_snapshot_v1"
         )
 
         # --- 4. EXECUTION (The Runtime) ---

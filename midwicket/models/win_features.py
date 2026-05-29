@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from typing import Dict, Optional
 
+# Constants used during model training
+PAR_RUN_RATE = 6.0
+RUNS_PER_BOUNDARY = 4.0
+_T20_PAR_TOTAL = 200.0
+_T20_BALLS = 120.0
+
 
 FEATURE_COLUMNS = [
     "runs_remaining",

@@ -62,14 +62,17 @@ class QueryEngine:
         # State tracking for deterministic hashing
         self._snapshot_id = "initial_empty"
         self._derived_versions: dict[str, str] = {}
+        self._state_lock = threading.Lock()
 
     @property
     def snapshot_id(self) -> str:
-        return self._snapshot_id
+        with self._state_lock:
+            return self._snapshot_id
 
     @property
     def derived_versions(self) -> dict[str, str]:
-        return self._derived_versions
+        with self._state_lock:
+            return self._derived_versions.copy()
 
     def ingest_events(self, arrow_table: pa.Table, snapshot_tag: str, append: bool = False, incremental: bool = False) -> None:
         """
@@ -119,7 +122,8 @@ class QueryEngine:
                     self._invalidate_derived_state(con)
 
                 # Track the active snapshot tag for observability/debugging.
-                self._snapshot_id = snapshot_tag
+                with self._state_lock:
+                    self._snapshot_id = snapshot_tag
             finally:
                 try:
                     con.unregister('arrow_view')
@@ -128,9 +132,16 @@ class QueryEngine:
 
     def _invalidate_derived_state(self, con) -> None:
         """Drop stale derived tables and clear in-memory version metadata."""
-        con.execute("DROP SCHEMA IF EXISTS derived CASCADE")
-        con.execute("CREATE SCHEMA IF NOT EXISTS derived")
-        self._derived_versions.clear()
+        with self._state_lock:
+            con.execute("BEGIN TRANSACTION")
+            try:
+                con.execute("DROP SCHEMA IF EXISTS derived CASCADE")
+                con.execute("CREATE SCHEMA derived")
+                self._derived_versions.clear()
+                con.execute("COMMIT")
+            except Exception:
+                con.execute("ROLLBACK")
+                raise
 
     def execute_sql(
         self,
@@ -258,7 +269,7 @@ class QueryEngine:
                     match_id VARCHAR, inning INTEGER, over INTEGER, ball INTEGER,
                     runs_total INTEGER, wickets_fallen INTEGER, target INTEGER,
                     venue VARCHAR, timestamp DOUBLE,
-                    runs_batter INTEGER DEFAULT 0, runs_extras INTEGER DEFAULT 0,
+                    runs_batter INTEGER DEFAULT 0, runs_extras INTEGER DEFAULT 0, extras_type VARCHAR,
                     is_wicket BOOLEAN DEFAULT FALSE, batter VARCHAR DEFAULT '', bowler VARCHAR DEFAULT ''
                 )
                 """)
@@ -342,8 +353,8 @@ class QueryEngine:
                         match_id, date, venue_id, inning, over, ball,
                         batter_id, bowler_id, non_striker_id,
                         batting_team_id, bowling_team_id,
-                        runs_batter, runs_extras, is_wicket, wicket_type, phase
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        runs_batter, runs_extras, extras_type, is_wicket, wicket_type, phase
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     [
                         delivery_data["match_id"],
@@ -359,6 +370,7 @@ class QueryEngine:
                         delivery_data["bowling_team_id"],
                         delivery_data.get("runs_batter", 0),
                         delivery_data.get("runs_extras", 0),
+                        delivery_data.get("extras_type"),
                         bool(delivery_data.get("is_wicket", False)),
                         delivery_data.get("wicket_type"),
                         delivery_data.get("phase", self._infer_phase(delivery_data.get("over"))),

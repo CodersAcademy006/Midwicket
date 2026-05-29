@@ -17,6 +17,12 @@ class IdentityRegistry:
         self._lock = threading.Lock()
         self._init_db()
         self._cache: Dict[str, int] = {}
+        self._cache_max_size = 10000
+
+    def clear_cache(self) -> None:
+        """Clear the in-memory resolution cache."""
+        with self._lock:
+            self._cache.clear()
 
     def _init_db(self) -> None:
         if self.path == ":memory:":
@@ -211,6 +217,8 @@ class IdentityRegistry:
             if res:
                 entity_id = cast(int, res[0])
                 self._cache[cache_key] = entity_id
+                if len(self._cache) > self._cache_max_size:
+                    del self._cache[next(iter(self._cache))]
                 return entity_id
 
             if not auto_ingest:
@@ -233,6 +241,8 @@ class IdentityRegistry:
             """, [name, entity_id, match_date])
 
             self._cache[cache_key] = entity_id
+            if len(self._cache) > self._cache_max_size:
+                del self._cache[next(iter(self._cache))]
             return entity_id
 
     def resolve_player(self, name: str, match_date: Optional[date] = None, auto_ingest: bool = False) -> int:

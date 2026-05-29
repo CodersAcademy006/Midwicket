@@ -39,6 +39,7 @@ CREATE TABLE ball_events (
     bowling_team_id SMALLINT DEFAULT 0,
     runs_batter     INTEGER DEFAULT 0,
     runs_extras     INTEGER DEFAULT 0,
+    extras_type     VARCHAR DEFAULT NULL,
     is_wicket       BOOLEAN DEFAULT FALSE,
     wicket_type     VARCHAR DEFAULT NULL,
     phase           VARCHAR DEFAULT 'Middle',
@@ -122,7 +123,13 @@ def _seed(con: duckdb.DuckDBPyConnection) -> None:
             ))
 
     con.executemany("""
-        INSERT INTO ball_events VALUES (
+        INSERT INTO ball_events (
+            match_id, date, venue_id, inning, over, ball,
+            batter_id, bowler_id, non_striker_id,
+            batting_team_id, bowling_team_id,
+            runs_batter, runs_extras, is_wicket, wicket_type, phase,
+            batter, bowler, venue
+        ) VALUES (
             ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
         )
     """, rows)

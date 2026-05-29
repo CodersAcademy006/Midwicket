@@ -33,7 +33,16 @@ class DerivedStore:
         # Build (or rebuild for a new snapshot).
         if table_name == "venue_baselines":
             self._build_venue_baselines(snapshot_id)
-            self.engine.derived_versions[table_name] = snapshot_id
+            if hasattr(self.engine, "_derived_versions"):
+                import threading
+                lock = getattr(self.engine, "_state_lock", None)
+                if lock is not None:
+                    with lock:
+                        self.engine._derived_versions[table_name] = snapshot_id
+                else:
+                    self.engine._derived_versions[table_name] = snapshot_id
+            else:
+                self.engine.derived_versions[table_name] = snapshot_id
         else:
             raise ValueError(f"Unknown derived table: {table_name}")
 
