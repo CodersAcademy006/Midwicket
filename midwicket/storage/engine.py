@@ -2,15 +2,49 @@ import contextlib
 import duckdb
 import pyarrow as pa
 import logging
+import re
 import threading
 import time
 from datetime import date
 from typing import Any, Iterator, Optional
 from midwicket.schema.v1 import BALL_EVENT_SCHEMA
 from midwicket.storage.connection_pool import ConnectionPool
-from midwicket.exceptions import DataIngestionError
+from midwicket.exceptions import DataIngestionError, QueryExecutionError
 
 logger = logging.getLogger(__name__)
+
+# Hard ceiling on rows pulled into memory for a single read. Results are streamed
+# in batches and truncated here so a runaway query cannot OOM the process (MW-010).
+MAX_RESULT_ROWS = 100_000
+_RESULT_BATCH_ROWS = 10_000
+
+# Leading keywords that mutate data or schema. A read_only=True query that starts
+# with one of these is refused at the engine boundary (MW-007), giving real write
+# protection independent of the API-layer SQL guard.
+_WRITE_LEADERS = frozenset({
+    "INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER", "TRUNCATE",
+    "REPLACE", "MERGE", "ATTACH", "DETACH", "COPY", "INSTALL", "LOAD",
+})
+_LEADING_COMMENT_RE = re.compile(r"^\s*(?:--[^\n]*\n|/\*.*?\*/)", re.DOTALL)
+
+
+def _leading_keyword(sql: str) -> str:
+    """Return the first SQL keyword, skipping leading comments and parentheses."""
+    s = sql
+    while True:
+        m = _LEADING_COMMENT_RE.match(s)
+        if not m:
+            break
+        s = s[m.end():]
+    s = s.lstrip().lstrip("(").lstrip()
+    m = re.match(r"[A-Za-z_]+", s)
+    return m.group(0).upper() if m else ""
+
+
+def _is_write_statement(sql: str) -> bool:
+    """True if the statement's leading keyword mutates data or schema."""
+    return _leading_keyword(sql) in _WRITE_LEADERS
+
 
 class QueryEngine:
     def __init__(self, db_path: str = ":memory:") -> None:
@@ -118,6 +152,16 @@ class QueryEngine:
         if params is None:
             params = []
 
+        # MW-007: read_only must actually prevent writes. The pooled engine used
+        # in production previously ignored read_only entirely (both branches shared
+        # the same read-write connection), so a guard bypass at a higher layer could
+        # still mutate state. Refuse write/DDL statements here as defense in depth.
+        if read_only and _is_write_statement(sql):
+            raise QueryExecutionError(
+                "read_only=True engine refused a write/DDL statement "
+                f"('{_leading_keyword(sql)}'); pass read_only=False to write."
+            )
+
         timeout_enabled = timeout is not None and timeout > 0
         conn_timeout = timeout if timeout_enabled else 30.0
 
@@ -153,24 +197,28 @@ class QueryEngine:
                         raise TimeoutError(f"Query timed out after {timeout}s")
                     return result
 
-                # Append LIMIT 100000 at the end of the query to prevent memory explosion if possible,
-                # but to be safe, we also chunk the arrow reader.
-                result = con.execute(sql, params).arrow()
-                # Ensure we return a Table, not a RecordBatchReader
-                if isinstance(result, pa.RecordBatchReader):
-                    batches = []
-                    total_rows = 0
-                    for batch in result:
+                # Stream the result in bounded batches and stop at MAX_RESULT_ROWS
+                # so a runaway query can never fully materialize in memory. Unlike
+                # .arrow() (which materializes eagerly, making the old cap below
+                # unreachable), to_arrow_reader yields a true streaming reader, so
+                # the truncation actually executes (MW-010).
+                reader = con.execute(sql, params).to_arrow_reader(_RESULT_BATCH_ROWS)
+                schema = reader.schema
+                batches = []
+                total_rows = 0
+                try:
+                    for batch in reader:
+                        remaining = MAX_RESULT_ROWS - total_rows
+                        if remaining <= 0:
+                            break
+                        if batch.num_rows > remaining:
+                            batch = batch.slice(0, remaining)
                         batches.append(batch)
                         total_rows += batch.num_rows
-                        if total_rows >= 100000:
-                            break
-                    if not batches:
-                        result = result.schema.empty_table()
-                    else:
-                        result = pa.Table.from_batches(batches)
-                        if result.num_rows > 100000:
-                            result = result.slice(0, 100000)
+                finally:
+                    with contextlib.suppress(Exception):
+                        reader.close()
+                result = pa.Table.from_batches(batches, schema=schema) if batches else schema.empty_table()
 
                 if _has_timed_out():
                     raise TimeoutError(f"Query timed out after {timeout}s")
