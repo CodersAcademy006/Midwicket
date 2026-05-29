@@ -61,11 +61,6 @@ class WinProbabilityTrainer:
         if second_innings.empty:
             raise DataValidationError("No second innings data found for training")
 
-        # Feature engineering
-        features = []
-        targets = []
-        match_ids = []
-
         # Group by match and get final result
         match_results = second_innings.groupby('match_id').agg({
             'runs_total': 'max',
@@ -74,10 +69,16 @@ class WinProbabilityTrainer:
 
         match_results['won'] = (match_results['runs_total'] >= match_results['target']).astype(int)
 
+        # Feature engineering and target population in lockstep to avoid misalignment
+        features = []
+        targets = []
+        match_ids = []
+
         for _, delivery in second_innings.iterrows():
             try:
                 overs_done = delivery['over'] + delivery['ball'] / 6.0
                 venue_adjustment = self._get_venue_adjustment(delivery.get('venue', ''))
+                
                 feat = compute_chase_features(
                     target=delivery['target'],
                     current_runs=delivery['runs_total'],
@@ -86,16 +87,13 @@ class WinProbabilityTrainer:
                     venue_adjustment=venue_adjustment,
                 )
 
-                # Determine target for this delivery
-                match_result = match_results[match_results['match_id'] == delivery['match_id']]
-                if not match_result.empty:
-                    target_val = match_result['won'].iloc[0]
-                else:
-                    target_val = 0
+                match_id = delivery['match_id']
+                match_result = match_results[match_results['match_id'] == match_id]
+                won_val = int(match_result['won'].iloc[0]) if not match_result.empty else 0
 
                 features.append(feat)
-                targets.append(target_val)
-                match_ids.append(str(delivery['match_id']))
+                targets.append(won_val)
+                match_ids.append(str(match_id))
 
             except Exception as e:
                 logger.warning(f"Skipping delivery due to error: {e}")
@@ -166,25 +164,19 @@ class WinProbabilityTrainer:
             raise DataValidationError("Unable to derive targets for second innings samples")
 
         second_innings = second_innings.dropna(subset=["target"])
-        features, target, match_ids_list = self.prepare_training_data(
+        features, target, match_ids = self.prepare_training_data(
             second_innings[
                 ["match_id", "inning", "over", "ball", "runs_total", "wickets_fallen", "target", "venue"]
             ]
         )
-        groups = pd.Series(match_ids_list, name="match_id")
+        groups = pd.Series(match_ids, name="match_id")
         return features, target, groups
 
     def _get_venue_adjustment(self, venue: str) -> float:
-        """Get venue-specific adjustment factor."""
-        venue_adjustments = {
-            'wankhede': 0.15,
-            'eden gardens': 0.12,
-            'chinnaswamy': 0.10,
-            'dyanmond park': 0.08,
-            'punjab cricket': 0.05,
-            'brabourne': 0.06
-        }
-        return venue_adjustments.get(venue.lower(), 0.0)
+        """Get venue-specific adjustment factor using canonical WinPredictor normalization."""
+        predictor = WinPredictor()
+        venue_key = predictor._normalize_venue(venue)
+        return predictor.venue_adjustments.get(venue_key, 0.0)
 
     def train_model(self, features: pd.DataFrame, target: pd.Series,
                    test_size: float = 0.2, random_state: int = 42,
@@ -374,8 +366,8 @@ class WinProbabilityTrainer:
             "wankhede": 0.15,
             "eden_gardens": 0.12,
             "chinnaswamy": 0.10,
-            "dyanmond park": 0.08,
-            "punjab cricket": 0.05,
+            "dyanmond": 0.08,
+            "punjab_cricket": 0.05,
             "brabourne": 0.06,
         }
 
@@ -409,12 +401,12 @@ class WinProbabilityTrainer:
 
         # Prepare data
         if "runs_total" not in match_data.columns:
-            features, target, _ = self.prepare_training_dataset(match_data)
+            features, target, match_ids = self.prepare_training_dataset(match_data)
         else:
-            features, target = self.prepare_training_data(match_data)
+            features, target, match_ids = self.prepare_training_data(match_data)
 
         # Train model
-        model, metrics = self.train_model(features, target)
+        model, metrics = self.train_model(features, target, match_ids=match_ids)
 
         # Create predictor
         predictor = self.create_win_predictor(model, metrics)

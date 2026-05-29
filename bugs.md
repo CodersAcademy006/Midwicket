@@ -21,7 +21,6 @@
 - **Partial (5):** MW-004, MW-016, MW-018, MW-032, MW-041
 - **Open (14):** MW-008, MW-017, MW-020, MW-021, MW-022, MW-024, MW-033, MW-034, MW-039, MW-042, MW-044, MW-045, MW-048, MW-049
 
-
 ## Severity legend
 
 | Level | Meaning |
@@ -49,7 +48,7 @@
 | [MW-020](#mw-020) | P2 | Dead code | OPEN | `api/validation.py` models unused; weaker inline models used instead |
 | [MW-021](#mw-021) | P2 | ML | OPEN | Shipped "trained" model is hand-picked constants; ~6 coefs are 0.0 |
 | [MW-022](#mw-022) | P2 | ML | OPEN | `_calculate_confidence` is arbitrary multipliers sold as statistical confidence |
-| [MW-023](#mw-023) | P2 | ML | OPEN | Train/serve venue dicts diverge (`'dyanmond park'` typo); train match-id misalignment |
+| [MW-023](#mw-023) | P2 | ML | RESOLVED | Train/serve venue dicts diverge (`'dyanmond park'` typo); train match-id misalignment |
 | [MW-024](#mw-024) | P2 | Correctness | OPEN | `DerivedStore` only materializes `venue_baselines`; planner optimization mostly dead |
 | [MW-025](resolved.md#mw-025) | P2 | Correctness | RESOLVED | Two different "venue baseline" formulas; relative SR compares mismatched units |
 | [MW-027](resolved.md#mw-027) | P2 | Correctness | RESOLVED | Live ingest writes legacy schema but v1 path needs IDs → live data can't land |
@@ -126,7 +125,7 @@
 **`_calculate_confidence` is arbitrary multipliers presented as statistical confidence.** `win_predictor.py:177-207` multiplies 0.7/1.1/0.8/1.05/0.9 by thresholds; docstring claims "based on … sample size" but there is no sample-size input. **Fix:** compute a real interval, or rename/clearly document it as a heuristic certainty score.
 
 ### MW-023
-**Status:** OPEN (verified against code 2026-05-29).
+**Status:** RESOLVED (verified against code 2026-05-29).
 **Train/serve skew + match-id misalignment.** `models/train.py:184` venue dict has typo `'dyanmond park'` and uses spaces (`'eden gardens'`) while `win_predictor.py:53-61` uses underscores (`'eden_gardens'`) → features computed with different venue adjustments at train vs serve. `win_predictor.py:316` / `train.py:174` truncate `match_ids[:len(features)]`, which misaligns groups if any row was skipped (`prepare_training_data:81-83` skips on error while the targets loop does not → potential length-mismatch crash at `train.py:205`). **Fix:** share one venue-normalization function; build `match_ids` in lockstep with surviving feature rows.
 
 ### MW-024
