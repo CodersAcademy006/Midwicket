@@ -334,6 +334,59 @@ class IdentityRegistry:
             )
         return self._resolve_generic(name, "team", match_date, auto_ingest)
 
+    def search_players(self, q: str, limit: int = 10):
+        """Prefix/substring player search against the alias table (thread-safe)."""
+        with self._lock:
+            rows = self.con.execute(
+                """
+                SELECT DISTINCT e.id, e.primary_name
+                FROM entities e
+                JOIN aliases a ON a.entity_id = e.id
+                WHERE e.type = 'player'
+                  AND (LOWER(a.alias) LIKE LOWER(?) OR LOWER(e.primary_name) LIKE LOWER(?))
+                ORDER BY e.primary_name
+                LIMIT ?
+                """,
+                [f"%{q}%", f"%{q}%", limit],
+            ).fetchall()
+        return [{"id": r[0], "name": r[1]} for r in rows]
+
+    def list_venues(self, page: int = 1, page_size: int = 50):
+        """Paginated list of all known venues (thread-safe)."""
+        offset = (page - 1) * page_size
+        with self._lock:
+            total_row = self.con.execute(
+                "SELECT count(*) FROM entities WHERE type = 'venue'"
+            ).fetchone()
+            total = total_row[0] if total_row else 0
+            rows = self.con.execute(
+                """
+                SELECT id, primary_name
+                FROM entities
+                WHERE type = 'venue'
+                ORDER BY primary_name
+                LIMIT ? OFFSET ?
+                """,
+                [page_size, offset],
+            ).fetchall()
+        return total, [{"id": r[0], "name": r[1]} for r in rows]
+
+    def get_venue_details(self, venue_id: int):
+        """Full detail and career stats for a single venue (thread-safe)."""
+        with self._lock:
+            row = self.con.execute(
+                "SELECT id, primary_name FROM entities WHERE id = ? AND type = 'venue'",
+                [venue_id],
+            ).fetchone()
+        if not row:
+            return None
+        stats = self.get_venue_stats(venue_id)
+        return {
+            "id": row[0],
+            "name": row[1],
+            "stats": stats or {},
+        }
+
     def close(self) -> None:
         self.con.close()
 
