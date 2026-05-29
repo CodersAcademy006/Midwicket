@@ -13,13 +13,13 @@
 
 | Status | Count | Meaning |
 |--------|-------|---------|
-| **RESOLVED** | 0 | Fixed and verified in code — a regression test exists or the defect is structurally gone. |
+| **RESOLVED** | 22 | Fixed and verified in code — a regression test exists or the defect is structurally gone. |
 | **PARTIAL** | 5 | The concrete, low-risk part is fixed; a deeper or riskier remainder is tracked in the entry. |
-| **OPEN** | 25 | Not yet addressed. |
+| **OPEN** | 22 | Not yet addressed. |
 
-- **Resolved (0):** None
+- **Resolved (22):** MW-001, MW-002, MW-003, MW-005, MW-007, MW-009, MW-010, MW-011, MW-012, MW-013, MW-014, MW-019, MW-026, MW-029, MW-030, MW-031, MW-035, MW-036, MW-038, MW-040, MW-046, MW-047
 - **Partial (5):** MW-004, MW-016, MW-018, MW-032, MW-041
-- **Open (25):** MW-006, MW-008, MW-011, MW-013, MW-015, MW-017, MW-020, MW-021, MW-022, MW-023, MW-024, MW-025, MW-027, MW-028, MW-033, MW-034, MW-037, MW-039, MW-040, MW-042, MW-043, MW-044, MW-045, MW-048, MW-049
+- **Open (22):** MW-006, MW-008, MW-015, MW-017, MW-020, MW-021, MW-022, MW-023, MW-024, MW-025, MW-027, MW-028, MW-033, MW-034, MW-037, MW-039, MW-042, MW-043, MW-044, MW-045, MW-048, MW-049
 
 ## Severity legend
 
@@ -39,8 +39,8 @@
 | [MW-004](#mw-004) | P0 | Tests | PARTIAL | Test suite validates a fictional Frankenschema; masks MW-001 |
 | [MW-006](#mw-006) | P1 | Perf | OPEN | Audit middleware does sync DB write in async path — blocks event loop per request |
 | [MW-008](#mw-008) | P1 | Concurrency | OPEN | `RedisRateLimiter` has TOCTOU race; silently falls back per-process |
-| [MW-011](#mw-011) | P1 | Correctness | OPEN | Strike rate counts wides as balls faced (knowingly wrong) |
-| [MW-013](#mw-013) | P1 | Correctness | OPEN | Runs scored off no-balls are dropped in canonicalization |
+| [MW-011](resolved.md#mw-011) | P1 | Correctness | RESOLVED | Strike rate counts wides as balls faced (knowingly wrong) |
+| [MW-013](resolved.md#mw-013) | P1 | Correctness | RESOLVED | Runs scored off no-balls are dropped in canonicalization |
 | [MW-015](#mw-015) | P1 | ML | OPEN | Training selects hyperparams on the test set (leakage); reported metrics inflated |
 | [MW-016](#mw-016) | P1 | Concurrency | PARTIAL | File-based `DuckDBCache` breaks under concurrency; unbounded growth |
 | [MW-017](#mw-017) | P1 | Perf | OPEN | Live `QueryEngine` pool = 5 conns; registry serializes on one global lock |
@@ -82,20 +82,6 @@
 - **Location:** `serve/rate_limit.py:131-148` — counts in one pipeline, then *separately* `zadd`s. Concurrent workers all read "under limit" and all add → limit bypassed. `__init__` (`:120-126`) falls back to per-process `fakeredis` if Redis is down.
 - **Impact:** The multi-worker limiter it exists to provide is not atomic, and silently becomes per-process.
 - **Fix:** Single atomic Lua script (zremrangebyscore + zcard + conditional zadd). Fail loudly (or to a clearly-degraded mode) when Redis is unavailable, don't silently swap to fakeredis.
-
-### MW-011
-**Status:** OPEN (verified against code 2026-05-29).
-**Strike rate counts wides as balls faced (knowingly wrong).**
-- **Location:** `compute/metrics/batting.py:43` — `balls_faced = len(events)`; the comment at `:33,41` admits wides shouldn't count "for now".
-- **Impact:** SR understated whenever wides are present; `relative_strike_rate` compounds it.
-- **Fix:** Exclude wides (and treat no-balls per the rules) from the denominator. Requires a legal-ball indicator in the schema (see MW-013).
-
-### MW-013
-**Status:** OPEN (verified against code 2026-05-29).
-**Runs scored off no-balls are dropped; `RunComponent` flags are computed then discarded.**
-- **Location:** `core/canonicalize.py:101` calls `RunComponent.from_no_ball(...)` which hardcodes `batter_runs=0` (`schema/v1.py:48`). Canonicalize only reads `.batter_runs`/`.extras` (`:114-115`); `is_ball_faced`/`bowler_charged` are never persisted (no column exists).
-- **Impact:** Batter runs off a no-ball are lost; SR/economy can't distinguish legal vs illegal deliveries.
-- **Fix:** Capture `runs.batter` on no-balls; add a `legal_ball` (or `extras_type`) column to v1 and persist it.
 
 ### MW-015
 **Status:** OPEN (verified against code 2026-05-29).
@@ -209,9 +195,9 @@ These modules are competently written. Preserve their behavior when refactoring:
 | [MW-035](#mw-035) | P0 | Caching | RESOLVED | Cache is keyed on a hardcoded `snapshot_id="latest"`, not the data version → serves stale results after every ingest |
 | [MW-036](#mw-036) | P1 | Caching | RESOLVED | `SnapshotManager` is wired to nothing; the snapshot system that should drive cache coherence is decorative |
 | [MW-037](#mw-037) | P1 | Identity | OPEN | Registry has no name normalization → one player becomes many entities; stats fragment across spellings |
-| [MW-038](#mw-038) | P1 | Stats | OPEN | `not_outs` SQL is mathematically meaningless (`MAX(ball)` where `ball`∈1..6) → batting average wrong even after schema fix |
+| [MW-038](resolved.md#mw-038) | P1 | Stats | RESOLVED | `not_outs` SQL is mathematically meaningless (`MAX(ball)` where `ball`∈1..6) → batting average wrong even after schema fix |
 | [MW-039](#mw-039) | P1 | Concurrency | OPEN | Derived-schema `DROP/CREATE` runs unlocked in the live engine → concurrent readers hit dropped tables |
-| [MW-040](#mw-040) | P1 | Stats | OPEN | Bowling economy excludes wides/no-balls → economy understated even on legacy schema |
+| [MW-040](resolved.md#mw-040) | P1 | Stats | RESOLVED | Bowling economy excludes wides/no-balls → economy understated even on legacy schema |
 | [MW-041](#mw-041) | P2 | ML | PARTIAL | Win features are half-generalized: some scale with `balls_per_innings`, others keep T20 constants (6.0, /200, /4) |
 | [MW-042](#mw-042) | P2 | ML | OPEN | Trained `venue_adjustment` uses a scaled coefficient against a raw value → silent train/serve skew |
 | [MW-043](#mw-043) | P2 | ML | OPEN | `overs_done` unit ambiguity: decimal overs (train) vs over.ball notation (likely user input) |
@@ -239,14 +225,6 @@ These modules are competently written. Preserve their behavior when refactoring:
 - **Race:** Thread A calls `ingest_events` (drops/recreates `derived`, clears versions) while Thread B is mid-query against `derived.venue_baselines` or has just checked `derived_versions.get(table) == snapshot_id` in `DerivedStore.ensure_materialized` (`compute/derived/store.py:30`) and is about to read. B reads a table that A just dropped → query error, or builds against a half-cleared version map.
 - **Impact:** Intermittent 500s / inconsistent results under concurrent ingest+read. Classic "works in tests, flakes in prod."
 - **Fix:** Guard derived lifecycle + `_derived_versions` with a lock (or adopt the thread-safe engine). Rebuild into a new schema and swap atomically rather than drop-then-create.
-
-### MW-040
-**Status:** OPEN (verified against code 2026-05-29).
-**Bowling economy understates runs conceded — it excludes the wides and no-balls the bowler is charged for.**
-- **Location:** `api/player_analytics.py:165,308,509` compute `runs_conceded = SUM(runs_total - runs_extras)` (i.e. batter runs only), then `economy = runs_conceded / overs`.
-- **Cricket rule:** a bowler is charged batter runs **plus wides and no-balls** (but not byes/leg-byes). Subtracting *all* extras removes wides/no-balls too, so economy and bowling average are understated. (`data/pipeline.py:91-92` gets this right for registry stats — the analytics layer disagrees with the pipeline.)
-- **Impact:** Every bowling economy/average from `player_analytics` is too low. Wrong, not just empty — so even if you only run it on legacy-schema data it lies.
-- **Fix:** `runs_conceded = batter_runs + wides + no_balls`. Persist an extras breakdown (wide/no-ball/bye/legbye) in the schema so this is computable.
 
 ### MW-041
 **Status:** PARTIALLY RESOLVED - balls_per_innings is now plumbed through, but the T20 magic constants (6.0 par run-rate, /200 par total, /4 boundary value) are still hardcoded. (verified against code 2026-05-29).
