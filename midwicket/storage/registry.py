@@ -387,6 +387,27 @@ class IdentityRegistry:
             "stats": stats or {},
         }
 
+    def resolve_player_without_date(self, name: str) -> Optional[int]:
+        """Try to resolve a player name without a match date by checking common/fallback dates (thread-safe)."""
+        norm_name = self._normalize_name(name)
+        with self._lock:
+            res = self.con.execute(
+                "SELECT DISTINCT entity_id FROM aliases WHERE LOWER(alias) = ? LIMIT 1",
+                [norm_name],
+            ).fetchone()
+        if res:
+            return int(res[0])
+            
+        dates_to_try = [date.today(), date(2024, 1, 1), date(2023, 1, 1), date(2022, 1, 1)]
+        for try_date in dates_to_try:
+            try:
+                resolved_id = self.resolve_player(name, try_date, auto_ingest=False)
+                if resolved_id:
+                    return resolved_id
+            except Exception:
+                continue
+        return None
+
     def close(self) -> None:
         self.con.close()
 
