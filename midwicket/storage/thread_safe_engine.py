@@ -251,19 +251,19 @@ class ThreadSafeQueryEngine(QueryEngine):
             pool_config = {}
 
         self.db_path = db_path
-        self.pool = ConnectionPool(db_path, **pool_config)
+        self.pool = ConnectionPool(db_path, **pool_config)  # type: ignore[assignment]
 
         # State tracking (needs to be thread-safe)
         self._snapshot_id = "initial_empty"
         self._derived_versions: Dict[str, str] = {}
-        self._state_lock = threading.RLock()
+        self._state_lock = threading.RLock()  # type: ignore[assignment]
 
         # Initialize database schema if needed
         self._ensure_schema()
 
     def _ensure_schema(self):
         """Ensure basic schema exists."""
-        with self.pool.get_write_connection() as conn:
+        with self.pool.get_write_connection() as conn:  # type: ignore[attr-defined]
             # Create basic tables if they don't exist
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS ball_events (
@@ -331,12 +331,12 @@ class ThreadSafeQueryEngine(QueryEngine):
             # and DerivedStore, which mutate this dict directly.
             return self._derived_versions
 
-    def ingest_events(self, arrow_table: pa.Table, snapshot_tag: str, append: bool = False) -> None:
+    def ingest_events(self, arrow_table: pa.Table, snapshot_tag: str, append: bool = False, incremental: bool = False) -> None:
         """
         Thread-safe ingestion of events.
         Write operations are serialized through the connection pool.
         """
-        with self.pool.get_write_connection() as conn:
+        with self.pool.get_write_connection() as conn:  # type: ignore[attr-defined]
             # Register the Arrow table
             conn.register('arrow_view', arrow_table)
 
@@ -376,7 +376,7 @@ class ThreadSafeQueryEngine(QueryEngine):
         Args:
             delivery_data: Dictionary with delivery information
         """
-        with self.pool.get_write_connection() as conn:
+        with self.pool.get_write_connection() as conn:  # type: ignore[attr-defined]
             columns = self._table_columns_conn(conn, "ball_events")
             legacy_cols = {"runs_total", "wickets_fallen", "target", "venue", "timestamp"}
             schema_v1_cols = {
@@ -592,7 +592,7 @@ class ThreadSafeQueryEngine(QueryEngine):
         return {str(row[0]).lower() for row in rows}
 
     def execute_sql(self, sql: str, params: Optional[list] = None,
-                   read_only: bool = True, timeout: float = 30.0) -> pa.Table:
+                   read_only: bool = True, timeout: Optional[float] = 30.0) -> pa.Table:
         """
         Execute SQL with connection pooling.
 
@@ -609,9 +609,9 @@ class ThreadSafeQueryEngine(QueryEngine):
         conn_timeout = timeout if timeout_enabled else 5.0
 
         connection_ctx = (
-            self.pool.get_read_connection(timeout=conn_timeout)
+            self.pool.get_read_connection(timeout=conn_timeout)  # type: ignore[attr-defined]
             if read_only
-            else self.pool.get_write_connection(timeout=conn_timeout)
+            else self.pool.get_write_connection(timeout=conn_timeout)  # type: ignore[attr-defined]
         )
 
         with connection_ctx as conn:
@@ -624,7 +624,7 @@ class ThreadSafeQueryEngine(QueryEngine):
                     return False
                 if timed_out:
                     return True
-                return (time.perf_counter() - started_at) >= float(timeout)
+                return (time.perf_counter() - started_at) >= float(timeout or 0)
 
             def _interrupt_query() -> None:
                 nonlocal timed_out
@@ -637,7 +637,7 @@ class ThreadSafeQueryEngine(QueryEngine):
                         pass
 
             if timeout_enabled:
-                timer = threading.Timer(timeout, _interrupt_query)
+                timer = threading.Timer(float(timeout or 0), _interrupt_query)
                 timer.daemon = True
                 timer.start()
 
@@ -670,9 +670,9 @@ class ThreadSafeQueryEngine(QueryEngine):
             )
         raise NotImplementedError("Plan execution without SQL not implemented")
 
-    def table_exists(self, table_name: str, schema: Optional[str] = None) -> bool:
+    def table_exists(self, table_name: str, con: Any = None, schema: Optional[str] = None) -> bool:
         """Check if a table exists."""
-        with self.pool.get_read_connection() as conn:
+        with self.pool.get_read_connection() as conn:  # type: ignore[attr-defined]
             return self._table_exists_conn(conn, table_name, schema=schema)
 
     def _table_exists_conn(self, conn, table_name: str, schema: Optional[str] = None) -> bool:
@@ -695,7 +695,7 @@ class ThreadSafeQueryEngine(QueryEngine):
 
     def get_connection_stats(self) -> Dict[str, Any]:
         """Get connection pool statistics."""
-        return self.pool.get_pool_stats()
+        return self.pool.get_pool_stats()  # type: ignore[attr-defined]
 
     def close(self) -> None:
         """Close all connections."""

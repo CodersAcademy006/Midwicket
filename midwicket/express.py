@@ -93,7 +93,11 @@ def _auto_setup_session(data_dir: Optional[str] = None, auto_download: bool = Fa
 
         if auto_download:
             loader = DataLoader(str(data_path))
-            raw_present = loader.raw_dir.exists() and bool(list(loader.raw_dir.glob("*.json")))
+            raw_present = (
+                loader.raw_dir is not None
+                and loader.raw_dir.exists()
+                and bool(list(loader.raw_dir.glob("*.json")))
+            )
             if not raw_present:
                 _log.info("No local data found. Downloading IPL dataset (~50 MB)...")
                 try:

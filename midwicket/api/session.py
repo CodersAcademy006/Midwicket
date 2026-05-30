@@ -36,7 +36,7 @@ class MidwicketSession:
         if self.is_memory:
             import tempfile
             import shutil
-            self._temp_dir = tempfile.mkdtemp(prefix="midwicket_ram_")
+            self._temp_dir: Optional[str] = tempfile.mkdtemp(prefix="midwicket_ram_")
             temp_path = Path(self._temp_dir)
             
             self.db_path = str(temp_path / "midwicket.duckdb")
@@ -91,11 +91,13 @@ class MidwicketSession:
                 raw_data_present = self.loader.zip_path.exists()
             else:
                 raw_data_present = (
-                    self.loader.raw_dir.exists()
+                    self.loader.raw_dir is not None
+                    and self.loader.raw_dir.exists()
                     and bool(list(self.loader.raw_dir.glob("*.json")))
                 )
             try:
-                row_count = self.registry.con.execute("SELECT COUNT(*) FROM player_stats").fetchone()[0]
+                _row = self.registry.con.execute("SELECT COUNT(*) FROM player_stats").fetchone()
+                row_count = _row[0] if _row is not None else 0
                 registry_empty = (row_count == 0)
             except Exception:
                 registry_empty = True
@@ -166,7 +168,7 @@ class MidwicketSession:
         # Try to resolve as name first, then as ID
         try:
             player_id_int = int(player_id)
-            entity_id = player_id_int
+            entity_id: Optional[int] = player_id_int
         except (TypeError, ValueError):
             # Use centralized name-to-id helper from IdentityRegistry (MW-033)
             entity_id = self.registry.resolve_player_without_date(player_id)
@@ -190,6 +192,7 @@ class MidwicketSession:
             matches=stats_dict["matches"],
             runs=stats_dict["runs"],
             balls_faced=stats_dict["balls_faced"],
+            dismissals=int(stats_dict.get("dismissals", 0) or 0),
             wickets=stats_dict["wickets"],
             balls_bowled=stats_dict["balls_bowled"],
             runs_conceded=stats_dict["runs_conceded"]
@@ -297,6 +300,7 @@ class MidwicketSession:
         if getattr(self, "_temp_dir", None) is not None:
             import shutil
             try:
+                assert self._temp_dir is not None
                 shutil.rmtree(self._temp_dir, ignore_errors=True)
             except Exception as e:
                 logger.warning("Failed to clean up in-memory temp directory %s: %s", self._temp_dir, e)

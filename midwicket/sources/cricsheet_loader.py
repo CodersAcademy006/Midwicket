@@ -26,13 +26,13 @@ class CricsheetLoader(BaseAdapter):
         if self.is_memory:
             self.data_dir = Path(":memory:")
             self.zip_path = Path(__file__).parent.parent / "data" / "ipl_json.zip"
-            self.in_memory_data = {}
+            self.in_memory_data: Dict[str, Any] = {}
             self._load_zip_to_memory()
         else:
             self.data_dir = Path(data_dir)
             if not self.data_dir.exists():
                 raise FileNotFoundError(f"Cricsheet data directory not found: {self.data_dir}")
-            self.in_memory_data = None
+            self.in_memory_data = {}  # not used in file-backed mode
 
     def _load_zip_to_memory(self) -> None:
         """Loads and parses all JSON files from the bundled ZIP directly into RAM."""

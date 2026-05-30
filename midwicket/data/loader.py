@@ -145,6 +145,7 @@ class DataLoader:
 
         # Defer directory creation to the first explicit download so that
         # constructing DataLoader("./some/path") has no filesystem side effects.
+        assert self.raw_dir is not None
         self.raw_dir.mkdir(parents=True, exist_ok=True)
 
         if self.zip_path.exists() and not force:
@@ -203,6 +204,7 @@ class DataLoader:
         """
         if self.is_memory:
             return
+        assert self.raw_dir is not None
         raw_dir_resolved = self.raw_dir.resolve()
         with zipfile.ZipFile(self.zip_path, "r") as z:
             for member in z.namelist():
@@ -236,6 +238,7 @@ class DataLoader:
             except Exception:
                 raise FileNotFoundError(f"Match {match_id} not found in in-memory zip cache")
 
+        assert self.raw_dir is not None
         file_path = self.raw_dir / f"{safe_id}.json"
         if not file_path.exists():
             raise FileNotFoundError(f"Match {match_id} not found in {self.raw_dir}")
@@ -265,8 +268,9 @@ class DataLoader:
                     continue
             return
 
+        assert self.raw_dir is not None
         json_files = list(self.raw_dir.glob("*.json"))
-        
+
         if not json_files:
             raise FileNotFoundError("No JSON files found. Run loader.download() first.")
             
