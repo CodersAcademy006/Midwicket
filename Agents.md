@@ -8,7 +8,7 @@ This document defines the core **Agents** (active system components) responsible
 ---
 
 ## 1. The Gatekeeper (Runtime Executor)
-**Codepath:** `midwicket.runtime.executor.Executor`
+**Codepath:** `midwicket.runtime.executor.RuntimeExecutor`
 
 The Gatekeeper is the single entry point for all data retrieval. It is the only component allowed to coordinate between the Cache, the Planner, and the Storage Engine.
 
@@ -43,7 +43,7 @@ The Planner analyzes the **Intent** (Query Object) and decides the most efficien
 ---
 
 ## 3. The Archivist (Storage Engine)
-**Codepath:** `midwicket.storage.engine.StorageEngine`
+**Codepath:** `midwicket.storage.engine.QueryEngine`
 
 The Archivist manages the physical persistence layer (DuckDB/Parquet). It is the guardian of the **Schema V1 Contract**.
 
