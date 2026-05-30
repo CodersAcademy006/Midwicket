@@ -281,6 +281,11 @@ class ThreadSafeQueryEngine(QueryEngine):
                     conn.execute("ALTER TABLE ball_events ADD COLUMN extras_type VARCHAR")
                 except Exception:
                     pass
+            if "player_dismissed" not in cols:
+                try:
+                    conn.execute("ALTER TABLE ball_events ADD COLUMN player_dismissed VARCHAR")
+                except Exception:
+                    pass
 
     @property
     def snapshot_id(self) -> str:
@@ -486,6 +491,9 @@ class ThreadSafeQueryEngine(QueryEngine):
                 if "venue" in columns:
                     insert_cols.append("venue")
                     values.append(delivery_data.get("venue", "Unknown Venue"))
+                if "player_dismissed" in columns:
+                    insert_cols.append("player_dismissed")
+                    values.append(delivery_data.get("player_dismissed"))
 
                 placeholders = ", ".join("?" for _ in values)
                 conn.execute(
