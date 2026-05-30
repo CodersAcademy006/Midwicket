@@ -61,9 +61,9 @@ def canonicalize_match(match_data: Dict[str, Any], registry: IdentityRegistry, m
         batting_team = inning_data.get('team')
         bat_team_id = registry.resolve_team(batting_team, match_date=match_date_obj, auto_ingest=True)
         
-        # We don't easily know bowling team without looking ahead/behind, 
-        # so for Stage 2 MVP we use -1 or logic from the *other* inning.
-        # Ideally, we parse 'teams' from info first.
+        # Identify the bowling team from the match's team list.
+        # The batting team is known from the inning metadata; the bowling team
+        # is the other team.  Parsing teams from info is correct here.
         teams = info.get('teams', [])
         bowl_team_name = next((t for t in teams if t != batting_team), "Unknown")
         bowl_team_id = registry.resolve_team(bowl_team_name, match_date=match_date_obj, auto_ingest=True)
@@ -145,7 +145,15 @@ def canonicalize_match(match_data: Dict[str, Any], registry: IdentityRegistry, m
                         'retired out': DismissalType.RETIRED_OUT,
                         'retired not out': DismissalType.RETIRED_NOT_OUT
                     }
-                    dismissal_type = wicket_mapping.get(wicket_kind.lower(), DismissalType.BOWLED)  # Default to bowled
+                    known_type = wicket_mapping.get(wicket_kind.lower())
+                    if known_type is None:
+                        logger.warning(
+                            "canonicalize_match: unknown wicket kind %r in match %s — stored as BOWLED",
+                            wicket_kind, match_id,
+                        )
+                        dismissal_type = DismissalType.BOWLED
+                    else:
+                        dismissal_type = known_type
                     buffers['wicket_type'].append(dismissal_type.name)
                     buffers['player_dismissed'].append(wickets[0].get('player'))
                 else:

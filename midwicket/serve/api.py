@@ -139,6 +139,11 @@ class MidwicketAPI:
         # CORS — never default to wildcard; require explicit config in production.
         # When origins is empty (default) the middleware allows no cross-origin requests.
         origins = [o for o in API_CORS_ORIGINS if o and o != "*"]
+        if not origins:
+            logger.warning(
+                "MIDWICKET_CORS_ORIGINS is not set. All cross-origin browser requests "
+                "will be rejected. Set MIDWICKET_CORS_ORIGINS to allow browser clients."
+            )
         self.app.add_middleware(
             CORSMiddleware,
             allow_origins=origins,
@@ -929,6 +934,7 @@ class MidwicketAPI:
             current_runs: int = Query(50, ge=0, le=720, description="Runs scored so far"),
             wickets_down: int = Query(2, ge=0, le=10, description="Wickets fallen (0-10)"),
             overs_done: float = Query(10.0, ge=0.0, le=20.0, description="Overs completed (0-20)"),
+            venue: Optional[str] = Query(None, max_length=100, description="Venue name for venue-specific win probability adjustment"),
             authenticated: bool = Depends(verify_api_key),
         ):
             """Calculate win probability for current match state."""
@@ -940,6 +946,7 @@ class MidwicketAPI:
                     current_runs=current_runs,
                     wickets_down=wickets_down,
                     overs_done=overs_done,
+                    venue=venue,
                 )
                 return result
             except ValueError as e:
@@ -1480,6 +1487,12 @@ class MidwicketAPI:
 
     def run(self, host: str = "0.0.0.0", port: int = 8000, reload: bool = False):  # nosec B104
         """Run the API server."""
+        if reload:
+            raise ValueError(
+                "reload=True is not supported when run() is called on a MidwicketAPI instance. "
+                "Pass an import string to uvicorn instead: "
+                "uvicorn midwicket.serve.api:create_app --factory --reload"
+            )
         logger.info("Starting Midwicket API server at http://%s:%d", host, port)
         logger.info("API documentation at http://%s:%d/docs", host, port)
 
@@ -1487,7 +1500,6 @@ class MidwicketAPI:
             self.app,
             host=host,
             port=port,
-            reload=reload
         )
 
 def create_app(session=None, *, start_ingestor: bool = True) -> FastAPI:

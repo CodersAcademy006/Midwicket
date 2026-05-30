@@ -139,9 +139,10 @@ jobs:
           exit $fail
 
   # ──────────────────────────────────────────────────────────────────────────
-  # ADVISORY (not yet gating): the codebase currently has ~150 ruff and ~70 mypy
-  # findings. These run for visibility and trend tracking; they flip to REQUIRED
-  # once the lint/type-cleanup PR lands. (Do not delete — make them gating.)
+  # ADVISORY (lint, typecheck): codebase currently has ~150 ruff and ~70 mypy
+  # findings. These run for visibility only; they flip to REQUIRED once the
+  # lint/type-cleanup PR lands. (Do not delete — make them gating then.)
+  # Security audit is NOW GATING: bandit -lll (high severity) must pass.
   # ──────────────────────────────────────────────────────────────────────────
   lint:
     name: Lint (advisory)
@@ -175,7 +176,6 @@ jobs:
   security:
     name: Security audit (advisory)
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
