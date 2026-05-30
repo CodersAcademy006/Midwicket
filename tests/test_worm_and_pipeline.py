@@ -6,12 +6,14 @@ Tests for 8 previously-untested public functions:
   - build_registry_stats (midwicket/data/pipeline.py)
   - serve_overlay (midwicket/live/overlay.py)
 """
-import matplotlib
+# matplotlib is an optional dependency — skip the entire module when absent
+# (e.g. the "build/import/collect" CI job installs only core deps).
+import pytest
+matplotlib = pytest.importorskip("matplotlib")
 matplotlib.use("Agg")  # non-interactive backend — must come before pyplot import
 
-import pytest
 import pyarrow as pa
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from midwicket.exceptions import MatchDataMissing
 
