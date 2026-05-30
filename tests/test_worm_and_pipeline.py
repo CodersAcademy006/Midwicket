@@ -358,7 +358,9 @@ class TestPlotPartnershipFlow:
 
 class TestNotImplementedPlots:
     def test_beehive_raises(self):
-        from midwicket.visuals.worm import plot_beehive
+        # _plot_beehive is intentionally private (not in __all__); confirm the
+        # guard is still in place so it cannot silently return bad output.
+        from midwicket.visuals.worm import _plot_beehive
         data = pa.table({
             "over": pa.array([0], type=pa.int32()),
             "ball": pa.array([1], type=pa.int32()),
@@ -366,14 +368,15 @@ class TestNotImplementedPlots:
         })
         session = _make_session(data)
         with pytest.raises(NotImplementedError):
-            plot_beehive("match_001", 1, session)
+            _plot_beehive("match_001", 1, session)
 
     def test_wagon_wheel_raises(self):
-        from midwicket.visuals.worm import plot_wagon_wheel
+        # _plot_wagon_wheel is intentionally private (not in __all__).
+        from midwicket.visuals.worm import _plot_wagon_wheel
         data = pa.table({"runs_batter": pa.array([4, 6], type=pa.int32())})
         session = _make_session(data)
         with pytest.raises(NotImplementedError):
-            plot_wagon_wheel("match_001", 1, session)
+            _plot_wagon_wheel("match_001", 1, session)
 
 
 # ---------------------------------------------------------------------------
