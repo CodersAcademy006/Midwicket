@@ -1,9 +1,12 @@
+import logging
 import pyarrow as pa
 from datetime import datetime
 from typing import Dict, Any, List
 
 from midwicket.schema.v1 import BALL_EVENT_SCHEMA, RunComponent, DismissalType
 from midwicket.storage.registry import IdentityRegistry
+
+logger = logging.getLogger(__name__)
 
 def _determine_phase(over_num: int) -> str:
     """Materialization Logic: 0-5 (PP), 6-14 (Middle), 15+ (Death)"""

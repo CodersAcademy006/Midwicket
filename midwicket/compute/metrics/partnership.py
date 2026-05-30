@@ -1,3 +1,4 @@
+# mypy: disable-error-code="attr-defined"
 """
 Partnership metrics calculation functions.
 Pure vectorized functions (Agent 5: The Analyst).

@@ -1,3 +1,4 @@
+# mypy: disable-error-code="attr-defined"
 """
 Team-level metrics calculation functions.
 Pure vectorized functions (Agent 5: The Analyst).
