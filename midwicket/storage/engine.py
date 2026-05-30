@@ -508,6 +508,10 @@ class QueryEngine:
         finally:
             con.close()
 
+    def borrow_connection(self) -> duckdb.DuckDBPyConnection:
+        """Return a fresh persistent DuckDB connection. Caller is responsible for close()."""
+        return duckdb.connect(self.pool.connect_path)
+
     def close(self) -> None:
         """Close the database connection pool."""
         self.pool.close()

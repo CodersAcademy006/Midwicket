@@ -314,6 +314,9 @@ def get_executor() -> RuntimeExecutor:
 def get_registry() -> IdentityRegistry:
     return MidwicketSession.get().registry
 
+def get_session() -> MidwicketSession:
+    return MidwicketSession.get()
+
 def init(source: Optional[str] = None) -> MidwicketSession:
     """
     Initialize the Midwicket session.

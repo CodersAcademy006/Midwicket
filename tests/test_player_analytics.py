@@ -610,3 +610,19 @@ class TestCricketStatsCorrectness:
         assert non_striker_stats["innings"] - non_striker_stats["not_outs"] == 1
         assert non_striker_stats["not_outs"] == 0
 
+
+def test_get_con_returns_actual_connection():
+    from midwicket.api.session import init
+    import tempfile
+    from pathlib import Path
+    
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = Path(tmpdir) / "test_api_get_con.duckdb"
+        init(str(db_path))
+        
+        con = pa._get_con()
+        assert con is not None
+        assert hasattr(con, "execute")
+        con.close()
+
+

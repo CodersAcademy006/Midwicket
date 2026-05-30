@@ -59,7 +59,7 @@ def _get_con() -> Any:
     """Return live DuckDB connection from the active storage engine."""
     from midwicket.api.session import get_session
     session = get_session()
-    return session.engine.raw_connection()
+    return session.engine.borrow_connection()
 
 
 def _r(v: Optional[float], dp: int = 2) -> Optional[float]:
