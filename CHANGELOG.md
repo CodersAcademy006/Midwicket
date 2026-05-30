@@ -7,6 +7,47 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [1.0.0] - 2026-05-30
+
+First stable release. All 16 documented defects resolved, 0 mypy errors, 627
+tests passing, and the public API surface cleaned up.
+
+### Breaking changes
+
+- `plot_beehive` and `plot_wagon_wheel` removed from the public API (`__all__`
+  and renamed to `_plot_beehive` / `_plot_wagon_wheel`). Both functions require
+  pitch-map / shot-direction data absent from the Cricsheet JSON schema and
+  previously raised `NotImplementedError` unconditionally. Users relying on
+  the old names should prefix calls with `_` — behaviour is unchanged.
+
+### Fixed
+
+- **Runtime crash in `canonicalize_match`** — `logger` was referenced before
+  being defined when an unrecognised wicket kind was encountered (e.g.
+  `"hit wicket"`, `"retired not out"`). Any such delivery would raise
+  `NameError` and abort the entire ingestion run. Fixed by adding the missing
+  `import logging` / `logger = logging.getLogger(__name__)` at module level.
+
+- **`plot_run_pressure` crash on two-inning matches (pandas 2.x)** —
+  `df.groupby('inning')['is_dot'].expanding().mean()` returned a MultiIndex
+  Series that could not be assigned back to the DataFrame's RangeIndex, raising
+  `TypeError` for every completed match. Fixed by switching to
+  `transform(lambda x: x.expanding().mean())`.
+
+### Added
+
+- 34 new tests covering 8 previously-untested public functions:
+  `plot_match_worm`, `plot_run_pressure`, `plot_batter_pacing`,
+  `plot_momentum_swings`, `plot_manhattan`, `plot_partnership_flow`,
+  `build_registry_stats` (including `matchup_stats` assertion), `serve_overlay`.
+
+### Changed
+
+- 106 mypy errors across 15 modules resolved; `mypy midwicket/` now reports
+  0 errors in 88 source files.
+
+---
+
 ## [0.1.2] - 2026-05-30
 
 ### Fixed
