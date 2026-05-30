@@ -109,7 +109,7 @@ def serve(*args: Any, **kwargs: Any) -> None:
     return _serve(*args, **kwargs)
 
 
-__version__ = "0.1.2"
+__version__ = "1.0.0"
 __author__ = "Midwicket Team"
 __email__ = "srjnupadhyay@gmail.com"
 

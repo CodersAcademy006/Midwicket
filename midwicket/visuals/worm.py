@@ -1,6 +1,9 @@
 from typing import Any, Optional
 
-__all__ = ['plot_match_worm', 'plot_run_pressure', 'plot_batter_pacing', 'plot_momentum_swings', 'plot_manhattan', 'plot_beehive', 'plot_wagon_wheel', 'plot_partnership_flow']
+__all__ = ['plot_match_worm', 'plot_run_pressure', 'plot_batter_pacing', 'plot_momentum_swings', 'plot_manhattan', 'plot_partnership_flow']
+# plot_beehive and plot_wagon_wheel require pitch-map / shot-direction data that
+# the Cricsheet JSON schema does not provide.  They are kept as private symbols
+# (_plot_beehive, _plot_wagon_wheel) until that data source is available.
 
 def _add_cricket_pitch_layout(ax: Any, view: str = "pitch") -> None:
     """
@@ -602,22 +605,14 @@ def plot_manhattan(match_id: str, session: Any, ax: Optional[Any] = None) -> Any
     return ax
 
 
-def plot_beehive(match_id: str, bowler_id: int, session: Any, ax: Optional[Any] = None) -> Any:
+def _plot_beehive(match_id: str, bowler_id: int, session: Any, ax: Optional[Any] = None) -> Any:
     """
-    Plots a Beehive (pitch map): where the bowler pitched the ball.
-    Shows accuracy zones: Good Length, Yorker, Short, etc.
-    
-    Args:
-        match_id (str): The match identifier.
-        bowler_id (int): The bowler entity ID.
-        session (Any): Midwicket session object.
-        ax (Any, optional): Matplotlib axis. If None, creates a new figure.
+    NOT PART OF THE PUBLIC API.
 
-    Returns:
-        Any: The matplotlib axis with the plot.
-
-    Raises:
-        midwicket.exceptions.MatchDataMissing: If match data is not available.
+    Will plot a Beehive (pitch map): where the bowler pitched the ball.
+    Requires pitch_x / pitch_y coordinate data that is absent from the
+    Cricsheet JSON schema.  Raises NotImplementedError until that data
+    source is integrated.
     """
     import matplotlib.pyplot as plt
     import pandas as pd
@@ -648,21 +643,13 @@ def plot_beehive(match_id: str, bowler_id: int, session: Any, ax: Optional[Any] 
     )
 
 
-def plot_wagon_wheel(match_id: str, batsman_id: int, session: Any, ax: Optional[Any] = None) -> Any:
+def _plot_wagon_wheel(match_id: str, batsman_id: int, session: Any, ax: Optional[Any] = None) -> Any:
     """
-    Plots a wagon wheel: direction of boundaries hit by batsman.
+    NOT PART OF THE PUBLIC API.
 
-    Args:
-        match_id (str): The match identifier.
-        batsman_id (int): The batsman's entity ID.
-        session (Any): Midwicket session object.
-        ax (Any, optional): Matplotlib axis. If None, creates a new figure.
-
-    Returns:
-        Any: The matplotlib axis with the plot.
-
-    Raises:
-        midwicket.exceptions.MatchDataMissing: If match data is not available.
+    Will plot a wagon wheel: direction of boundaries hit by batsman.
+    Requires shot_angle data that is absent from the Cricsheet JSON schema.
+    Raises NotImplementedError until that data source is integrated.
     """
     import matplotlib.pyplot as plt
     import pandas as pd
