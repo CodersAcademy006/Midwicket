@@ -61,6 +61,11 @@ class ConnectionPool:
         # Initialize pools
         self._initialize_pools()
 
+    @property
+    def connect_path(self) -> str:
+        """Return the concrete DuckDB path used by pooled connections."""
+        return self._connect_path
+
     def _initialize_pools(self):
         """Initialize connection pools.
 
