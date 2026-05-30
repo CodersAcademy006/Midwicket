@@ -45,7 +45,10 @@ def test_download_retries_then_succeeds(monkeypatch, tmp_path):
     loader.download(force=True)
 
     assert calls["n"] == 3
-    assert loader.zip_path.exists()
+    # The zip is deleted after successful extraction (UXDX-11); verify the
+    # raw_dir was created (by _extract stub) and the archive is gone.
+    assert not loader.zip_path.exists(), "archive should be cleaned up after extraction"
+    assert loader.raw_dir.exists(), "raw_dir should have been created by download()"
 
 
 def test_download_exhausted_retries_raises(monkeypatch, tmp_path):

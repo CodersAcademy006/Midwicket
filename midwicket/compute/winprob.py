@@ -66,22 +66,32 @@ def win_probability(
     snapshot: str = "latest",
     balls_bowled: Optional[int] = None,
 ) -> Dict[str, float]:
-    """
-    Estimate win probability for the chasing team in a T20 match.
-    Uses the default shipped WinPredictor model.
+    """Estimate win probability for the chasing team in a T20 match.
+
+    Uses the default shipped WinPredictor model (logistic regression,
+    retrained on IPL data, AUC 0.843).
 
     Args:
-        target: Target score to chase
-        current_runs: Current runs scored
-        wickets_down: Wickets fallen
-        overs_done: Overs completed (decimal overs, e.g. 10.5 = 10 overs 3 balls).
-        venue: Optional venue name to apply venue-specific adjustment factors.
-        balls_per_innings: Total balls in innings (default 120 for T20)
-        snapshot: Data snapshot (not used in baseline)
-        balls_bowled: Explicit number of balls bowled. If provided, overrides overs_done.
+        target: Target score to chase.
+        current_runs: Current runs scored.
+        wickets_down: Wickets fallen (0–10).
+        overs_done: Overs completed (decimal, e.g. 10.5 = 10 overs 3 balls).
+        venue: Venue name.  The model applies a per-venue probability
+               adjustment learned during training — **venue materially
+               affects the result**.  An unrecognised venue name falls back
+               to a neutral (zero) adjustment.
+        balls_per_innings: Total balls in the innings (default 120 for T20).
+        snapshot: Reserved for future use; currently ignored.
+        balls_bowled: Explicit number of balls bowled.  When provided, this
+                      overrides the value derived from ``overs_done``.
 
     Returns:
-        Dict with 'win_prob' and 'confidence' keys
+        Dict with two keys:
+
+        * ``'win_prob'``: chasing-team win probability (0.0–1.0).
+        * ``'confidence'``: heuristic certainty indicator (0.1–0.95),
+          **not** a statistical confidence interval.  See
+          ``WinPredictor._calculate_confidence`` for the definition.
     """
     with _model_lock:
         model = _default_model
