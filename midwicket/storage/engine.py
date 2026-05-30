@@ -262,15 +262,31 @@ class QueryEngine:
         with self.pool.connection() as con:
             # Ensure table exists
             if not self.table_exists("ball_events", con):
-                # Create table if not exists (simplified schema for demo)
-                # Note: In real app, use full schema
+                # Bootstrap with the full v1 schema so all subsequent inserts use
+                # the v1 path.  (The legacy fallback path remains for databases that
+                # were populated before this schema existed.)
                 con.execute("""
                 CREATE TABLE IF NOT EXISTS ball_events (
-                    match_id VARCHAR, inning INTEGER, over INTEGER, ball INTEGER,
-                    runs_total INTEGER, wickets_fallen INTEGER, target INTEGER,
-                    venue VARCHAR, timestamp DOUBLE,
-                    runs_batter INTEGER DEFAULT 0, runs_extras INTEGER DEFAULT 0, extras_type VARCHAR,
-                    is_wicket BOOLEAN DEFAULT FALSE, batter VARCHAR DEFAULT '', bowler VARCHAR DEFAULT '',
+                    match_id VARCHAR,
+                    date DATE,
+                    venue_id INTEGER,
+                    inning INTEGER,
+                    over INTEGER,
+                    ball INTEGER,
+                    batter_id INTEGER,
+                    bowler_id INTEGER,
+                    non_striker_id INTEGER,
+                    batting_team_id INTEGER,
+                    bowling_team_id INTEGER,
+                    runs_batter INTEGER,
+                    runs_extras INTEGER,
+                    extras_type VARCHAR,
+                    is_wicket BOOLEAN,
+                    wicket_type VARCHAR,
+                    phase VARCHAR,
+                    batter VARCHAR,
+                    bowler VARCHAR,
+                    venue VARCHAR,
                     player_dismissed VARCHAR
                 )
                 """)
