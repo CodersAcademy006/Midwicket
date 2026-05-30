@@ -454,6 +454,45 @@ class TestStreamIngestor:
         # Verify data was inserted
         result = thread_safe_engine.execute_sql("SELECT COUNT(*) as count FROM ball_events")
         assert result['count'][0].as_py() == 1
+        
+        row = thread_safe_engine.execute_sql("SELECT batter_id, bowler_id, venue_id FROM ball_events").to_pandas().iloc[0]
+        assert row['batter_id'] is not None
+        assert row['bowler_id'] is not None
+        assert row['venue_id'] is not None
+
+    def test_ingest_delivery_data_v1_fields(self, thread_safe_engine):
+        """Test ingesting delivery data with V1 fields explicitly passed."""
+        ingestor = StreamIngestor(thread_safe_engine)
+        
+        delivery_data = {
+            'match_id': 'test_match_v1',
+            'inning': 1,
+            'over': 5,
+            'ball': 3,
+            'runs_total': 45,
+            'wickets_fallen': 1,
+            'target': None,
+            'venue': 'Test Stadium V1',
+            'timestamp': time.time(),
+            'batter': 'V Kohli',
+            'bowler': 'JJ Bumrah',
+            'runs_batter': 4,
+            'runs_extras': 0,
+            'is_wicket': True,
+            'wicket_type': 'caught',
+            'player_out': 'V Kohli'
+        }
+        
+        ingestor._ingest_delivery_data('test_match_v1', delivery_data)
+        
+        df = thread_safe_engine.execute_sql("SELECT batter, bowler, runs_batter, is_wicket, player_dismissed FROM ball_events WHERE match_id = 'test_match_v1'").to_pandas()
+        assert len(df) == 1
+        row = df.iloc[0]
+        assert row['batter'] == 'V Kohli'
+        assert row['bowler'] == 'JJ Bumrah'
+        assert row['runs_batter'] == 4
+        assert row['is_wicket'] == True
+        assert row['player_dismissed'] == 'V Kohli'
 
     def test_ingest_delivery_data_invalid(self, thread_safe_engine):
         """Test ingesting invalid delivery data."""

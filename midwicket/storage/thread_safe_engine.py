@@ -445,18 +445,24 @@ class ThreadSafeQueryEngine(QueryEngine):
                         elif isinstance(match_date, str):
                             match_date = date.fromisoformat(match_date)
                         
-                        if delivery_data.get("batter_id") is None and delivery_data.get("batter") is not None:
-                            delivery_data["batter_id"] = registry.resolve_player(delivery_data["batter"], match_date, auto_ingest=True)
-                        if delivery_data.get("bowler_id") is None and delivery_data.get("bowler") is not None:
-                            delivery_data["bowler_id"] = registry.resolve_player(delivery_data["bowler"], match_date, auto_ingest=True)
-                        if delivery_data.get("non_striker_id") is None and delivery_data.get("non_striker") is not None:
-                            delivery_data["non_striker_id"] = registry.resolve_player(delivery_data["non_striker"], match_date, auto_ingest=True)
-                        if delivery_data.get("venue_id") is None and delivery_data.get("venue") is not None:
-                            delivery_data["venue_id"] = registry.resolve_venue(delivery_data["venue"], match_date, auto_ingest=True)
-                        if delivery_data.get("batting_team_id") is None and delivery_data.get("batting_team") is not None:
-                            delivery_data["batting_team_id"] = registry.resolve_team(delivery_data["batting_team"], match_date, auto_ingest=True)
-                        if delivery_data.get("bowling_team_id") is None and delivery_data.get("bowling_team") is not None:
-                            delivery_data["bowling_team_id"] = registry.resolve_team(delivery_data["bowling_team"], match_date, auto_ingest=True)
+                        if delivery_data.get("batter_id") is None:
+                            batter_name = delivery_data.get("batter") or "Unknown Batter"
+                            delivery_data["batter_id"] = registry.resolve_player(batter_name, match_date, auto_ingest=True)
+                        if delivery_data.get("bowler_id") is None:
+                            bowler_name = delivery_data.get("bowler") or "Unknown Bowler"
+                            delivery_data["bowler_id"] = registry.resolve_player(bowler_name, match_date, auto_ingest=True)
+                        if delivery_data.get("non_striker_id") is None:
+                            ns_name = delivery_data.get("non_striker") or "Unknown Non-Striker"
+                            delivery_data["non_striker_id"] = registry.resolve_player(ns_name, match_date, auto_ingest=True)
+                        if delivery_data.get("venue_id") is None:
+                            venue_name = delivery_data.get("venue") or "Unknown Venue"
+                            delivery_data["venue_id"] = registry.resolve_venue(venue_name, match_date, auto_ingest=True)
+                        if delivery_data.get("batting_team_id") is None:
+                            bt_name = delivery_data.get("batting_team") or "Unknown Batting Team"
+                            delivery_data["batting_team_id"] = registry.resolve_team(bt_name, match_date, auto_ingest=True)
+                        if delivery_data.get("bowling_team_id") is None:
+                            bot_name = delivery_data.get("bowling_team") or "Unknown Bowling Team"
+                            delivery_data["bowling_team_id"] = registry.resolve_team(bot_name, match_date, auto_ingest=True)
 
                 required_schema_v1 = [
                     "match_id",

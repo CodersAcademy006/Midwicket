@@ -21,4 +21,12 @@
 - **Date Resolved:** 2026-05-30
 - **PR:** #59
 
+## MW-004: `LiveDeliverySchema` uses legacy fields; live data invisible to all v1 analytics queries
+- **Severity:** P1
+- **Area:** Live
+- **Fix:** Added missing v1 schema fields to `LiveDeliverySchema` in `midwicket/live/ingestor.py`, mapped `player_out` to `player_dismissed` in `_ingest_delivery_data` dynamically, and updated the storage engines to gracefully resolve missing live V1 fields to "Unknown" placeholder registry identities.
+- **Date Resolved:** 2026-05-30
+- **PR:** #60
+
+
 
