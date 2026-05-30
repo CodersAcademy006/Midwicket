@@ -67,7 +67,7 @@ from midwicket.api.validation import (
 import weakref
 
 # Global registry for multi-app draining (MW-048)
-_active_apps = weakref.WeakSet()
+_active_apps: "weakref.WeakSet[Any]" = weakref.WeakSet()
 _sigterm_registered = False
 
 def _global_sigterm_handler(*_):
@@ -1353,8 +1353,8 @@ class MidwicketAPI:
                 pass
 
             req = _Req()
-            req.name = name
-            req.match_date = match_date
+            req.name = name  # type: ignore[attr-defined]
+            req.match_date = match_date  # type: ignore[attr-defined]
             return self.lookup_player(req)
 
         @self.app.get("/v1/venues/resolve")
@@ -1373,8 +1373,8 @@ class MidwicketAPI:
                 pass
 
             req = _Req()
-            req.name = name
-            req.match_date = match_date
+            req.name = name  # type: ignore[attr-defined]
+            req.match_date = match_date  # type: ignore[attr-defined]
             return self.lookup_venue(req)
 
         # ── FEAT-06: Player search / autocomplete ────────────────────────────
@@ -1450,9 +1450,9 @@ class MidwicketAPI:
                 pass
 
             req = _Req()
-            req.batter = batter
-            req.bowler = bowler
-            req.match_date = match_date
+            req.batter = batter  # type: ignore[attr-defined]
+            req.bowler = bowler  # type: ignore[attr-defined]
+            req.match_date = match_date  # type: ignore[attr-defined]
             return self.get_matchup_stats(req)
 
         @self.app.get("/v1/players/leaderboard/batting")

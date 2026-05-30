@@ -1,3 +1,4 @@
+# mypy: disable-error-code="attr-defined"
 import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc

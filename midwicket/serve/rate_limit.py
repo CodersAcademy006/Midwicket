@@ -181,7 +181,7 @@ class RedisRateLimiter:
         oldest = self.client.zrange(rkey, 0, 0, withscores=True)
         if not oldest:
             return 0
-        oldest_ts = oldest[0][1]
+        oldest_ts = oldest[0][1]  # type: ignore[index]
         return max(0, (oldest_ts + 60) - now)
 
     def cleanup_old_keys(self) -> None:

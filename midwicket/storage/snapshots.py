@@ -17,6 +17,7 @@ class SnapshotManager:
         if self.is_memory:
             self.history = {"snapshots": []}
             return
+        assert self.meta_path is not None
         if self.meta_path.exists():
             with open(self.meta_path, 'r') as f:
                 self.history = json.load(f)
@@ -37,6 +38,7 @@ class SnapshotManager:
     def _save(self) -> None:
         if self.is_memory:
             return
+        assert self.meta_path is not None
         import os
         import tempfile
         with tempfile.NamedTemporaryFile(
