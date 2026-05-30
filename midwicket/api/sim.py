@@ -1,15 +1,19 @@
-from typing import Dict, cast, Any
+from typing import Dict, cast, Any, Optional
+from datetime import date
 from midwicket.api.session import get_executor, get_registry
 from midwicket.query.defs import WinProbQuery
 
-def predict_win(venue: str, target: int, current_runs: int, wickets_down: int, overs_done: float) -> Dict[str, float]:
+def predict_win(venue: str, target: int, current_runs: int, wickets_down: int, overs_done: float, match_date: Optional[date] = None) -> Dict[str, float]:
     """
     Returns win probability for the chasing team.
     """
     reg = get_registry()
     exc = get_executor()
     
-    v_id = reg.resolve_venue(venue)
+    if match_date is None:
+        match_date = date.today()
+        
+    v_id = reg.resolve_venue(venue, match_date=match_date)
     
     q = WinProbQuery(
         venue_id=v_id,
