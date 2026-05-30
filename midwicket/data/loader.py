@@ -179,7 +179,14 @@ class DataLoader:
 
             logger.info("Extracting files...")
             self._extract()
-            logger.info("Download complete.")
+            # Remove the intermediate archive to avoid double disk usage;
+            # the extracted JSON files in raw_dir are the canonical source.
+            try:
+                self.zip_path.unlink()
+                logger.info("Removed intermediate archive %s", self.zip_path)
+            except OSError as unlink_err:
+                logger.warning("Could not remove archive %s: %s", self.zip_path, unlink_err)
+            logger.info("Download complete. Data stored at: %s", self.raw_dir)
 
         except Exception as e:
             # Clean up partial downloads
@@ -278,3 +285,30 @@ class DataLoader:
                         continue
             except json.JSONDecodeError:
                 continue # Skip corrupt files
+
+    def data_path(self) -> Optional[Path]:
+        """Return the on-disk data directory, or ``None`` for in-memory mode."""
+        return None if self.is_memory else self.data_dir
+
+    def clear_data(self) -> None:
+        """Delete all downloaded data files and the data directory.
+
+        Safe to call when in-memory mode (no-op).  After calling this,
+        ``download()`` must be run again before ``iter_matches()`` or
+        ``get_match()`` will return data.
+
+        Raises:
+            RuntimeError: If the data directory cannot be fully removed.
+        """
+        if self.is_memory:
+            logger.info("In-memory mode: nothing to clear.")
+            return
+        import shutil
+        if self.data_dir.exists():
+            try:
+                shutil.rmtree(self.data_dir)
+                logger.info("Removed data directory: %s", self.data_dir)
+            except Exception as exc:
+                raise RuntimeError(f"Failed to clear data directory {self.data_dir}: {exc}") from exc
+        else:
+            logger.info("Data directory %s does not exist; nothing to clear.", self.data_dir)

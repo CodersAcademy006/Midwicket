@@ -10,6 +10,7 @@ Usage:
     stats = px.get_player_stats("V Kohli")
 """
 
+import logging
 import os
 from pathlib import Path
 from typing import Optional, Any, Dict
@@ -20,6 +21,8 @@ from midwicket.runtime.executor import RuntimeExecutor
 from midwicket.runtime.cache_duckdb import DuckDBCache
 from midwicket.core.match_config import MatchConfig
 from midwicket.sources.cricsheet_loader import CricsheetLoader
+
+_log = logging.getLogger(__name__)
 
 # Global debug mode — protected by lock (M3)
 import threading as _threading
@@ -49,7 +52,7 @@ def set_debug_mode(enabled: bool = True) -> None:
     except Exception:
         pass
     if enabled:
-        print("[Midwicket] Debug mode enabled: Queries will execute eagerly for immediate error feedback.")
+        _log.info("Debug mode enabled: Queries will execute eagerly for immediate error feedback.")
 
 def _get_default_data_dir() -> Path:
     """Get default data directory (~/.midwicket_data)."""
@@ -84,39 +87,55 @@ def _auto_setup_session(data_dir: Optional[str] = None, auto_download: bool = Fa
             loader = DataLoader(str(data_path))
             raw_present = loader.raw_dir.exists() and bool(list(loader.raw_dir.glob("*.json")))
             if not raw_present:
-                print("No local data found. Downloading IPL dataset (~50 MB)...")
+                _log.info("No local data found. Downloading IPL dataset (~50 MB)...")
                 try:
                     loader.download()
                 except Exception as exc:
-                    print(f"Download failed: {exc}. Continuing without data.")
+                    _log.warning("Download failed: %s. Continuing without data.", exc)
 
         _cached_session = MidwicketSession(str(data_path))
         _cached_session_dir = resolved
         return _cached_session
 
 def download_data(data_dir: Optional[str] = None) -> None:
-    """Explicitly download the historical dataset."""
+    """Download the full historical IPL dataset (~50 MB from Cricsheet).
+
+    The data is stored under ``data_dir`` (default: ``./data``).
+    Subsequent calls skip the download if data already exists.
+
+    Args:
+        data_dir: Directory to store downloaded data.  Defaults to ``./data``
+                  in the current working directory.  Pass an absolute path to
+                  use a different location.
+    """
+    if data_dir is None:
+        data_dir = "./data"
     path = _ensure_data_dir(data_dir)
     if path == ":memory:":
-        print("Running in in-memory mode, dataset already pre-cached in RAM.")
+        _log.info("In-memory mode: dataset is pre-loaded from the bundled ZIP.")
         return
     loader = DataLoader(path)
-    print("Downloading historical dataset...")
+    _log.info("Downloading historical dataset to %s ...", path)
     loader.download()
 
 def load_competition(competition: str, season: int, data_dir: Optional[str] = None) -> CricsheetLoader:
-    """
-    Returns a CricsheetLoader filtered to a specific competition and season.
+    """Return a CricsheetLoader filtered to a specific competition and season.
+
+    Defaults to the in-memory bundled dataset (same default as all other
+    Express functions).  Pass ``data_dir`` to read from a locally downloaded
+    dataset instead.
+
+    Args:
+        competition: Competition identifier, e.g. ``"ipl"``.
+        season: Season year, e.g. ``2023``.
+        data_dir: Optional path to a local dataset directory.
 
     Example::
 
         ipl = px.load_competition("ipl", 2023)
         match_ids = ipl.get_match_ids()
     """
-    if data_dir is None:
-        loader_dir = ":memory:"
-    else:
-        loader_dir = data_dir
+    loader_dir = data_dir if data_dir is not None else ":memory:"
     return CricsheetLoader(loader_dir, competition=competition, season=season)
 
 def _check_dataset_exists(data_dir: Optional[str] = None) -> None:
@@ -211,23 +230,37 @@ def get_matchup(batter: str, bowler: str, data_dir: Optional[str] = None) -> Any
         raise EntityNotFoundError(f"No matchup data found between '{batter}' and '{bowler}': {exc}") from exc
 
 def predict_win(venue: str, target: int, current_score: int, wickets_down: int, overs_done: float, data_dir: Optional[str] = None) -> Dict[str, float]:
-    """
-    Predict win probability.
+    """Predict win probability for the chasing team.
+
+    Uses the bundled retrained logistic model.  Venue materially affects
+    the result via per-venue adjustment factors learned during training.
 
     Args:
-        venue: Venue name
-        target: Target score
-        current_score: Current score
-        wickets_down: Wickets fallen
-        overs_done: Overs completed (so overs_remaining = 20 - overs_done)
-        data_dir: Optional custom data directory
+        venue: Venue name (e.g. ``"Wankhede Stadium"``).  Drives a
+               venue-specific probability adjustment; an unrecognised venue
+               name falls back to a neutral baseline.
+        target: Target score to chase.
+        current_score: Runs scored so far by the chasing team.
+        wickets_down: Wickets fallen (0–10).
+        overs_done: Overs completed (decimal, e.g. 10.5 = 10 overs 3 balls).
+        data_dir: Optional path to a local dataset that contains a
+                  ``models/`` sub-directory with a custom win predictor.
+                  When provided and the model file exists, that model is used
+                  instead of the bundled default.
 
     Returns:
-        Dict with 'win_prob' and 'confidence' keys containing probability (0.0 to 1.0) and confidence score
+        Dict with two keys:
+
+        * ``'win_prob'``: probability of a win for the chasing team (0.0–1.0).
+        * ``'confidence'``: heuristic certainty indicator (0.1–0.95).
+          This is **not** a statistical confidence interval; it reflects
+          prediction extremity and situational factors (wickets in hand,
+          balls remaining).  Interpret it as a qualitative certainty signal,
+          not a calibrated probability.
 
     Example:
-        prob = px.predict_win("Wankhede", 180, 120, 5, 15.0)
-        print(f"Win probability: {prob['win_prob']:.2%}, Confidence: {prob['confidence']:.1%}")
+        prob = px.predict_win("Wankhede Stadium", 180, 120, 5, 15.0)
+        print(f"Win probability: {prob['win_prob']:.1%}")
     """
     if data_dir:
         from midwicket.models.registry import ModelRegistry
@@ -267,11 +300,13 @@ def quick_load(data_dir: Optional[str] = None) -> MidwicketSession:
     return _auto_setup_session(data_dir, auto_download=True)
 
 # Export convenience functions
+# download_data is the canonical way to fetch the full historical dataset.
 __all__ = [
     'load_competition',
     'get_player_stats',
     'get_matchup',
     'predict_win',
     'quick_load',
-    'set_debug_mode'
+    'download_data',
+    'set_debug_mode',
 ]
