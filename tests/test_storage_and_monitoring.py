@@ -626,29 +626,31 @@ class TestThreadSafeQueryEngine:
     def test_read_pool_rejects_writes_for_file_based_engine(self):
         """Defense-in-depth: a write attempted through the read pool of a
         file-based engine must be rejected at the DuckDB level (read-only
-        transaction), independent of the API-layer SQL guard."""
+        transaction), independent of the API-layer SQL guard.
+
+        Uses a neutral 'probe' table (not ball_events) so the test is
+        independent of the ball_events schema (fixes MW-004 Frankenschema).
+        """
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             db_path = f.name
         Path(db_path).unlink(missing_ok=True)
 
         engine = create_thread_safe_engine(db_path)
         try:
-            # Seed data through the write pool.
+            # Create a simple probe table and seed one row through the write pool.
             engine.execute_sql(
-                "INSERT INTO ball_events "
-                "(match_id, inning, over, ball, runs_total, wickets_fallen, "
-                "target, venue, timestamp) "
-                "VALUES ('m1', 1, 0, 1, 4, 0, NULL, 'v', 1.0)",
+                "CREATE TABLE probe (id INTEGER)",
+                read_only=False,
+            )
+            engine.execute_sql(
+                "INSERT INTO probe VALUES (1)",
                 read_only=False,
             )
 
             # A write routed through the read pool must be rejected.
             with pytest.raises(Exception) as excinfo:
                 engine.execute_sql(
-                    "INSERT INTO ball_events "
-                    "(match_id, inning, over, ball, runs_total, wickets_fallen, "
-                    "target, venue, timestamp) "
-                    "VALUES ('m2', 1, 0, 1, 4, 0, NULL, 'v', 1.0)",
+                    "INSERT INTO probe VALUES (2)",
                     read_only=True,
                 )
             assert "read-only" in str(excinfo.value).lower() or "write" in str(
@@ -658,7 +660,7 @@ class TestThreadSafeQueryEngine:
             # The read pool must remain usable and the rejected write must not
             # have been persisted.
             count = engine.execute_sql(
-                "SELECT COUNT(*) AS c FROM ball_events", read_only=True
+                "SELECT COUNT(*) AS c FROM probe", read_only=True
             ).to_pydict()["c"][0]
             assert count == 1
         finally:
