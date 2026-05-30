@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Dict, List, Optional
 
-from midwicket.api.session import get_executor, get_registry
+from midwicket.api.session import get_executor, get_registry, MidwicketSession
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +144,7 @@ def head_to_head(
             batter=batter,
             bowler=bowler,
             venue=venue,
-            innings=stats["balls"],  # best proxy when innings count isn't stored
+            innings=0,  # matchup_stats doesn't store match/innings count; set to 0 to avoid balls proxy bug
             runs=stats["runs"],
             balls=stats["balls"],
             dismissals=stats["wickets"],
@@ -155,8 +155,24 @@ def head_to_head(
 
     # Slow path: ball_events engine (requires explicit match loading)
     try:
-        response = exc.execute(query)
-        data = response.data
+        session = MidwicketSession.get()
+        sql = """
+            SELECT
+                match_id,
+                inning,
+                runs_batter,
+                extras_type,
+                is_wicket,
+                wicket_type
+            FROM ball_events
+            WHERE batter_id = ? AND bowler_id = ?
+        """
+        params = [b_id, bo_id]
+        if v_id:
+            sql += " AND venue_id = ?"
+            params.append(v_id)
+            
+        data = session.engine.execute_sql(sql, params=params)
     except (RuntimeError, LookupError, TypeError, ValueError) as e:
         logger.info("No head-to-head data found for %s vs %s: %s", batter, bowler, e)
         return HeadToHeadSummary(batter=batter, bowler=bowler, venue=venue)
@@ -174,19 +190,25 @@ def head_to_head(
         logger.info("No head-to-head data found for %s vs %s", batter, bowler)
         return HeadToHeadSummary(batter=batter, bowler=bowler, venue=venue)
 
-    runs = int(df["runs"].sum()) if "runs" in df.columns else 0
-    balls = int(df["balls"].sum()) if "balls" in df.columns else 0
-    dismissals = int(df["wickets"].sum()) if "wickets" in df.columns else 0
+    runs = int(df["runs_batter"].sum())
+    balls = int((df["extras_type"] != "wides").sum())
+    
+    # wickets
+    dismissals = int((
+        df["is_wicket"] & 
+        ~df["wicket_type"].isin(['RUN_OUT', 'OBSTRUCTING_THE_FIELD', 'RETIRED_HURT', 'RETIRED_OUT', 'RETIRED_NOT_OUT'])
+    ).sum())
 
-    dot_balls = int((df.get("runs_batter", df.get("runs", None)) == 0).sum()) if balls else 0
-    boundaries = int((df.get("runs_batter", df.get("runs", None)) == 4).sum()) if balls else 0
-    sixes = int((df.get("runs_batter", df.get("runs", None)) == 6).sum()) if balls else 0
+    dot_balls = int(((df["runs_batter"] == 0) & (df["extras_type"] != "wides")).sum()) if balls else 0
+    boundaries = int((df["runs_batter"] == 4).sum()) if balls else 0
+    sixes = int((df["runs_batter"] == 6).sum()) if balls else 0
+    innings = len(df.groupby(["match_id", "inning"]))
 
     return HeadToHeadSummary(
         batter=batter,
         bowler=bowler,
         venue=venue,
-        innings=len(df),
+        innings=innings,
         runs=runs,
         balls=balls,
         dismissals=dismissals,

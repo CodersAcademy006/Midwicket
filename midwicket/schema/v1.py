@@ -106,4 +106,5 @@ BALL_EVENT_SCHEMA = pa.schema([
     ('batter', pa.string()),
     ('bowler', pa.string()),
     ('venue', pa.string()),
+    ('player_dismissed', pa.string()),
 ], metadata=SCHEMA_META)

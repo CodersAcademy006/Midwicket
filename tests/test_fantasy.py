@@ -437,3 +437,64 @@ class TestCheatSheet:
 
         assert isinstance(df, pd.DataFrame)
         assert "player" in df.columns
+
+
+class TestFantasyEconomyPerMatch:
+    def test_bowler_economy_bonus_per_match_real_db(self):
+        import duckdb
+        import pyarrow as pa
+        from midwicket.api.session import MidwicketSession
+        from unittest.mock import patch, MagicMock
+        
+        schema = """
+        CREATE TABLE ball_events (
+            match_id VARCHAR,
+            date DATE DEFAULT '2023-01-01',
+            venue_id INTEGER DEFAULT 0,
+            inning INTEGER,
+            over INTEGER,
+            ball INTEGER,
+            batter_id INTEGER DEFAULT 0,
+            bowler_id INTEGER DEFAULT 0,
+            non_striker_id INTEGER DEFAULT 0,
+            batting_team_id SMALLINT DEFAULT 0,
+            bowling_team_id SMALLINT DEFAULT 0,
+            runs_batter INTEGER DEFAULT 0,
+            runs_extras INTEGER DEFAULT 0,
+            extras_type VARCHAR DEFAULT NULL,
+            is_wicket BOOLEAN DEFAULT FALSE,
+            wicket_type VARCHAR DEFAULT NULL,
+            phase VARCHAR DEFAULT 'Middle',
+            batter VARCHAR DEFAULT '',
+            bowler VARCHAR DEFAULT '',
+            venue VARCHAR DEFAULT '',
+            player_dismissed VARCHAR DEFAULT NULL
+        )
+        """
+        con = duckdb.connect(":memory:")
+        con.execute(schema)
+        
+        rows = []
+        # Match 1: 24 balls (4 overs), 16 runs conceded
+        for b in range(24):
+            runs = 4 if b in (0, 6, 12, 18) else 0
+            rows.append(("M1", "2023-01-01", 1, 1, b // 6, b % 6 + 1, 1, 2, 3, 10, 20, runs, 0, None, False, None, "Middle", "Batter", "BowlerX", "Venue", None))
+        # Match 2: 24 balls (4 overs), 36 runs conceded
+        for b in range(24):
+            runs = 6 if b % 4 == 0 else 0
+            rows.append(("M2", "2023-01-02", 1, 1, b // 6, b % 6 + 1, 1, 2, 3, 10, 20, runs, 0, None, False, None, "Middle", "Batter", "BowlerX", "Venue", None))
+            
+        con.executemany("INSERT INTO ball_events VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", rows)
+        
+        mock_engine = MagicMock()
+        mock_engine.execute_sql = lambda sql, params=None, read_only=True: pa.Table.from_pandas(con.execute(sql, params).df())
+        
+        session = MidwicketSession(data_dir=":memory:")
+        session.engine = mock_engine
+        
+        with patch("midwicket.api.fantasy.get_session", return_value=session):
+            from midwicket.api.fantasy import fantasy_score
+            res = fantasy_score("BowlerX")
+            
+        assert res["bowling_breakdown"]["economy_bonus"] == 10.0
+

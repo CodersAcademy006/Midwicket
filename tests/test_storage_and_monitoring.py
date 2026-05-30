@@ -54,6 +54,7 @@ def _make_valid_ball_event_table(n: int = 2) -> pa.Table:
             "batter": pa.array(["Test Batter"] * n, type=pa.string()),
             "bowler": pa.array(["Test Bowler"] * n, type=pa.string()),
             "venue": pa.array(["Test Venue"] * n, type=pa.string()),
+            "player_dismissed": pa.array([None] * n, type=pa.string()),
         }
     )
 

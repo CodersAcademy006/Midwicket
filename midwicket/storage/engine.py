@@ -270,7 +270,8 @@ class QueryEngine:
                     runs_total INTEGER, wickets_fallen INTEGER, target INTEGER,
                     venue VARCHAR, timestamp DOUBLE,
                     runs_batter INTEGER DEFAULT 0, runs_extras INTEGER DEFAULT 0, extras_type VARCHAR,
-                    is_wicket BOOLEAN DEFAULT FALSE, batter VARCHAR DEFAULT '', bowler VARCHAR DEFAULT ''
+                    is_wicket BOOLEAN DEFAULT FALSE, batter VARCHAR DEFAULT '', bowler VARCHAR DEFAULT '',
+                    player_dismissed VARCHAR
                 )
                 """)
 
@@ -420,6 +421,9 @@ class QueryEngine:
                 if "venue" in columns:
                     insert_cols.append("venue")
                     values.append(delivery_data.get("venue", "Unknown Venue"))
+                if "player_dismissed" in columns:
+                    insert_cols.append("player_dismissed")
+                    values.append(delivery_data.get("player_dismissed"))
 
                 placeholders = ", ".join("?" for _ in values)
                 con.execute(
