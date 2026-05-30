@@ -7,8 +7,10 @@ import secrets
 import logging
 from pathlib import Path
 
-# Debug mode
-debug = False
+# Debug mode — can be set programmatically via set_debug() or via env var at start-up.
+# Reading the env var here ensures that operators who set MIDWICKET_DEBUG=true in
+# a container env get the expected behaviour without needing to call set_debug().
+debug: bool = os.getenv("MIDWICKET_DEBUG", "false").lower() == "true"
 
 # Data sources
 CRICSHEET_URL = os.getenv("CRICSHEET_URL", "https://cricsheet.org/downloads/ipl_json.zip")

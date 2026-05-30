@@ -219,7 +219,7 @@ def plot_match_worm(match_id: str, session: Any, ax: Optional[Any] = None) -> An
     return ax
 
 
-def plot_run_pressure(match_id: str, session: Any, ax: Optional[Any] = None) -> Any:
+def plot_run_pressure(match_id: str, session: Any, ax: Optional[Any] = None, balls_per_innings: int = 120) -> Any:
     """
     Plots run pressure: team run rate, required run rate (innings 2), dot-ball percentage.
 
@@ -227,6 +227,8 @@ def plot_run_pressure(match_id: str, session: Any, ax: Optional[Any] = None) -> 
         match_id (str): The match identifier.
         session (Any): Midwicket session object.
         ax (Any, optional): Matplotlib axis. If None, creates a new figure.
+        balls_per_innings (int): Total balls in the innings for required-RR calculation.
+            Defaults to 120 (T20). Pass 300 for ODI matches.
 
     Returns:
         Any: The matplotlib axis with the plot.
@@ -273,25 +275,23 @@ def plot_run_pressure(match_id: str, session: Any, ax: Optional[Any] = None) -> 
     
     # Required RR for innings 2 (secondary, low opacity)
     if len(df['inning'].unique()) > 1:
-        innings2 = df[df['inning'] == 2]
+        innings2 = df[df['inning'] == 2].copy()
         target = df[df['inning'] == 1]['cumulative'].max()
-        max_over = df['over'].max()
-        total_balls = 300 if max_over > 20 else 120
-        remaining_balls = (total_balls - innings2['balls']).clip(lower=1)
-        innings2['required_rr'] = (target - innings2['cumulative']) / remaining_balls * 6  # Remaining balls
-        ax.plot(innings2['over_float'], innings2['required_rr'], 
+        remaining_balls = (balls_per_innings - innings2['balls']).clip(lower=1)
+        innings2['required_rr'] = (target - innings2['cumulative']) / remaining_balls * 6
+        ax.plot(innings2['over_float'], innings2['required_rr'],
                 color='orange', linestyle='--', linewidth=2, label='Required RR', alpha=0.6)
-    
-    # Dot-ball % (secondary)
+
+    # Dot-ball % (secondary) — single twin axis created once to avoid stacked axes
     df['is_dot'] = df['runs_scored'] == 0
     df['dot_pct'] = df.groupby('inning')['is_dot'].expanding().mean() * 100
+    ax2 = ax.twinx()
+    ax2.set_ylabel('Dot-ball %', color='red')
+    ax2.tick_params(axis='y', labelcolor='red')
     for i, inning in enumerate(df['inning'].unique()):
         inning_data = df[df['inning'] == inning]
-        ax2 = ax.twinx()
-        ax2.plot(inning_data['over_float'], inning_data['dot_pct'], 
+        ax2.plot(inning_data['over_float'], inning_data['dot_pct'],
                  color='red', linestyle=':', linewidth=1, label='Dot-ball %', alpha=0.4)
-        ax2.set_ylabel('Dot-ball %', color='red')
-        ax2.tick_params(axis='y', labelcolor='red')
 
     ax.set_title(f"Run Pressure: Rates & Dot-balls (Match {match_id})", fontsize=14, fontweight='bold')
     ax.set_xlabel("Overs", fontsize=12)
@@ -636,45 +636,11 @@ def plot_beehive(match_id: str, bowler_id: int, session: Any, ax: Optional[Any] 
     if df.empty:
         raise MatchDataMissing(f"No data found for bowler {bowler_id} in match {match_id}")
 
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(10, 8))
-
-    # Add cricket pitch layout
-    _add_cricket_pitch_layout(ax, view="pitch")
-
-    # Simulate pitch locations (length and line)
-    # In real implementation, this would come from ball trajectory data
-    np.random.seed(42)  # For reproducible demo
-    n_balls = len(df)
-    
-    # Length: 0-22 yards (pitch is 22 yards)
-    lengths = np.random.uniform(0, 22, n_balls)
-    # Line: -3 to 3 (off-side to leg-side)
-    lines = np.random.normal(0, 1.5, n_balls)
-    
-    # Color by outcome
-    colors = []
-    for _, ball in df.iterrows():
-        if ball['runs_scored'] == 0:
-            colors.append('green')  # Dot ball
-        elif ball['runs_scored'] >= 4:
-            colors.append('red')    # Boundary
-        else:
-            colors.append('blue')   # Normal
-
-    scatter = ax.scatter(lines, lengths, c=colors, s=50, alpha=0.7, edgecolors='black')
-
-    # Add legend
-    legend_elements = [
-        plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='green', markersize=10, label='Dot Ball'),
-        plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='blue', markersize=10, label='Normal'),
-        plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='red', markersize=10, label='Boundary')
-    ]
-    ax.legend(handles=legend_elements, loc='upper right')
-
-    ax.set_title(f"Beehive: Pitch Map for Bowler {bowler_id} (Match {match_id})")
-
-    return ax
+    raise NotImplementedError(
+        "plot_beehive requires ball pitch-map data (pitch_x, pitch_y coordinates) "
+        "that is not present in the Cricsheet JSON schema used by this dataset. "
+        "This function cannot produce meaningful output without that data."
+    )
 
 
 def plot_wagon_wheel(match_id: str, batsman_id: int, session: Any, ax: Optional[Any] = None) -> Any:
@@ -715,29 +681,11 @@ def plot_wagon_wheel(match_id: str, batsman_id: int, session: Any, ax: Optional[
     if df.empty:
         raise MatchDataMissing(f"No boundaries found for batsman {batsman_id} in match {match_id}")
 
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(8, 8), subplot_kw={'projection': 'polar'})
-
-    # Add cricket field layout for wagon wheel
-    _add_cricket_pitch_layout(ax, view="wagon")
-
-    # Simulate directions
-    angles = np.random.uniform(0, 2*np.pi, len(df))
-    radii = np.ones(len(df)) * 10
-    colors = ['blue' if r == 4 else 'red' for r in df['runs_batter']]
-    ax.scatter(angles, radii, c=colors, s=100, alpha=0.7)
-
-    # Add legend
-    legend_elements = [
-        plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='blue', markersize=10, label='4 runs'),
-        plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='red', markersize=10, label='6 runs')
-    ]
-    ax.legend(handles=legend_elements, loc='upper right')
-
-    ax.set_title(f"Wagon Wheel: Boundaries by Batsman {batsman_id} (Match {match_id})")
-    ax.set_rlim(0, 15)  # type: ignore[union-attr]  # polar axes guaranteed by subplot_kw
-    
-    return ax
+    raise NotImplementedError(
+        "plot_wagon_wheel requires shot-direction data (shot_angle field) "
+        "that is not present in the Cricsheet JSON schema used by this dataset. "
+        "This function cannot produce meaningful output without that data."
+    )
 
 
 def plot_partnership_flow(match_id: str, session: Any, ax: Optional[Any] = None) -> Any:

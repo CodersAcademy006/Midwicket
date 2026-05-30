@@ -3,12 +3,15 @@
 Robust Win Probability Model for T20 Cricket
 Implements a logistic regression-based model using historical data and cricket domain logic.
 """
+import logging
 import os
 import pickle
 import threading
 import numpy as np
 from typing import Dict, Optional
 from ..models.win_predictor import WinPredictor
+
+logger = logging.getLogger(__name__)
 
 def _load_initial_model() -> WinPredictor:
     """Load model on module init: path from env if MIDWICKET_WIN_MODEL_MODE=path, else default.
@@ -93,6 +96,12 @@ def win_probability(
           **not** a statistical confidence interval.  See
           ``WinPredictor._calculate_confidence`` for the definition.
     """
+    if balls_per_innings != 120:
+        logger.warning(
+            "win_probability: balls_per_innings=%d is non-standard. "
+            "Model was trained on T20 (120-ball) data; results may be unreliable.",
+            balls_per_innings,
+        )
     with _model_lock:
         model = _default_model
     prob, conf = model.predict(target, current_runs, wickets_down, overs_done, venue, balls_per_innings=balls_per_innings, balls_bowled=balls_bowled)

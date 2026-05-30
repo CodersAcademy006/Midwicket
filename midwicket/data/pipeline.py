@@ -31,6 +31,11 @@ def build_registry_stats(loader: Any, registry: Any) -> None:
         "matches": 0, "total_runs": 0,
         "first_innings_runs": 0, "first_innings_count": 0,
     })
+    # Accumulator for head-to-head matchup stats keyed by (batter_id, bowler_id)
+    matchup_stats: Dict[tuple, Dict[str, int]] = defaultdict(lambda: {
+        "balls": 0, "runs": 0, "wickets": 0,
+        "dot_balls": 0, "boundaries": 0, "sixes": 0,
+    })
 
     match_count = 0
 
@@ -98,6 +103,19 @@ def build_registry_stats(loader: Any, registry: Any) -> None:
                         # run out is not credited to the bowler
                         if kind not in ("run out", "obstructing the field"):
                             player_stats[bo_id]["wickets"] += 1
+                            matchup_stats[(b_id, bo_id)]["wickets"] += 1
+
+                    # --- matchup stats ---
+                    is_wide = "wides" in delivery.get("extras", {})
+                    if not is_wide:
+                        matchup_stats[(b_id, bo_id)]["balls"] += 1
+                        matchup_stats[(b_id, bo_id)]["runs"] += batter_runs
+                        if batter_runs == 0:
+                            matchup_stats[(b_id, bo_id)]["dot_balls"] += 1
+                        if batter_runs == 4:
+                            matchup_stats[(b_id, bo_id)]["boundaries"] += 1
+                        if batter_runs == 6:
+                            matchup_stats[(b_id, bo_id)]["sixes"] += 1
 
                     inning_runs += batter_runs + extras
 
@@ -118,3 +136,5 @@ def build_registry_stats(loader: Any, registry: Any) -> None:
 
     registry.upsert_player_stats(dict(player_stats))
     registry.upsert_venue_stats(dict(venue_stats))
+    registry.upsert_matchup_stats(dict(matchup_stats))
+    logger.info("pipeline: upserted %d matchup pairs", len(matchup_stats))
