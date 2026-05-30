@@ -114,8 +114,8 @@ class DataLoader:
         else:
             self.raw_dir = self.data_dir / "raw" / "ipl"
             self.zip_path = self.data_dir / "ipl_json.zip"
-            # Ensure directories exist
-            self.raw_dir.mkdir(parents=True, exist_ok=True)
+            # Directories are created lazily in download(), not on construction,
+            # so that merely instantiating DataLoader has no filesystem side effects.
 
     def _load_zip_to_memory(self) -> None:
         """Validates that the bundled ZIP is present for lazy loading."""
@@ -142,6 +142,10 @@ class DataLoader:
         if self.is_memory:
             logger.info("Running in in-memory mode, dataset already pre-cached in RAM.")
             return
+
+        # Defer directory creation to the first explicit download so that
+        # constructing DataLoader("./some/path") has no filesystem side effects.
+        self.raw_dir.mkdir(parents=True, exist_ok=True)
 
         if self.zip_path.exists() and not force:
             logger.info("Data already exists at %s", self.zip_path)
