@@ -275,7 +275,10 @@ def plot_run_pressure(match_id: str, session: Any, ax: Optional[Any] = None) -> 
     if len(df['inning'].unique()) > 1:
         innings2 = df[df['inning'] == 2]
         target = df[df['inning'] == 1]['cumulative'].max()
-        innings2['required_rr'] = (target - innings2['cumulative']) / (120 - innings2['balls']) * 6  # Remaining balls
+        max_over = df['over'].max()
+        total_balls = 300 if max_over > 20 else 120
+        remaining_balls = (total_balls - innings2['balls']).clip(lower=1)
+        innings2['required_rr'] = (target - innings2['cumulative']) / remaining_balls * 6  # Remaining balls
         ax.plot(innings2['over_float'], innings2['required_rr'], 
                 color='orange', linestyle='--', linewidth=2, label='Required RR', alpha=0.6)
     
@@ -481,10 +484,12 @@ def plot_momentum_swings(match_id: str, session: Any, ax: Optional[Any] = None) 
         inning_data = df[df['inning'] == inning]
         ax.plot(inning_data['over_float'], inning_data['delta_par'], 
                 color=colors[i], linewidth=3, label=f'Inning {inning} Δ vs Par')
+        ax.fill_between(inning_data['over_float'], inning_data['delta_par'], 0, 
+                        where=inning_data['delta_par'] >= 0, color='green', alpha=0.2, interpolate=True)
+        ax.fill_between(inning_data['over_float'], inning_data['delta_par'], 0, 
+                        where=inning_data['delta_par'] < 0, color='red', alpha=0.2, interpolate=True)
     
     ax.axhline(0, color='black', linestyle='-', alpha=0.5, label='Par')
-    ax.fill_between(df['over_float'], df['delta_par'], 0, where=df['delta_par'] >= 0, color='green', alpha=0.2)
-    ax.fill_between(df['over_float'], df['delta_par'], 0, where=df['delta_par'] < 0, color='red', alpha=0.2)
 
     ax.set_title(f"Momentum Swings: Δ Runs vs Par (Match {match_id})", fontsize=14, fontweight='bold')
     ax.set_xlabel("Overs", fontsize=12)
@@ -771,9 +776,28 @@ def plot_partnership_flow(match_id: str, session: Any, ax: Optional[Any] = None)
         raise MatchDataMissing(f"No data found for match {match_id}")
 
     # Group by partnership (batter + non_striker)
-    df['partnership'] = df.apply(lambda x: tuple(sorted([x['batter_id'], x['non_striker_id']])), axis=1)
-    partnerships = df.groupby(['inning', 'partnership']).agg({'runs_scored': 'sum', 'over': ['min', 'max']}).reset_index()
-    partnerships.columns = ['inning', 'partnership', 'runs', 'start_over', 'end_over']
+    df['partnership_ids'] = df.apply(lambda x: tuple(sorted([x['batter_id'], x['non_striker_id']])), axis=1)
+    partnerships = df.groupby(['inning', 'partnership_ids']).agg({'runs_scored': 'sum', 'over': ['min', 'max']}).reset_index()
+    partnerships.columns = ['inning', 'partnership_ids', 'runs', 'start_over', 'end_over']
+
+    # Resolve player names from registry
+    player_names = {}
+    try:
+        reg = session.registry
+        res = reg.con.execute("SELECT id, primary_name FROM entities WHERE type = 'player'").fetchall()
+        player_names = {r[0]: r[1] for r in res}
+    except Exception:
+        pass
+
+    def get_name(pid):
+        return player_names.get(pid, f"Player {pid}")
+
+    def format_partnership(p_tuple):
+        if len(p_tuple) == 2:
+            return f"{get_name(p_tuple[0])} & {get_name(p_tuple[1])}"
+        return str(p_tuple)
+
+    partnerships['partnership_name'] = partnerships['partnership_ids'].apply(format_partnership)
 
     if ax is None:
         fig, ax = plt.subplots(figsize=(14, 8))
@@ -783,7 +807,7 @@ def plot_partnership_flow(match_id: str, session: Any, ax: Optional[Any] = None)
         inn_data = partnerships[partnerships['inning'] == inning]
         for _, p in inn_data.iterrows():
             width = p['runs'] / 10  # Scale for visibility
-            ax.barh(str(p['partnership']), p['end_over'] - p['start_over'], left=p['start_over'], height=width, color=colors[i], alpha=0.7)
+            ax.barh(p['partnership_name'], p['end_over'] - p['start_over'], left=p['start_over'], height=width, color=colors[i], alpha=0.7)
 
     ax.set_title(f"Partnership Flow: Ribbon Width by Runs (Match {match_id})")
     ax.set_xlabel("Overs")

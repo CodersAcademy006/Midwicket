@@ -16,6 +16,9 @@ from typing import Dict, Any, Optional, List
 
 logger = logging.getLogger(__name__)
 
+class ReuseAddressTCPServer(socketserver.TCPServer):
+    allow_reuse_address = True
+
 # C5: module-level lock guards the overlay_server global singleton.
 # Without this, two threads calling OverlayServer.start() concurrently
 # could create competing instances and race on the global reference.
@@ -119,7 +122,7 @@ class OverlayServer:
 
         # Start server in background thread
         def run_server():
-            with socketserver.TCPServer((self.host, self.port), OverlayHandler) as httpd:
+            with ReuseAddressTCPServer((self.host, self.port), OverlayHandler) as httpd:
                 self.server = httpd
                 self.is_running = True
                 logger.info("Live Overlay Server started at http://%s:%s/overlay", self.host, self.port)
@@ -206,15 +209,16 @@ class LiveFeedSimulator:
                         ball_desc = str(outcome)
 
                     balls_in_over += 1
-                    current_over = over + (balls_in_over / 6)
+                    actual_overs = over + (balls_in_over / 6)
+                    display_overs = float(f"{int(over)}.{balls_in_over}")
 
                     # Update overlay
                     stats = LiveStats(
                         match_id=self.match_id,
-                        current_over=round(current_over, 1),
+                        current_over=display_overs,
                         current_score=score,
                         wickets_fallen=wickets,
-                        run_rate=round(score / current_over, 2) if current_over > 0 else 0.0,
+                        run_rate=round(score / actual_overs, 2) if actual_overs > 0 else 0.0,
                         batsman_on_strike=f"Batsman {wickets + 1}",
                         bowler=f"Bowler {(wickets % 5) + 1}",
                         last_ball=ball_desc
