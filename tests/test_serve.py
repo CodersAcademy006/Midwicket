@@ -521,12 +521,8 @@ class TestFastAPIApp:
 
     def test_auth_required_without_key(self, mock_session, monkeypatch):
         """When auth IS required, missing key returns 401."""
-        import os
-        import midwicket.serve.auth as auth_mod
-
         monkeypatch.setenv("MIDWICKET_API_KEYS", "valid-key")
-        # Patch the module-level constant directly since it's bound at import time
-        monkeypatch.setattr(auth_mod, "API_KEY_REQUIRED", True)
+        monkeypatch.setenv("MIDWICKET_API_KEY_REQUIRED", "true")
 
         from fastapi.testclient import TestClient
         app = create_app(session=mock_session, start_ingestor=False)
@@ -539,10 +535,8 @@ class TestFastAPIApp:
 
     def test_auth_accepted_with_valid_key(self, mock_session, monkeypatch):
         """Valid X-API-Key header is accepted."""
-        import midwicket.serve.auth as auth_mod
-
         monkeypatch.setenv("MIDWICKET_API_KEYS", "valid-key")
-        monkeypatch.setattr(auth_mod, "API_KEY_REQUIRED", True)
+        monkeypatch.setenv("MIDWICKET_API_KEY_REQUIRED", "true")
 
         from fastapi.testclient import TestClient
         app = create_app(session=mock_session, start_ingestor=False)

@@ -28,7 +28,7 @@ def _request_with_headers(headers: dict[str, str], client_host: str = "127.0.0.1
 
 
 def test_verify_api_key_accepts_bearer_token(monkeypatch):
-    monkeypatch.setattr("midwicket.serve.auth.API_KEY_REQUIRED", True)
+    monkeypatch.setenv("MIDWICKET_API_KEY_REQUIRED", "true")
     monkeypatch.setenv("MIDWICKET_API_KEYS", "abc123")
 
     req = _request_with_headers({"Authorization": "Bearer abc123"})
@@ -38,7 +38,7 @@ def test_verify_api_key_accepts_bearer_token(monkeypatch):
 
 
 def test_verify_api_key_accepts_legacy_x_api_key(monkeypatch):
-    monkeypatch.setattr("midwicket.serve.auth.API_KEY_REQUIRED", True)
+    monkeypatch.setenv("MIDWICKET_API_KEY_REQUIRED", "true")
     monkeypatch.setenv("MIDWICKET_API_KEYS", "legacy-key")
 
     req = _request_with_headers({"X-API-Key": "legacy-key"})
@@ -47,7 +47,7 @@ def test_verify_api_key_accepts_legacy_x_api_key(monkeypatch):
 
 
 def test_verify_api_key_rejects_missing_token(monkeypatch):
-    monkeypatch.setattr("midwicket.serve.auth.API_KEY_REQUIRED", True)
+    monkeypatch.setenv("MIDWICKET_API_KEY_REQUIRED", "true")
     monkeypatch.setenv("MIDWICKET_API_KEYS", "abc123")
 
     req = _request_with_headers({})

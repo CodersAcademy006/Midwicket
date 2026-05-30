@@ -19,7 +19,7 @@ except ImportError:
     jwt = None
     HAS_JWT = False
 
-from midwicket.config import get_secret_key, API_KEY_REQUIRED
+from midwicket.config import get_secret_key, is_api_key_required
 
 # Password hashing (conditional import)
 try:
@@ -55,9 +55,11 @@ def verify_api_key(
     Accepted request formats:
     - ``Authorization: Bearer <token>`` (preferred)
     - ``X-API-Key: <token>`` (backward compatibility)
-    When ``API_KEY_REQUIRED`` is ``False`` the check is skipped entirely.
+    When ``is_api_key_required()`` returns ``False`` the check is skipped entirely.
+    The env var ``MIDWICKET_API_KEY_REQUIRED`` is read at *call* time so it can
+    be toggled without restarting the process.
     """
-    if not API_KEY_REQUIRED:
+    if not is_api_key_required():
         global _AUTH_DISABLED_WARNED
         if not _AUTH_DISABLED_WARNED:
             logger.warning(

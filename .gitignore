@@ -153,6 +153,10 @@ data/.schema_version
 .schema_version
 fix.md
 
+# Local audit / defect tracking — not part of source (local only)
+bugs.md
+resolved.md
+
 # Audit / CI artifacts (generated at runtime, not source code)
 audit_reports/
 
