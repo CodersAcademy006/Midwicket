@@ -96,8 +96,10 @@ def get_secret_key() -> str:
             "Set the environment variable before starting the server."
         )
 
-    # Persistent development key
-    dev_secret_file = (DEFAULT_DATA_DIR / ".midwicket_dev_secret").resolve()
+    # Persistent development key — stored in the XDG config directory, NOT in
+    # the data cache directory, so that deleting cached data does not rotate
+    # the signing key (or vice versa).
+    dev_secret_file = (Path.home() / ".config" / "midwicket" / "dev_secret").resolve()
 
     try:
         dev_secret_file.parent.mkdir(parents=True, exist_ok=True)
