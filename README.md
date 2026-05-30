@@ -88,23 +88,28 @@ print(f"Win Probability: {result['win_prob']:.1%}")
 
 ---
 
-### Step 3 — Load the full historical dataset (optional)
+### Step 3 — Query player stats and head-to-head matchups (optional)
 
-When you are ready to query player stats, head-to-head records, and venue analysis
-across 10+ years of IPL data, run the one-time download (~50 MB from Cricsheet):
+Midwicket ships with a bundled in-memory dataset. Player stats and matchups
+work out of the box — no download needed:
 
 ```python
-from midwicket.data.loader import DataLoader
 import midwicket.express as px
-
-# Downloads once, cached locally at ~/.midwicket_data
-DataLoader().download()
 
 stats = px.get_player_stats("Virat Kohli")
 print(f"Player: {stats.name} | Runs: {stats.runs} | Strike Rate: {stats.strike_rate}")
 
 matchup = px.get_matchup("V Kohli", "JJ Bumrah")
 print(f"Head-to-head | Matches: {matchup.matches} | Average: {matchup.average:.1f}")
+```
+
+To download the full 10+ year IPL historical dataset (~50 MB from Cricsheet)
+for deeper analysis, run this once:
+
+```python
+import midwicket.express as px
+
+px.download_data()  # Downloads and caches to ./data by default
 ```
 
 ---
