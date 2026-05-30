@@ -524,7 +524,7 @@ boundary_count = len(filtered)
 
 ### Future Version Planning
 
-Midwicket is currently at version 0.1.0. When v1.0 is released, the following changes are planned:
+Midwicket is currently at version 0.1.1. When v1.0 is released, the following changes are planned:
 
 #### Planned Changes for v1.0
 
@@ -569,4 +569,4 @@ For migration assistance when v1.0 is released, refer to the release notes and u
 
 ---
 
-**Note**: This API documentation is for Midwicket v0.1.0. For the latest documentation, visit the [Midwicket repository](https://github.com/CodersAcademy006/Midwicket).
+**Note**: This API documentation is for Midwicket v0.1.1. For the latest documentation, visit the [Midwicket repository](https://github.com/CodersAcademy006/Midwicket).
