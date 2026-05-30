@@ -268,29 +268,56 @@ class ThreadSafeQueryEngine(QueryEngine):
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS ball_events (
                     match_id VARCHAR,
+                    date DATE,
+                    venue_id INTEGER,
                     inning INTEGER,
                     over INTEGER,
                     ball INTEGER,
-                    runs_total INTEGER,
-                    wickets_fallen INTEGER,
-                    target INTEGER,
+                    batter_id INTEGER,
+                    bowler_id INTEGER,
+                    non_striker_id INTEGER,
+                    batting_team_id INTEGER,
+                    bowling_team_id INTEGER,
+                    runs_batter INTEGER,
+                    runs_extras INTEGER,
+                    extras_type VARCHAR,
+                    is_wicket BOOLEAN,
+                    wicket_type VARCHAR,
+                    phase VARCHAR,
+                    batter VARCHAR,
+                    bowler VARCHAR,
                     venue VARCHAR,
-                    timestamp DOUBLE
+                    player_dismissed VARCHAR
                 )
             """)
             
-            # Schema Migration for v1 additions (e.g. extras_type)
+            # Schema Migration for v1 additions (if created with legacy schema)
             cols = self._table_columns_conn(conn, "ball_events")
-            if "extras_type" not in cols:
-                try:
-                    conn.execute("ALTER TABLE ball_events ADD COLUMN extras_type VARCHAR")
-                except Exception:
-                    pass
-            if "player_dismissed" not in cols:
-                try:
-                    conn.execute("ALTER TABLE ball_events ADD COLUMN player_dismissed VARCHAR")
-                except Exception:
-                    pass
+            v1_columns = {
+                "date": "DATE",
+                "venue_id": "INTEGER",
+                "batter_id": "INTEGER",
+                "bowler_id": "INTEGER",
+                "non_striker_id": "INTEGER",
+                "batting_team_id": "INTEGER",
+                "bowling_team_id": "INTEGER",
+                "runs_batter": "INTEGER",
+                "runs_extras": "INTEGER",
+                "extras_type": "VARCHAR",
+                "is_wicket": "BOOLEAN",
+                "wicket_type": "VARCHAR",
+                "phase": "VARCHAR",
+                "batter": "VARCHAR",
+                "bowler": "VARCHAR",
+                "venue": "VARCHAR",
+                "player_dismissed": "VARCHAR",
+            }
+            for col_name, col_type in v1_columns.items():
+                if col_name not in cols:
+                    try:
+                        conn.execute(f"ALTER TABLE ball_events ADD COLUMN {col_name} {col_type}")
+                    except Exception:
+                        pass
 
     @property
     def snapshot_id(self) -> str:

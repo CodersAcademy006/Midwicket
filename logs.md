@@ -14,3 +14,11 @@
 - **Date Resolved:** 2026-05-30
 - **PR:** #58
 
+## MW-003: `ThreadSafeQueryEngine._ensure_schema` creates legacy `ball_events` table
+- **Severity:** P1
+- **Area:** Schema
+- **Fix:** Replaced legacy columns in `_ensure_schema` inside `midwicket/storage/thread_safe_engine.py` with the full unified V1 schema definition, and added self-healing migration alterations to update existing legacy schema databases dynamically on start.
+- **Date Resolved:** 2026-05-30
+- **PR:** #59
+
+
