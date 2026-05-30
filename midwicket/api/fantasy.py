@@ -135,27 +135,53 @@ def fantasy_score(
 
         # --- Bowling stats ---
         bowl_sql = f"""  -- nosec B608
+            WITH per_match AS (
+                SELECT
+                    match_id,
+                    COUNT(*)                                                  AS match_balls,
+                    SUM(CASE WHEN is_wicket AND wicket_type NOT IN ('RUN_OUT', 'OBSTRUCTING_THE_FIELD', 'RETIRED_HURT', 'RETIRED_OUT', 'RETIRED_NOT_OUT') THEN 1 ELSE 0 END) AS match_wickets,
+                    SUM(runs_batter + CASE WHEN extras_type IN ('wides', 'noballs') THEN runs_extras ELSE 0 END) AS match_runs_conceded
+                FROM ball_events
+                WHERE bowler = ? {season_clause}
+                GROUP BY match_id
+            ),
+            with_econ AS (
+                SELECT
+                    match_balls,
+                    match_wickets,
+                    match_runs_conceded,
+                    CASE WHEN match_balls >= 6 THEN (match_runs_conceded * 6.0 / match_balls) ELSE NULL END AS match_economy
+                FROM per_match
+            )
             SELECT
-                COUNT(DISTINCT match_id)                                  AS matches,
-                COUNT(*)                                                  AS balls,
-                SUM(CASE WHEN is_wicket AND wicket_type NOT IN ('RUN_OUT', 'OBSTRUCTING_THE_FIELD', 'RETIRED_HURT', 'RETIRED_OUT', 'RETIRED_NOT_OUT') THEN 1 ELSE 0 END)               AS wickets,
-                SUM(runs_batter + CASE WHEN extras_type IN ('wides', 'noballs') THEN runs_extras ELSE 0 END) AS runs_conceded
-            FROM ball_events
-            WHERE bowler = ? {season_clause}
+                COUNT(*)                                                     AS matches,
+                SUM(match_balls)                                             AS balls,
+                SUM(match_wickets)                                           AS wickets,
+                SUM(match_runs_conceded)                                     AS runs_conceded,
+                SUM(CASE 
+                    WHEN match_economy IS NOT NULL AND match_economy < 7 THEN ? 
+                    WHEN match_economy IS NOT NULL AND match_economy < 8 THEN ? 
+                    ELSE 0 
+                END)                                                         AS econ_bonus
+            FROM with_econ
         """
+        params_bowl = [player_name] + ([season] if season else []) + [weights["economy_bonus_lt7"], weights["economy_bonus_lt8"]]
         bowl_res = session.engine.execute_sql(bowl_sql, params=params_bowl).to_pydict()
         bowl_balls = int((bowl_res.get("balls") or [0])[0] or 0)
         wickets = int((bowl_res.get("wickets") or [0])[0] or 0)
         runs_conceded = int((bowl_res.get("runs_conceded") or [0])[0] or 0)
+        if "econ_bonus" in bowl_res:
+            econ_bonus = float((bowl_res.get("econ_bonus") or [0])[0] or 0)
+        else:
+            economy = (runs_conceded / (bowl_balls / 6)) if bowl_balls >= 6 else None
+            econ_bonus = 0.0
+            if economy is not None:
+                if economy < 7:
+                    econ_bonus = float(weights["economy_bonus_lt7"])
+                elif economy < 8:
+                    econ_bonus = float(weights["economy_bonus_lt8"])
 
         economy = (runs_conceded / (bowl_balls / 6)) if bowl_balls >= 6 else None
-        econ_bonus = 0
-        if economy is not None:
-            if economy < 7:
-                econ_bonus = weights["economy_bonus_lt7"]
-            elif economy < 8:
-                econ_bonus = weights["economy_bonus_lt8"]
-
         bowl_pts = float(wickets * weights["wicket"] + econ_bonus)
 
         total = bat_pts + bowl_pts

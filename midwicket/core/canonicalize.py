@@ -52,6 +52,7 @@ def canonicalize_match(match_data: Dict[str, Any], registry: IdentityRegistry, m
         'phase': [],
         # Denormalized names for analytics convenience (mirror IDs above)
         'batter': [], 'bowler': [], 'venue': [],
+        'player_dismissed': [],
     }
 
     # --- 3. Iterate & Flatten ---
@@ -146,8 +147,10 @@ def canonicalize_match(match_data: Dict[str, Any], registry: IdentityRegistry, m
                     }
                     dismissal_type = wicket_mapping.get(wicket_kind.lower(), DismissalType.BOWLED)  # Default to bowled
                     buffers['wicket_type'].append(dismissal_type.name)
+                    buffers['player_dismissed'].append(wickets[0].get('player'))
                 else:
                     buffers['wicket_type'].append(None)
+                    buffers['player_dismissed'].append(None)
                 
                 buffers['phase'].append(phase)
 

@@ -45,7 +45,8 @@ CREATE TABLE ball_events (
     phase           VARCHAR DEFAULT 'Middle',
     batter          VARCHAR DEFAULT '',
     bowler          VARCHAR DEFAULT '',
-    venue           VARCHAR DEFAULT ''
+    venue           VARCHAR DEFAULT '',
+    player_dismissed VARCHAR DEFAULT NULL
 )
 """
 
@@ -73,6 +74,7 @@ def _seed(con: duckdb.DuckDBPyConnection) -> None:
                 "BOWLED" if is_w else None,
                 phase,
                 BATTER, BOWLER, "Wankhede",
+                BATTER if is_w else None,
             ))
 
     # Match 2 — Kohli bats again, Eden Gardens, 2022-04-10
@@ -89,6 +91,7 @@ def _seed(con: duckdb.DuckDBPyConnection) -> None:
                 None,
                 phase,
                 BATTER, "Another Bowler", "Eden Gardens",
+                None,
             ))
 
     # Match 3 — Sharma bats
@@ -104,6 +107,7 @@ def _seed(con: duckdb.DuckDBPyConnection) -> None:
                 None,
                 phase,
                 BATTER2, BOWLER, "Wankhede",
+                None,
             ))
 
     # Bumrah bowls in M003 — add bowling rows (different batter facing)
@@ -120,6 +124,7 @@ def _seed(con: duckdb.DuckDBPyConnection) -> None:
                 "CAUGHT" if is_w else None,
                 phase,
                 "Other Batter", BOWLER, "Wankhede",
+                "Other Batter" if is_w else None,
             ))
 
     con.executemany("""
@@ -128,9 +133,9 @@ def _seed(con: duckdb.DuckDBPyConnection) -> None:
             batter_id, bowler_id, non_striker_id,
             batting_team_id, bowling_team_id,
             runs_batter, runs_extras, is_wicket, wicket_type, phase,
-            batter, bowler, venue
+            batter, bowler, venue, player_dismissed
         ) VALUES (
-            ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+            ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
         )
     """, rows)
 
@@ -557,15 +562,15 @@ class TestCricketStatsCorrectness:
         # 2. A noball where batter scores 4 runs (runs_batter=4, runs_extras=1, extras_type='noballs')
         # 3. A normal ball where batter scores 1 run (runs_batter=1)
         test_rows = [
-            ("M999", "2026-05-29", 99, 1, 0, 1, 100, 200, 101, 1, 2, 0, 1, "wides", False, None, "Middle", "Test Batter", "Test Bowler", "Test Venue"),
-            ("M999", "2026-05-29", 99, 1, 0, 2, 100, 200, 101, 1, 2, 4, 1, "noballs", False, None, "Middle", "Test Batter", "Test Bowler", "Test Venue"),
-            ("M999", "2026-05-29", 99, 1, 0, 3, 100, 200, 101, 1, 2, 1, 0, None, False, None, "Middle", "Test Batter", "Test Bowler", "Test Venue")
+            ("M999", "2026-05-29", 99, 1, 0, 1, 100, 200, 101, 1, 2, 0, 1, "wides", False, None, "Middle", "Test Batter", "Test Bowler", "Test Venue", None),
+            ("M999", "2026-05-29", 99, 1, 0, 2, 100, 200, 101, 1, 2, 4, 1, "noballs", False, None, "Middle", "Test Batter", "Test Bowler", "Test Venue", None),
+            ("M999", "2026-05-29", 99, 1, 0, 3, 100, 200, 101, 1, 2, 1, 0, None, False, None, "Middle", "Test Batter", "Test Bowler", "Test Venue", None)
         ]
         
         def _get_seeded_con():
             con = duckdb.connect(":memory:")
             con.execute(_SCHEMA)
-            con.executemany("INSERT INTO ball_events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", test_rows)
+            con.executemany("INSERT INTO ball_events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", test_rows)
             return con
         
         # Patch _get_con to return our custom seeded connection creator
@@ -583,4 +588,25 @@ class TestCricketStatsCorrectness:
         assert bowl_stats["balls_bowled"] == 1  # normal ball only, excludes wide and noball
         assert bowl_stats["runs_conceded"] == 7  # 4 batter runs + 1 wide penalty + 1 noball penalty
         assert bowl_stats["economy"] == 42.0  # 7 runs / (1/6 overs) = 42.0
+
+    def test_non_striker_dismissal_correctness(self, monkeypatch):
+        test_rows = [
+            ("M888", "2026-05-29", 99, 1, 0, 1, 100, 200, 101, 1, 2, 1, 0, None, True, "RUN_OUT", "Middle", "Striker", "Bowler", "Venue", "NonStriker")
+        ]
+        
+        def _get_seeded_con():
+            con = duckdb.connect(":memory:")
+            con.execute(_SCHEMA)
+            con.executemany("INSERT INTO ball_events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", test_rows)
+            return con
+            
+        monkeypatch.setattr(pa, "_get_con", _get_seeded_con)
+        
+        striker_stats = pa.career_batting("Striker")
+        assert striker_stats["innings"] - striker_stats["not_outs"] == 0
+        assert striker_stats["not_outs"] == 1
+        
+        non_striker_stats = pa.career_batting("NonStriker")
+        assert non_striker_stats["innings"] - non_striker_stats["not_outs"] == 1
+        assert non_striker_stats["not_outs"] == 0
 
