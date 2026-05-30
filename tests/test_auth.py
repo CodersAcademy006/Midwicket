@@ -32,14 +32,8 @@ class TestVerifyApiKey:
         return req
 
     def test_skipped_when_not_required(self, monkeypatch):
-        """When API_KEY_REQUIRED is false, verify_api_key returns True."""
+        """When is_api_key_required() is false, verify_api_key returns True."""
         monkeypatch.setenv("MIDWICKET_API_KEY_REQUIRED", "false")
-        # Re-import to pick up env change
-        import importlib
-        import midwicket.serve.auth as auth_mod
-        import midwicket.config as cfg_mod
-        monkeypatch.setattr(cfg_mod, "API_KEY_REQUIRED", False)
-
         from midwicket.serve.auth import verify_api_key
         result = verify_api_key(self._make_request({}), credentials=None)
         assert result is True
@@ -47,8 +41,8 @@ class TestVerifyApiKey:
     def test_bearer_token_accepted(self, monkeypatch):
         """Valid Bearer token is accepted."""
         monkeypatch.setenv("MIDWICKET_API_KEYS", "my-secret-key")
+        monkeypatch.setenv("MIDWICKET_API_KEY_REQUIRED", "true")
         import midwicket.serve.auth as auth_mod
-        monkeypatch.setattr(auth_mod, "API_KEY_REQUIRED", True)
 
         from fastapi.security import HTTPAuthorizationCredentials
         creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="my-secret-key")
@@ -58,8 +52,8 @@ class TestVerifyApiKey:
     def test_x_api_key_header_accepted(self, monkeypatch):
         """Valid X-API-Key header is accepted when no Bearer token present."""
         monkeypatch.setenv("MIDWICKET_API_KEYS", "header-key")
+        monkeypatch.setenv("MIDWICKET_API_KEY_REQUIRED", "true")
         import midwicket.serve.auth as auth_mod
-        monkeypatch.setattr(auth_mod, "API_KEY_REQUIRED", True)
 
         req = self._make_request({"X-API-Key": "header-key"})
         result = auth_mod.verify_api_key(req, credentials=None)
@@ -68,8 +62,8 @@ class TestVerifyApiKey:
     def test_missing_key_raises_401(self, monkeypatch):
         """No token and no X-API-Key header raises 401."""
         monkeypatch.setenv("MIDWICKET_API_KEYS", "some-key")
+        monkeypatch.setenv("MIDWICKET_API_KEY_REQUIRED", "true")
         import midwicket.serve.auth as auth_mod
-        monkeypatch.setattr(auth_mod, "API_KEY_REQUIRED", True)
 
         from fastapi import HTTPException
         with pytest.raises(HTTPException) as exc_info:
@@ -79,8 +73,8 @@ class TestVerifyApiKey:
     def test_wrong_key_raises_401(self, monkeypatch):
         """Wrong API key raises 401."""
         monkeypatch.setenv("MIDWICKET_API_KEYS", "correct-key")
+        monkeypatch.setenv("MIDWICKET_API_KEY_REQUIRED", "true")
         import midwicket.serve.auth as auth_mod
-        monkeypatch.setattr(auth_mod, "API_KEY_REQUIRED", True)
 
         from fastapi.security import HTTPAuthorizationCredentials
         from fastapi import HTTPException
@@ -92,8 +86,8 @@ class TestVerifyApiKey:
     def test_no_keys_configured_raises_503(self, monkeypatch):
         """When auth is required but MIDWICKET_API_KEYS is empty, returns 503."""
         monkeypatch.setenv("MIDWICKET_API_KEYS", "")
+        monkeypatch.setenv("MIDWICKET_API_KEY_REQUIRED", "true")
         import midwicket.serve.auth as auth_mod
-        monkeypatch.setattr(auth_mod, "API_KEY_REQUIRED", True)
 
         from fastapi.security import HTTPAuthorizationCredentials
         from fastapi import HTTPException

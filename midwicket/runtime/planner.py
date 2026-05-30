@@ -80,12 +80,22 @@ class QueryPlanner:
 
     def plan(self, query: BaseQuery) -> Dict[str, Any]:
         """
-        Unified query planner — the preferred, non-legacy entry point.
+        Unified query planner — the preferred entry point for all new code.
 
-        Identical contract to ``create_legacy_plan`` but uses the built-in
-        ``_QUERY_PREFERRED_TABLES`` map as the primary routing authority.
-        Call this from new code; ``create_legacy_plan`` is retained for
-        backwards compatibility only.
+        Routing logic (MW-024):
+        1. Check ``_QUERY_PREFERRED_TABLES`` for a built-in table preference.
+        2. Check ``query.requires["preferred_tables"]`` for query-level hints.
+        3. For each candidate table, verify it is in ``_VALID_TABLES`` *and*
+           present in ``engine.derived_versions`` (i.e., actually materialised).
+        4. Fall back to a raw scan against ``ball_events`` when no materialised
+           table is available.
+
+        Only tables registered in ``_VALID_TABLES`` can ever be selected; any
+        stale declaration in a query's ``requires`` dict is silently ignored so
+        a stale query definition never crashes the planner.
+
+        ``create_legacy_plan`` is retained for backwards compatibility and
+        delegates here unchanged.
         """
         return self.create_legacy_plan(query)
 

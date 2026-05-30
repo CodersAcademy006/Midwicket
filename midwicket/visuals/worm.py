@@ -120,90 +120,6 @@ def _add_cricket_grid(ax: Any) -> None:
     ax.set_xticks(range(0, 21))
     ax.set_xticks([i/6 for i in range(0, 120, 6)], minor=True)  # Minor ticks every ball
 
-def plot_worm_graph(match_id: str, bowler_id: int, session: Any, ax: Optional[Any] = None) -> Any:
-    """
-    Plots a worm graph (cumulative runs) for a bowler in a given match.
-
-    Args:
-        match_id (str): The match identifier.
-        bowler_id (int): The bowler's entity ID.
-        session (Any): Midwicket session object.
-        ax (Any, optional): Matplotlib axis. If None, creates a new figure.
-
-    Returns:
-        Any: The matplotlib axis with the plot.
-
-    Raises:
-        midwicket.exceptions.MatchDataMissing: If match data is not available.
-    """
-    import matplotlib.pyplot as plt
-    import pandas as pd
-    from midwicket.exceptions import MatchDataMissing
-
-    # Parameterized query - NO f-strings
-    query = """
-        SELECT 
-            over, 
-            ball, 
-            runs_batter + runs_extras as runs_conceded,
-            is_wicket
-        FROM ball_events 
-        WHERE match_id = ? 
-          AND bowler_id = ?
-        ORDER BY over, ball
-    """
-    
-    try:
-        # Execute with parameters
-        arrow_table = session.engine.execute_sql(query, [match_id, bowler_id])
-        df = arrow_table.to_pandas()
-    except (RuntimeError, AttributeError, TypeError, ValueError):
-        # DuckDB throws if table doesn't exist or other SQL errors
-        # We assume mostly it's missing data if the query fails on a valid schema
-        raise MatchDataMissing(f"Match ID {match_id} does not have ball-by-ball data")
-
-    if df.empty:
-        try:
-            bowler_table = session.engine.execute_sql("SELECT DISTINCT bowler_id FROM ball_events WHERE match_id = ?", [match_id])
-            bowler_df = bowler_table.to_pandas()
-            bowler_names = []
-            for bid in bowler_df['bowler_id'].tolist():
-                # Try to get name from registry
-                try:
-                    name = session.registry.con.execute("SELECT primary_name FROM entities WHERE id = ?", [bid]).fetchone()
-                    bowler_names.append(f"{name[0] if name else 'Unknown'} (ID: {bid})")
-                except (RuntimeError, AttributeError):
-                    bowler_names.append(f"ID: {bid}")
-            
-            bowlers_list = "\n".join(f"  - {name}" for name in bowler_names)
-            error_msg = f"No data found for bowler {bowler_id} in match {match_id}.\n\nBowlers who bowled in this match:\n{bowlers_list}\n\nTip: Try a different match where this bowler participated."
-        except (RuntimeError, AttributeError, TypeError):
-            error_msg = f"No data found for bowler {bowler_id} in match {match_id}. Ensure the match data is loaded."
-        
-        raise MatchDataMissing(error_msg)
-
-    df['cumulative_runs'] = df['runs_conceded'].cumsum()
-    df['ball_number'] = range(1, len(df) + 1)
-
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(10, 6))
-    
-    ax.plot(df['ball_number'], df['cumulative_runs'], marker='o', linestyle='-', color='blue', label='Bowler')
-    
-    # Highlight Wickets
-    wickets = df[df['is_wicket'] == True]
-    if not wickets.empty:
-        ax.scatter(wickets['ball_number'], wickets['cumulative_runs'], color='red', s=100, zorder=5, label='Wickets')
-
-    ax.set_title(f"Cumulative Runs Conceded (Match {match_id})")
-    ax.set_xlabel("Balls Bowled")
-    ax.set_ylabel("Cumulative Runs")
-    ax.legend()
-    ax.grid(True, linestyle='--', alpha=0.7)
-    
-    return ax
-
-
 def plot_match_worm(match_id: str, session: Any, ax: Optional[Any] = None) -> Any:
     """
     Plots cricket-native match worm: innings lines, wickets, par score. Hero metric: cumulative runs vs par.
@@ -578,56 +494,6 @@ def plot_momentum_swings(match_id: str, session: Any, ax: Optional[Any] = None) 
     ax.set_facecolor('whitesmoke')
     
     return ax
-    """
-    Plots a Manhattan chart: runs scored per over in a match.
-
-    Args:
-        match_id (str): The match identifier.
-        session (Any): Midwicket session object.
-        ax (Any, optional): Matplotlib axis. If None, creates a new figure.
-
-    Returns:
-        Any: The matplotlib axis with the plot.
-
-    Raises:
-        midwicket.exceptions.MatchDataMissing: If match data is not available.
-    """
-    import matplotlib.pyplot as plt
-    import pandas as pd
-    from midwicket.exceptions import MatchDataMissing
-
-    query = """
-        SELECT inning, over, SUM(runs_batter + runs_extras) as runs_per_over
-        FROM ball_events 
-        WHERE match_id = ?
-        GROUP BY inning, over
-        ORDER BY inning, over
-    """
-    
-    try:
-        arrow_table = session.engine.execute_sql(query, [match_id])
-        df = arrow_table.to_pandas()
-    except (RuntimeError, AttributeError, TypeError, ValueError):
-        raise MatchDataMissing(f"Match ID {match_id} does not have ball-by-ball data")
-
-    if df.empty:
-        raise MatchDataMissing(f"No data found for match {match_id}")
-
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(14, 8))
-
-    colors = ['darkgreen', 'darkblue']
-    for i, inning in enumerate(df['inning'].unique()):
-        inning_data = df[df['inning'] == inning]
-        ax.bar(inning_data['over'] + (i * 0.4), inning_data['runs_per_over'], width=0.4, color=colors[i], label=f'Inning {inning}')
-
-    ax.set_title(f"Manhattan Chart: Runs per Over (Match {match_id})")
-    ax.set_xlabel("Over")
-    ax.set_ylabel("Runs Scored")
-    ax.legend()
-    ax.grid(True, axis='y', linestyle=':', alpha=0.3)
-    
-    return ax
 
 
 def plot_manhattan(match_id: str, session: Any, ax: Optional[Any] = None) -> Any:
@@ -802,27 +668,7 @@ def plot_beehive(match_id: str, bowler_id: int, session: Any, ax: Optional[Any] 
     ax.legend(handles=legend_elements, loc='upper right')
 
     ax.set_title(f"Beehive: Pitch Map for Bowler {bowler_id} (Match {match_id})")
-    
-    return ax
-    
-    # Stumps at 0 yards
-    ax.axhline(0, color='black', linewidth=3, label='Stumps')
-    
-    # Off-side/leg-side markers
-    ax.axvline(-1.5, color='grey', linestyle='--', alpha=0.5, label='Off-side')
-    ax.axvline(1.5, color='grey', linestyle='--', alpha=0.5, label='Leg-side')
 
-    ax.set_xlim(-4, 4)
-    ax.set_ylim(0, 22)
-    ax.set_xlabel('Line (Off-side to Leg-side)')
-    ax.set_ylabel('Length (yards from stumps)')
-    ax.set_title(f"Beehive: Pitch Map (Match {match_id})")
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-    
-    # Invert y-axis so 0 is at bottom (stumps)
-    ax.invert_yaxis()
-    
     return ax
 
 

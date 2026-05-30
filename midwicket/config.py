@@ -145,7 +145,24 @@ def get_secret_key() -> str:
 
 # Secure default: require API key authentication unless explicitly disabled.
 # Set MIDWICKET_API_KEY_REQUIRED=false only for local development.
+#
+# MW-032: Keep a module-level alias so existing ``from config import
+# API_KEY_REQUIRED`` and ``monkeypatch.setattr(mod, "API_KEY_REQUIRED", …)``
+# callers continue to work.  New code should call ``is_api_key_required()``
+# which re-reads the env var at call time and therefore respects any
+# post-import env changes (e.g. test fixtures that set the var after loading).
 API_KEY_REQUIRED = os.getenv("MIDWICKET_API_KEY_REQUIRED", "true").lower() == "true"
+
+
+def is_api_key_required() -> bool:
+    """Return ``True`` unless ``MIDWICKET_API_KEY_REQUIRED`` is ``'false'``.
+
+    Unlike the module-level ``API_KEY_REQUIRED`` constant, this function
+    re-reads the environment variable on every call, so it correctly reflects
+    changes made after module import (e.g. in tests or hot-reload scenarios).
+    """
+    return os.getenv("MIDWICKET_API_KEY_REQUIRED", "true").lower() != "false"
+
 
 def is_production() -> bool:
     """Return True when MIDWICKET_ENV is set to 'production'."""
@@ -194,5 +211,5 @@ def get_config() -> dict:
         "api_port": API_PORT,
         "cors_origins": API_CORS_ORIGINS,
         "cache_ttl": CACHE_TTL,
-        "api_key_required": API_KEY_REQUIRED,
+        "api_key_required": is_api_key_required(),
     }

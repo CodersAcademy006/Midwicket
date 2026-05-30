@@ -104,7 +104,7 @@ class MidwicketAPI:
             # Raises when key is missing in production.
             get_secret_key()
 
-            if not auth_module.API_KEY_REQUIRED:
+            if not auth_module.is_api_key_required():
                 raise RuntimeError(
                     "MIDWICKET_API_KEY_REQUIRED must remain true in production."
                 )
@@ -113,7 +113,7 @@ class MidwicketAPI:
                 raise RuntimeError(
                     "MIDWICKET_API_KEYS must be configured in production."
                 )
-        elif not auth_module.API_KEY_REQUIRED:
+        elif not auth_module.is_api_key_required():
             logger.warning(
                 "API key authentication disabled (MIDWICKET_API_KEY_REQUIRED=false). "
                 "Use only for local development/testing."
