@@ -26,8 +26,7 @@ class _Session:
 @pytest.fixture()
 def app_auth(monkeypatch):
     """App with auth enforced (API_KEY_REQUIRED=True, a known valid key)."""
-    import midwicket.serve.auth as auth_mod
-    monkeypatch.setattr(auth_mod, "API_KEY_REQUIRED", True)
+    monkeypatch.setenv("MIDWICKET_API_KEY_REQUIRED", "true")
     monkeypatch.setenv("MIDWICKET_API_KEYS", "test-secret-key")
     return create_app(session=_Session(), start_ingestor=False)
 
@@ -35,8 +34,7 @@ def app_auth(monkeypatch):
 @pytest.fixture()
 def app_no_auth(monkeypatch):
     """App with auth disabled."""
-    import midwicket.serve.auth as auth_mod
-    monkeypatch.setattr(auth_mod, "API_KEY_REQUIRED", False)
+    monkeypatch.setenv("MIDWICKET_API_KEY_REQUIRED", "false")
     return create_app(session=_Session(), start_ingestor=False)
 
 

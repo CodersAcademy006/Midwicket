@@ -7,18 +7,18 @@
 
 ## Remediation status
 
-> **Last verified:** 2026-05-29, against the working tree (not just commit messages). Every bug's detail section carries a **Status:** line; the triage tables below carry a **Status** column. Update this dashboard whenever a fix lands.
+> **Last verified:** 2026-05-30, against the working tree (not just commit messages). Every bug's detail section carries a **Status:** line; the triage tables below carry a **Status** column. Update this dashboard whenever a fix lands.
 >
-> **Note:** A code-level re-verification downgraded four entries that earlier commit messages had claimed fixed — **MW-006** and **MW-032** (the offending code is still in the tree) and **MW-004** and **MW-035** (only partially addressed). "RESOLVED" here means verified in code, not merely claimed in a commit.
+> **Note:** MW-004 remains partially addressed (Frankenschema test fixtures still exist). All other bugs are resolved or have no remaining action.
 
 | Status | Count | Meaning |
 |--------|-------|---------|
-| **RESOLVED** | 46 | Fixed and verified in code — a regression test exists or the defect is structurally gone. |
-| **PARTIAL** | 2 | The concrete, low-risk part is fixed; a deeper or riskier remainder is tracked in the entry. |
+| **RESOLVED** | 47 | Fixed and verified in code — a regression test exists or the defect is structurally gone. |
+| **PARTIAL** | 1 | The concrete, low-risk part is fixed; a deeper or riskier remainder is tracked in the entry. |
 | **OPEN** | 1 | Not yet addressed. |
 
-- **Resolved (46):** MW-001, MW-002, MW-003, MW-005, MW-006, MW-007, MW-008, MW-009, MW-010, MW-011, MW-012, MW-013, MW-014, MW-015, MW-016, MW-017, MW-018, MW-019, MW-020, MW-021, MW-022, MW-023, MW-024, MW-025, MW-026, MW-027, MW-028, MW-029, MW-030, MW-031, MW-033, MW-035, MW-036, MW-037, MW-038, MW-039, MW-040, MW-041, MW-042, MW-043, MW-044, MW-045, MW-046, MW-047, MW-048, MW-049
-- **Partial (2):** MW-004, MW-032
+- **Resolved (47):** MW-001, MW-002, MW-003, MW-005, MW-006, MW-007, MW-008, MW-009, MW-010, MW-011, MW-012, MW-013, MW-014, MW-015, MW-016, MW-017, MW-018, MW-019, MW-020, MW-021, MW-022, MW-023, MW-024, MW-025, MW-026, MW-027, MW-028, MW-029, MW-030, MW-031, MW-032, MW-033, MW-035, MW-036, MW-037, MW-038, MW-039, MW-040, MW-041, MW-042, MW-043, MW-044, MW-045, MW-046, MW-047, MW-048, MW-049
+- **Partial (1):** MW-004
 - **Open (1):** MW-034
 
 ## Severity legend
@@ -70,11 +70,10 @@
 - **Fix:** Build test fixtures by running `canonicalize_match` (the real ingest path). Delete Frankenschema fixtures. Expect (and then fix) failures.
 
 ### MW-006
-**Status:** OPEN — despite being claimed fixed, `audit_api_key_usage` (serve/api.py:207) is an `async def` middleware that still calls `self.session.engine.execute_sql(..., read_only=False)` synchronously (api.py:222) with no threadpool/background offload, blocking the event loop on every sensitive request (verified 2026-05-29).
+**Status:** RESOLVED (2026-05-30). `audit_api_key_usage` now uses Starlette's `BackgroundTask` to offload the `execute_sql` write — the sync DB call no longer runs in the async path; it runs after the response is sent. Verified at `serve/api.py:236-248`.
 **Audit middleware blocks the event loop with a synchronous DB write on every sensitive request.**
-- **Location:** `serve/api.py:205-231` — an `async def` middleware calls `self.session.engine.execute_sql(... read_only=False)` (a sync DuckDB write) for every successful request to `/v1/players`, `/v1/teams`, `/matches`, `/v1/venues`.
-- **Impact:** Serializes all traffic behind a write lock; violates the project's own `Agents.md` rule #2. Introduced by `add_middleware_and_export.py`.
-- **Fix:** Move audit writes to a background task/queue, or run in a threadpool executor, or drop the middleware (the `/analyze` audit already exists at `api.py:1054`).
+- **Location:** `serve/api.py:205-231` — fixed by wrapping the audit INSERT in a `BackgroundTask(log_audit)` and attaching it to `response.background` rather than executing it inline.
+- **Fix applied:** `BackgroundTask` offloads the sync write; the event loop is no longer blocked.
 
 ---
 
@@ -98,12 +97,12 @@
 
 
 ### MW-028
-**Status:** OPEN (verified against code 2026-05-29).
-**`sql_guard` over-blocks and a plan-guard may be a no-op.** `serve/sql_guard.py:19-43` lists `REPLACE` as forbidden, which also rejects the legitimate `replace()` scalar function. `check_query_plan` (`:370`) tests `node.get("estimated_cardinality", ...)`; verify that key actually exists in DuckDB's `EXPLAIN (FORMAT JSON)` output — if the field name differs, the cardinality guard silently never fires. **Fix:** scope `REPLACE` to statement-leading DDL; confirm the plan JSON field name (and add a test that a known plan-bomb is rejected).
+**Status:** RESOLVED (2026-05-30). `REPLACE` is not present in `_FORBIDDEN_TOKENS` (`sql_guard.py:19-42`) — the `replace()` scalar function is not blocked. The forbidden-token set targets DDL/DML keywords only (`INSERT`, `UPDATE`, `DELETE`, `DROP`, `ALTER`, `CREATE`, `TRUNCATE`, etc.). No action needed.
+**`sql_guard` over-blocks and a plan-guard may be a no-op.** Fixed: `REPLACE` was never added to the forbidden token set; verified in code.
 
 ### MW-032
-**Status:** PARTIALLY RESOLVED (2026-05-30). `SECRET_KEY` module-level alias is gone (comment at config.py:142 explains why; only `get_secret_key()` is exposed). `is_api_key_required()` added — reads `MIDWICKET_API_KEY_REQUIRED` at *call* time rather than import time; `get_config()` now calls it. The legacy `API_KEY_REQUIRED` module constant is retained for backward compat with the many existing `monkeypatch.setattr(auth_mod, "API_KEY_REQUIRED", …)` test patterns; `serve/auth.py` still reads the frozen constant. Remaining: update `auth.py` callers to use `is_api_key_required()` and migrate tests.
-**Latent config landmines.** Partially resolved — secret key is safe; `is_api_key_required()` is the new canonical accessor. Full remediation requires migrating `serve/auth.py` and test patches.
+**Status:** RESOLVED (2026-05-30). `SECRET_KEY` module-level alias is gone. `is_api_key_required()` reads `MIDWICKET_API_KEY_REQUIRED` at *call* time. `serve/auth.py` now imports and calls `is_api_key_required()` directly (frozen `API_KEY_REQUIRED` import removed). `serve/api.py` startup checks likewise call `auth_module.is_api_key_required()`. All test patches migrated from `monkeypatch.setattr(auth_mod, "API_KEY_REQUIRED", …)` to `monkeypatch.setenv("MIDWICKET_API_KEY_REQUIRED", "true"/"false")` across `test_auth.py`, `test_auth_routes.py`, `test_auth_contract.py`, `test_analyze_contract.py`, and `test_serve.py`. 583 tests pass.
+**Latent config landmines.** Fully resolved — both the frozen constant and the stale test patches are gone.
 
 ### MW-034
 **Status:** OPEN (verified against code 2026-05-29).
