@@ -156,6 +156,7 @@ fix.md
 # Local audit / defect tracking — not part of source (local only)
 bugs.md
 resolved.md
+logs.md
 
 # Audit / CI artifacts (generated at runtime, not source code)
 audit_reports/
