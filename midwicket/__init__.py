@@ -44,8 +44,8 @@ import midwicket.api.stats as stats
 import midwicket.api.fantasy as fantasy
 import midwicket.api.sim as sim
 
-# Common query objects
-from .query.matchups import MatchupQuery
+# Common query objects — canonical source is query.base; query.matchups re-exports it
+from .query.base import MatchupQuery
 
 # Debug / mode helpers
 from .runtime.modes import set_debug_mode
