@@ -37,8 +37,11 @@ def test_auto_setup_session_is_thread_safe(monkeypatch, tmp_path: Path):
                 created.append(data_dir)
             self.data_dir = data_dir
 
-    monkeypatch.setattr(px, "DataLoader", _FakeLoader)
-    monkeypatch.setattr(px, "MidwicketSession", _FakeSession)
+    # DataLoader and MidwicketSession are now lazily imported inside
+    # _auto_setup_session; patch at their source modules so the lazy
+    # `from module import Class` picks up the fake.
+    monkeypatch.setattr("midwicket.data.loader.DataLoader", _FakeLoader)
+    monkeypatch.setattr("midwicket.api.session.MidwicketSession", _FakeSession)
     monkeypatch.setattr(px, "_cached_session", None)
     monkeypatch.setattr(px, "_cached_session_dir", None)
 
@@ -77,8 +80,8 @@ def test_auto_setup_session_rebuilds_for_different_dirs(monkeypatch, tmp_path: P
             created.append(data_dir)
             self.data_dir = data_dir
 
-    monkeypatch.setattr(px, "DataLoader", _FakeLoader)
-    monkeypatch.setattr(px, "MidwicketSession", _FakeSession)
+    monkeypatch.setattr("midwicket.data.loader.DataLoader", _FakeLoader)
+    monkeypatch.setattr("midwicket.api.session.MidwicketSession", _FakeSession)
     monkeypatch.setattr(px, "_cached_session", None)
     monkeypatch.setattr(px, "_cached_session_dir", None)
 
