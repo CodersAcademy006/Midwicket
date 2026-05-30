@@ -10,27 +10,29 @@ Usage:
     stats = px.get_player_stats("V Kohli")
 """
 
+# Only stdlib and typing at import time — all heavy SDK modules are imported
+# lazily inside the functions that use them (UXDX-08).  This keeps
+# `import midwicket.express as px; px.predict_win(...)` from loading the full
+# DuckDB / PyArrow / session stack unless it is actually needed.
+
 import logging
 import os
+import threading as _threading
 from pathlib import Path
-from typing import Optional, Any, Dict
-from midwicket.api.session import MidwicketSession
-from midwicket.data.loader import DataLoader
-from midwicket.storage.engine import QueryEngine
-from midwicket.runtime.executor import RuntimeExecutor
-from midwicket.runtime.cache_duckdb import DuckDBCache
-from midwicket.core.match_config import MatchConfig
-from midwicket.sources.cricsheet_loader import CricsheetLoader
+from typing import TYPE_CHECKING, Any, Dict, Optional
+
+if TYPE_CHECKING:
+    from midwicket.api.session import MidwicketSession
+    from midwicket.sources.cricsheet_loader import CricsheetLoader
 
 _log = logging.getLogger(__name__)
 
 # Global debug mode — protected by lock (M3)
-import threading as _threading
 _DEBUG_MODE = False
 _debug_lock = _threading.Lock()
 
-# Global session cache for quick_load
-_cached_session: Optional[MidwicketSession] = None
+# Global session cache for quick_load (Any avoids importing MidwicketSession at module load)
+_cached_session: Optional[Any] = None
 _cached_session_dir: Optional[str] = None
 _session_lock = _threading.Lock()
 
@@ -54,9 +56,11 @@ def set_debug_mode(enabled: bool = True) -> None:
     if enabled:
         _log.info("Debug mode enabled: Queries will execute eagerly for immediate error feedback.")
 
+
 def _get_default_data_dir() -> Path:
     """Get default data directory (~/.midwicket_data)."""
     return Path.home() / ".midwicket_data"
+
 
 def _ensure_data_dir(data_dir: Optional[str] = None) -> str:
     """Ensure data directory exists or return ':memory:'."""
@@ -67,7 +71,8 @@ def _ensure_data_dir(data_dir: Optional[str] = None) -> str:
         path.mkdir(parents=True, exist_ok=True)
     return str(path)
 
-def _auto_setup_session(data_dir: Optional[str] = None, auto_download: bool = False) -> MidwicketSession:
+
+def _auto_setup_session(data_dir: Optional[str] = None, auto_download: bool = False) -> Any:
     """Auto-setup session with caching. Does not download data by default."""
     global _cached_session, _cached_session_dir
 
@@ -76,13 +81,16 @@ def _auto_setup_session(data_dir: Optional[str] = None, auto_download: bool = Fa
         if _cached_session is not None and _cached_session_dir == resolved:
             return _cached_session
 
+        from midwicket.api.session import MidwicketSession  # lazy
+        from midwicket.data.loader import DataLoader  # lazy
+
         if resolved == ":memory:":
             _cached_session = MidwicketSession(":memory:")
             _cached_session_dir = resolved
             return _cached_session
 
         data_path = Path(resolved)
-        
+
         if auto_download:
             loader = DataLoader(str(data_path))
             raw_present = loader.raw_dir.exists() and bool(list(loader.raw_dir.glob("*.json")))
@@ -96,6 +104,7 @@ def _auto_setup_session(data_dir: Optional[str] = None, auto_download: bool = Fa
         _cached_session = MidwicketSession(str(data_path))
         _cached_session_dir = resolved
         return _cached_session
+
 
 def download_data(data_dir: Optional[str] = None) -> None:
     """Download the full historical IPL dataset (~50 MB from Cricsheet).
@@ -114,11 +123,13 @@ def download_data(data_dir: Optional[str] = None) -> None:
     if path == ":memory:":
         _log.info("In-memory mode: dataset is pre-loaded from the bundled ZIP.")
         return
+    from midwicket.data.loader import DataLoader  # lazy
     loader = DataLoader(path)
     _log.info("Downloading historical dataset to %s ...", path)
     loader.download()
 
-def load_competition(competition: str, season: int, data_dir: Optional[str] = None) -> CricsheetLoader:
+
+def load_competition(competition: str, season: int, data_dir: Optional[str] = None) -> "CricsheetLoader":
     """Return a CricsheetLoader filtered to a specific competition and season.
 
     Defaults to the in-memory bundled dataset (same default as all other
@@ -135,8 +146,10 @@ def load_competition(competition: str, season: int, data_dir: Optional[str] = No
         ipl = px.load_competition("ipl", 2023)
         match_ids = ipl.get_match_ids()
     """
+    from midwicket.sources.cricsheet_loader import CricsheetLoader  # lazy
     loader_dir = data_dir if data_dir is not None else ":memory:"
     return CricsheetLoader(loader_dir, competition=competition, season=season)
+
 
 def _check_dataset_exists(data_dir: Optional[str] = None) -> None:
     resolved = _ensure_data_dir(data_dir)
@@ -146,7 +159,8 @@ def _check_dataset_exists(data_dir: Optional[str] = None) -> None:
     path = Path(resolved)
     raw_dir = path / "raw" / "ipl"
     if not raw_dir.exists() or not any(raw_dir.glob("*.json")):
-        raise FileNotFoundError("Dataset not loaded. Please run DataLoader().download() or px.download_data() first.")
+        raise FileNotFoundError("Dataset not loaded. Please run px.download_data() first.")
+
 
 def get_player_stats(player_name: str, data_dir: Optional[str] = None) -> Any:
     """
@@ -166,13 +180,14 @@ def get_player_stats(player_name: str, data_dir: Optional[str] = None) -> Any:
     _check_dataset_exists(data_dir)
     if not player_name:
         raise ValueError("Player name cannot be empty.")
-    
+
     session = _auto_setup_session(data_dir)
     stats = session.get_player_stats(player_name)
     if stats is None:
         from midwicket.storage.registry import EntityNotFoundError
         raise EntityNotFoundError(f"Player '{player_name}' not found in the registry.")
     return stats
+
 
 def get_matchup(batter: str, bowler: str, data_dir: Optional[str] = None) -> Any:
     """
@@ -190,7 +205,6 @@ def get_matchup(batter: str, bowler: str, data_dir: Optional[str] = None) -> Any
         result = px.get_matchup("V Kohli", "JJ Bumrah")
         print(f"Matches: {result.matches}, Avg: {result.average}")
     """
-    from datetime import date
     from midwicket.storage.registry import EntityNotFoundError
 
     _check_dataset_exists(data_dir)
@@ -229,11 +243,22 @@ def get_matchup(batter: str, bowler: str, data_dir: Optional[str] = None) -> Any
             raise
         raise EntityNotFoundError(f"No matchup data found between '{batter}' and '{bowler}': {exc}") from exc
 
-def predict_win(venue: str, target: int, current_score: int, wickets_down: int, overs_done: float, data_dir: Optional[str] = None) -> Dict[str, float]:
+
+def predict_win(
+    venue: str,
+    target: int,
+    current_score: int,
+    wickets_down: int,
+    overs_done: float,
+    data_dir: Optional[str] = None,
+) -> Dict[str, float]:
     """Predict win probability for the chasing team.
 
     Uses the bundled retrained logistic model.  Venue materially affects
     the result via per-venue adjustment factors learned during training.
+
+    This function is intentionally lightweight: it only imports the
+    win-probability model, not the full session/storage stack.
 
     Args:
         venue: Venue name (e.g. ``"Wankhede Stadium"``).  Drives a
@@ -263,9 +288,8 @@ def predict_win(venue: str, target: int, current_score: int, wickets_down: int, 
         print(f"Win probability: {prob['win_prob']:.1%}")
     """
     if data_dir:
-        from midwicket.models.registry import ModelRegistry
         from midwicket.exceptions import ModelNotFoundError, ModelTrainingError
-        from pathlib import Path
+        from midwicket.models.registry import ModelRegistry
         model_path = Path(data_dir) / "models"
         if model_path.exists():
             try:
@@ -276,11 +300,11 @@ def predict_win(venue: str, target: int, current_score: int, wickets_down: int, 
             except (ModelNotFoundError, ModelTrainingError):
                 pass
 
-    # Use the compute win probability function directly for express API
-    from midwicket.compute.winprob import win_probability
+    from midwicket.compute.winprob import win_probability  # lazy
     return win_probability(target, current_score, wickets_down, overs_done, venue)
 
-def quick_load(data_dir: Optional[str] = None) -> MidwicketSession:
+
+def quick_load(data_dir: Optional[str] = None) -> Any:
     """
     Return a ready-to-use MidwicketSession, downloading data automatically
     on first call if no local data is found (~50 MB IPL dataset).
@@ -298,6 +322,7 @@ def quick_load(data_dir: Optional[str] = None) -> MidwicketSession:
         session.load_match("1234567")
     """
     return _auto_setup_session(data_dir, auto_download=True)
+
 
 # Export convenience functions
 # download_data is the canonical way to fetch the full historical dataset.
