@@ -793,5 +793,119 @@ class TestFastAPIApp:
             response = client.get("/matches")
         assert response.status_code == 500
 
+class TestBulkExport:
+    """Tests for the /v1/export endpoint."""
+
+    @pytest.fixture
+    def mock_session(self):
+        session = Mock()
+        session.registry = Mock()
+        session.engine = Mock()
+        # Stub out audit_log and sequence setup so the app initialises cleanly
+        def _execute_sql(sql, *args, **kwargs):
+            normalized = " ".join(str(sql).split()).lower()
+            if "create" in normalized or "sequence" in normalized:
+                return Mock(to_pydict=lambda: {})
+            return Mock(to_pydict=lambda: {})
+        session.engine.execute_sql.side_effect = _execute_sql
+        return session
+
+    def _app_with_export_data(self, mock_session, rows):
+        """Return a TestClient whose /v1/export returns the supplied rows."""
+        import pyarrow as pa
+        from fastapi.testclient import TestClient
+        import midwicket.config as cfg_mod
+
+        arrow_result = pa.table(rows)
+
+        call_tracker = {"n": 0}
+
+        def _execute_sql(sql, *args, **kwargs):
+            normalized = " ".join(str(sql).split()).lower()
+            if "create" in normalized or "sequence" in normalized:
+                return Mock(to_pydict=lambda: {})
+            if "select" in normalized:
+                call_tracker["n"] += 1
+                return arrow_result
+            return Mock(to_pydict=lambda: {})
+
+        mock_session.engine.execute_sql.side_effect = _execute_sql
+        app = create_app(session=mock_session, start_ingestor=False)
+
+        # Disable API-key auth for these tests
+        import midwicket.serve.api as api_mod
+        orig = api_mod.is_api_key_required
+        api_mod.is_api_key_required = lambda: False
+        client = TestClient(app)
+        yield client, call_tracker
+        api_mod.is_api_key_required = orig
+
+    def test_export_valid_table(self, mock_session, monkeypatch):
+        """Valid table name returns 200 with a list of records."""
+        import pyarrow as pa
+        from fastapi.testclient import TestClient
+        import midwicket.serve.auth as auth_mod
+
+        rows = {"match_id": ["m1", "m2"], "inning": [1, 2]}
+        arrow_result = pa.table(rows)
+
+        def _execute_sql(sql, *args, **kwargs):
+            normalized = " ".join(str(sql).split()).lower()
+            if "create" in normalized or "sequence" in normalized:
+                return Mock(to_pydict=lambda: {})
+            return arrow_result
+
+        mock_session.engine.execute_sql.side_effect = _execute_sql
+
+        monkeypatch.setattr(auth_mod, "is_api_key_required", lambda: False)
+        app = create_app(session=mock_session, start_ingestor=False)
+
+        with TestClient(app) as client:
+            response = client.get("/v1/export?table=ball_events&limit=50")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["table"] == "ball_events"
+        assert isinstance(body["data"], list)
+
+    def test_export_invalid_table_rejected(self, mock_session, monkeypatch):
+        """A table name not in the allowlist is rejected with 400."""
+        from fastapi.testclient import TestClient
+        import midwicket.serve.auth as auth_mod
+
+        monkeypatch.setattr(auth_mod, "is_api_key_required", lambda: False)
+        app = create_app(session=mock_session, start_ingestor=False)
+
+        with TestClient(app) as client:
+            response = client.get("/v1/export?table=admin_users")
+
+        assert response.status_code == 400
+
+    def test_export_all_allowed_tables_accepted(self, mock_session, monkeypatch):
+        """Every table in the allowlist is accepted (no false positives)."""
+        import pyarrow as pa
+        from fastapi.testclient import TestClient
+        import midwicket.serve.auth as auth_mod
+
+        arrow_result = pa.table({"col": pa.array([], type=pa.string())})
+
+        def _execute_sql(sql, *args, **kwargs):
+            normalized = " ".join(str(sql).split()).lower()
+            if "create" in normalized or "sequence" in normalized:
+                return Mock(to_pydict=lambda: {})
+            return arrow_result
+
+        mock_session.engine.execute_sql.side_effect = _execute_sql
+
+        monkeypatch.setattr(auth_mod, "is_api_key_required", lambda: False)
+        app = create_app(session=mock_session, start_ingestor=False)
+
+        allowed = ["ball_events", "matches", "players", "venues"]
+        with TestClient(app) as client:
+            for tbl in allowed:
+                resp = client.get(f"/v1/export?table={tbl}")
+                assert resp.status_code == 200, f"Allowed table {tbl!r} rejected unexpectedly"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

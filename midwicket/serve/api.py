@@ -973,7 +973,7 @@ class MidwicketAPI:
                 
             try:
                 t0 = time.time()
-                result = self.session.engine.execute_sql(f"SELECT * FROM {table} LIMIT ?", [limit], read_only=True)
+                result = self.session.engine.execute_sql(f"SELECT * FROM {table} LIMIT ?", [limit], read_only=True)  # nosec B608 – table is validated against a hardcoded allowlist on line above
                 duration_ms = (time.time() - t0) * 1000
                 rows = result.to_pydict()
                 
