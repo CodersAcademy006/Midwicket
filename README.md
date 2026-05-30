@@ -83,7 +83,7 @@ result = px.predict_win(
     overs_done=15.0,
 )
 print(f"Win Probability: {result['win_prob']:.1%}")
-# Win Probability: 34.2%
+# Win Probability: 22.5%
 ```
 
 ---
