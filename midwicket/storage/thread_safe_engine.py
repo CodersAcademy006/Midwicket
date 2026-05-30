@@ -445,24 +445,49 @@ class ThreadSafeQueryEngine(QueryEngine):
                         elif isinstance(match_date, str):
                             match_date = date.fromisoformat(match_date)
                         
+                        is_legacy_input = "runs_total" in delivery_data
+                        
                         if delivery_data.get("batter_id") is None:
-                            batter_name = delivery_data.get("batter") or "Unknown Batter"
-                            delivery_data["batter_id"] = registry.resolve_player(batter_name, match_date, auto_ingest=True)
+                            batter_name = delivery_data.get("batter")
+                            if batter_name is None and is_legacy_input:
+                                batter_name = "Unknown Batter"
+                            if batter_name is not None:
+                                delivery_data["batter_id"] = registry.resolve_player(batter_name, match_date, auto_ingest=True)
+                                
                         if delivery_data.get("bowler_id") is None:
-                            bowler_name = delivery_data.get("bowler") or "Unknown Bowler"
-                            delivery_data["bowler_id"] = registry.resolve_player(bowler_name, match_date, auto_ingest=True)
+                            bowler_name = delivery_data.get("bowler")
+                            if bowler_name is None and is_legacy_input:
+                                bowler_name = "Unknown Bowler"
+                            if bowler_name is not None:
+                                delivery_data["bowler_id"] = registry.resolve_player(bowler_name, match_date, auto_ingest=True)
+                                
                         if delivery_data.get("non_striker_id") is None:
-                            ns_name = delivery_data.get("non_striker") or "Unknown Non-Striker"
-                            delivery_data["non_striker_id"] = registry.resolve_player(ns_name, match_date, auto_ingest=True)
+                            ns_name = delivery_data.get("non_striker")
+                            if ns_name is None and is_legacy_input:
+                                ns_name = "Unknown Non-Striker"
+                            if ns_name is not None:
+                                delivery_data["non_striker_id"] = registry.resolve_player(ns_name, match_date, auto_ingest=True)
+                                
                         if delivery_data.get("venue_id") is None:
-                            venue_name = delivery_data.get("venue") or "Unknown Venue"
-                            delivery_data["venue_id"] = registry.resolve_venue(venue_name, match_date, auto_ingest=True)
+                            venue_name = delivery_data.get("venue")
+                            if venue_name is None and is_legacy_input:
+                                venue_name = "Unknown Venue"
+                            if venue_name is not None:
+                                delivery_data["venue_id"] = registry.resolve_venue(venue_name, match_date, auto_ingest=True)
+                                
                         if delivery_data.get("batting_team_id") is None:
-                            bt_name = delivery_data.get("batting_team") or "Unknown Batting Team"
-                            delivery_data["batting_team_id"] = registry.resolve_team(bt_name, match_date, auto_ingest=True)
+                            bt_name = delivery_data.get("batting_team")
+                            if bt_name is None and is_legacy_input:
+                                bt_name = "Unknown Batting Team"
+                            if bt_name is not None:
+                                delivery_data["batting_team_id"] = registry.resolve_team(bt_name, match_date, auto_ingest=True)
+                                
                         if delivery_data.get("bowling_team_id") is None:
-                            bot_name = delivery_data.get("bowling_team") or "Unknown Bowling Team"
-                            delivery_data["bowling_team_id"] = registry.resolve_team(bot_name, match_date, auto_ingest=True)
+                            bot_name = delivery_data.get("bowling_team")
+                            if bot_name is None and is_legacy_input:
+                                bot_name = "Unknown Bowling Team"
+                            if bot_name is not None:
+                                delivery_data["bowling_team_id"] = registry.resolve_team(bot_name, match_date, auto_ingest=True)
 
                 required_schema_v1 = [
                     "match_id",
