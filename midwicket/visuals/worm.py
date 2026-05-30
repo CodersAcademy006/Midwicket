@@ -284,7 +284,12 @@ def plot_run_pressure(match_id: str, session: Any, ax: Optional[Any] = None, bal
 
     # Dot-ball % (secondary) — single twin axis created once to avoid stacked axes
     df['is_dot'] = df['runs_scored'] == 0
-    df['dot_pct'] = df.groupby('inning')['is_dot'].expanding().mean() * 100
+    # transform keeps the original RangeIndex; groupby().expanding().mean() would
+    # produce a MultiIndex that cannot be assigned back directly (pandas 2.x).
+    df['dot_pct'] = (
+        df.groupby('inning')['is_dot']
+        .transform(lambda x: x.expanding().mean()) * 100
+    )
     ax2 = ax.twinx()
     ax2.set_ylabel('Dot-ball %', color='red')
     ax2.tick_params(axis='y', labelcolor='red')
