@@ -39,6 +39,15 @@ class LiveDeliverySchema(BaseModel):
     is_wicket: Optional[bool] = False
     wicket_type: Optional[str] = None
     player_out: Optional[str] = None
+    
+    # V1 Schema support (MW-004)
+    date: Optional[str] = None
+    venue: Optional[str] = None
+    non_striker: Optional[str] = None
+    batting_team: Optional[str] = None
+    bowling_team: Optional[str] = None
+    extras_type: Optional[str] = None
+    player_dismissed: Optional[str] = None
 
 logger = logging.getLogger(__name__)
 
@@ -529,6 +538,8 @@ class StreamIngestor:
 
         # ensure it's still a dict when passing to engine
         valid_data = validated.model_dump(exclude_none=True) if hasattr(validated, 'model_dump') else validated.dict(exclude_none=True)
+        if 'player_dismissed' not in valid_data and 'player_out' in valid_data:
+            valid_data['player_dismissed'] = valid_data['player_out']
         self.query_engine.insert_live_delivery(valid_data)
         logger.debug("ingestor: ingested delivery for match %s: %s", match_id, valid_data)
 
