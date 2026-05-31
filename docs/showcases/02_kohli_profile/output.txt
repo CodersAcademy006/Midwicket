@@ -1,0 +1,44 @@
+=== Virat Kohli IPL Profile ===
+
+Season-by-season:
+ season  runs  balls  matches    sr
+   2008 165.0    168       12  98.2
+   2009 246.0    225       13 109.3
+   2010 307.0    216       13 142.1
+   2011 557.0    473       16 117.8
+   2012 364.0    333       15 109.3
+   2013 639.0    471       16 135.7
+   2014 359.0    301       14 119.3
+   2015 505.0    395       16 127.8
+   2016 973.0    655       16 148.5
+   2017 308.0    257       10 119.8
+   2018 530.0    385       14 137.7
+   2019 464.0    332       14 139.8
+   2020 471.0    402       15 117.2
+   2021 405.0    347       15 116.7
+   2022 341.0    306       16 111.4
+   2023 639.0    473       14 135.1
+   2024 741.0    497       15 149.1
+   2025 657.0    466       15 141.0
+   2026 557.0    358       14 155.6
+
+Phase breakdown (all top batters):
+        batter     phase   runs  balls    sr  sixes   dots
+AB de Villiers     Death 1868.0    867 215.5  140.0  151.0
+AB de Villiers    Middle 2572.0   1990 129.2   93.0  536.0
+AB de Villiers Powerplay  741.0    630 117.6   20.0  296.0
+     DA Warner     Death  628.0    363 173.0   31.0   81.0
+     DA Warner    Middle 2621.0   1985 132.0  100.0  516.0
+     DA Warner Powerplay 3318.0   2501 132.7  105.0 1031.0
+      KL Rahul     Death  907.0    536 169.2   46.0   98.0
+      KL Rahul    Middle 2484.0   1831 135.7  100.0  425.0
+      KL Rahul Powerplay 2437.0   1935 125.9   93.0  799.0
+      MS Dhoni     Death 3468.0   2083 166.5  208.0  486.0
+      MS Dhoni    Middle 1912.0   1940  98.6   56.0  718.0
+      MS Dhoni Powerplay   59.0     78  75.6    0.0   44.0
+     RG Sharma     Death 1527.0    876 174.3   93.0  219.0
+     RG Sharma    Middle 3238.0   2689 120.4  108.0  822.0
+     RG Sharma Powerplay 2566.0   2094 122.5  123.0  981.0
+       V Kohli     Death 1556.0    866 179.7   92.0  181.0
+       V Kohli    Middle 4254.0   3454 123.2  137.0  921.0
+       V Kohli Powerplay 3418.0   2740 124.7   84.0 1062.0

@@ -77,15 +77,15 @@ BALL_EVENT_SCHEMA = pa.schema([
     
     # --- State (When) ---
     ('inning', pa.int8()),
-    ('over', pa.int8()),
+    ('over', pa.int16()),
     ('ball', pa.int8()),
     
     # --- Actors (IDs from Registry) ---
     ('batter_id', pa.int32()),
     ('bowler_id', pa.int32()),
     ('non_striker_id', pa.int32()),
-    ('batting_team_id', pa.int16()),
-    ('bowling_team_id', pa.int16()),
+    ('batting_team_id', pa.int32()),
+    ('bowling_team_id', pa.int32()),
     
     # --- Metrics (What Happened) ---
     # Upcasted to int32 to prevent DuckDB SUM() overflow

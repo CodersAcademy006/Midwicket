@@ -38,6 +38,8 @@ from . import visuals
 # Top-level convenience modules
 from . import api
 from . import express
+from . import datasets
+from . import features
 
 # Stats / fantasy / sim namespaces
 import midwicket.api.stats as stats
@@ -52,6 +54,9 @@ from .runtime.modes import set_debug_mode
 
 # Head-to-head analysis (new convenience API)
 from .api.head_to_head import head_to_head, HeadToHeadSummary
+
+# Scouting Report API
+from .report.scout import scouting_report
 
 # Player analytics (PA-01 to PA-28)
 from .api.player_analytics import (
@@ -109,7 +114,7 @@ def serve(*args: Any, **kwargs: Any) -> None:
     return _serve(*args, **kwargs)
 
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 __author__ = "Midwicket Team"
 __email__ = "srjnupadhyay@gmail.com"
 
@@ -122,6 +127,8 @@ __all__ = [
     "visuals",
     "api",
     "express",
+    "datasets",
+    "features",
     # Namespaces
     "stats",
     "fantasy",
@@ -140,6 +147,7 @@ __all__ = [
     # Head-to-head
     "head_to_head",
     "HeadToHeadSummary",
+    "scouting_report",
     # Player analytics (PA-01 to PA-28)
     "career_batting",
     "career_bowling",

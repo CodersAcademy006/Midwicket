@@ -203,13 +203,14 @@ def get_matchup(batter: str, bowler: str, data_dir: Optional[str] = None) -> Any
         data_dir: Optional custom data directory
 
     Returns:
-        MatchupResult dataclass
+        MatchupResult Pydantic model
 
     Example:
         result = px.get_matchup("V Kohli", "JJ Bumrah")
         print(f"Matches: {result.matches}, Avg: {result.average}")
     """
     from midwicket.storage.registry import EntityNotFoundError
+    from midwicket.api.models import MatchupResult
 
     _check_dataset_exists(data_dir)
     if not batter or not bowler:
@@ -229,7 +230,16 @@ def get_matchup(batter: str, bowler: str, data_dir: Optional[str] = None) -> Any
     # Fast path: query registry matchup_stats (populated by build_registry_stats)
     stats = registry.get_matchup_stats(batter_id, bowler_id)
     if stats is not None:
-        return stats
+        return MatchupResult(
+            batter_name=batter,
+            bowler_name=bowler,
+            matches=1 if stats.get("balls", 0) > 0 else 0,
+            runs_scored=stats.get("runs", 0),
+            balls_faced=stats.get("balls", 0),
+            dismissals=stats.get("wickets", 0),
+            average=float(stats["runs"] / stats["wickets"]) if stats.get("wickets", 0) > 0 else float(stats.get("runs", 0)),
+            strike_rate=float((stats["runs"] / stats["balls"]) * 100) if stats.get("balls", 0) > 0 else None
+        )
 
     # Slow path: fall back to ball_events engine (requires explicit match loading)
     from midwicket.query.base import MatchupQuery
@@ -241,7 +251,8 @@ def get_matchup(batter: str, bowler: str, data_dir: Optional[str] = None) -> Any
         result = session.executor.execute(query)
         if result.data is None:
             raise EntityNotFoundError(f"No matchup data found between '{batter}' and '{bowler}'.")
-        return result.data
+        df = result.data.to_pandas()
+        return MatchupResult.from_dataframe(df, batter, bowler)
     except Exception as exc:
         if isinstance(exc, EntityNotFoundError):
             raise

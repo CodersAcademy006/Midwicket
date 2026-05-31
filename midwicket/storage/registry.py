@@ -36,8 +36,25 @@ class IdentityRegistry:
                 type VARCHAR, -- "player", "team", "venue"
                 primary_name VARCHAR
             );
-            CREATE SEQUENCE IF NOT EXISTS entity_id_seq START 1;
+        """)
+        
+        # Create or rebuild sequence starting at max id + 1
+        max_id = 0
+        try:
+            max_id_row = self.con.execute("SELECT MAX(id) FROM entities").fetchone()
+            if max_id_row and max_id_row[0] is not None:
+                max_id = int(max_id_row[0])
+        except Exception:
+            pass
+        
+        try:
+            self.con.execute("DROP SEQUENCE IF EXISTS entity_id_seq")
+        except Exception:
+            pass
+        
+        self.con.execute(f"CREATE SEQUENCE entity_id_seq START {max_id + 1}")
             
+        self.con.execute("""
             CREATE TABLE IF NOT EXISTS aliases (
                 alias VARCHAR,
                 entity_id INTEGER,
@@ -274,6 +291,7 @@ class IdentityRegistry:
 
                 if len(compatible_ids) == 1:
                     entity_id = list(compatible_ids)[0]
+                        
                     self.con.execute("""
                         INSERT OR IGNORE INTO aliases (alias, entity_id, valid_from, valid_to)
                         VALUES (?, ?, ?, NULL)
@@ -399,6 +417,38 @@ class IdentityRegistry:
             ).fetchone()
         if res:
             return int(res[0])
+            
+        # Symmetric, flexible candidate matching for read-only lookups
+        with self._lock:
+            candidates = self.con.execute("""
+                SELECT DISTINCT a.alias, a.entity_id
+                FROM aliases a
+                JOIN entities e ON a.entity_id = e.id
+                WHERE e.type = 'player'
+            """).fetchall()
+            
+        compatible_ids = set()
+        for alias_val, eid in candidates:
+            norm_alias = self._normalize_name(alias_val)
+            if self._names_compatible(norm_name, norm_alias) or self._names_compatible(norm_alias, norm_name):
+                compatible_ids.add(eid)
+                
+        if compatible_ids:
+            if len(compatible_ids) == 1:
+                return list(compatible_ids)[0]
+            else:
+                best_eid = None
+                max_matches = -1
+                for eid in compatible_ids:
+                    row_w = self.con.execute(
+                        "SELECT COALESCE(matches, 0) FROM player_stats WHERE entity_id = ?",
+                        [eid]
+                    ).fetchone()
+                    matches_cnt = row_w[0] if row_w else 0
+                    if matches_cnt > max_matches:
+                        max_matches = matches_cnt
+                        best_eid = eid
+                return best_eid
             
         dates_to_try = [date.today(), date(2024, 1, 1), date(2023, 1, 1), date(2022, 1, 1)]
         for try_date in dates_to_try:

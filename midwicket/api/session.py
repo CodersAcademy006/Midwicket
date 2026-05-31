@@ -102,15 +102,21 @@ class MidwicketSession:
             except Exception:
                 registry_empty = True
 
-            # Also rebuild when matchup_stats table does not exist (handles schema migration
+            # Also rebuild when matchup_stats table does not exist or is empty (handles schema migration
             # from older registry.duckdb files that pre-date matchup tracking).
             try:
                 self.registry.con.execute("SELECT 1 FROM matchup_stats LIMIT 1")
                 matchup_table_missing = False
+                
+                # Check if matchup table is empty
+                _row_matchup = self.registry.con.execute("SELECT COUNT(*) FROM matchup_stats").fetchone()
+                matchup_count = _row_matchup[0] if _row_matchup is not None else 0
+                matchup_empty = (matchup_count == 0)
             except Exception:
                 matchup_table_missing = True
+                matchup_empty = True
 
-            needs_build = registry_empty or matchup_table_missing
+            needs_build = registry_empty or matchup_table_missing or matchup_empty
 
             if needs_build:
                 if not raw_data_present:
