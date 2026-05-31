@@ -392,32 +392,81 @@ over count need a 5/6 correction for The Hundred data.
 
 ## Programmatic Access
 
+### `list_datasets()`
+
+Returns a list of all registered datasets. Each record contains: `name`,
+`description`, `format`, `gender`, `matches`, `deliveries`, `players`,
+`venues`, `coverage`, `date_range`, `version`.
+
 ```python
 from midwicket.datasets import list_datasets
 
-# Full metadata for all datasets
 for ds in list_datasets():
     print(
-        f"{ds['name']:10s}  {ds['est_matches']:5d} matches  "
-        f"{ds['est_deliveries']:>10,d} deliveries  {ds['date_range']}"
+        f"{ds['name']:10s}  {ds['matches']:5d} matches  "
+        f"{ds['deliveries']:>10,d} deliveries  "
+        f"{ds['venues']:3d} venues  {ds['date_range']}"
     )
 ```
 
 Expected output:
 
 ```
-ipl            1100 matches     480,000 deliveries  2008–2026
-bbl             650 matches     283,000 deliveries  2011–2025
-wbbl            550 matches     239,000 deliveries  2015–2025
-psl             350 matches     152,000 deliveries  2016–2025
-cpl             380 matches     165,000 deliveries  2013–2025
-sa20            120 matches      52,000 deliveries  2023–2025
-mlc              60 matches      26,000 deliveries  2023–2025
-wpl              80 matches      35,000 deliveries  2023–2026
-hundred         200 matches      60,000 deliveries  2021–2025
-t20is          3200 matches   1,390,000 deliveries  2005–2026
-odis           2400 matches   2,880,000 deliveries  2002–2026
-tests           700 matches   2,100,000 deliveries  2004–2026
-all_t20        8500 matches   3,700,000 deliveries  2005–2026
-all           20000 matches   9,148,000 deliveries  2002–2026
+ipl            1100 matches     480,000 deliveries   15 venues  2008–2026
+bbl             650 matches     283,000 deliveries    8 venues  2011–2025
+wbbl            550 matches     239,000 deliveries    8 venues  2015–2025
+psl             350 matches     152,000 deliveries    8 venues  2016–2025
+cpl             380 matches     165,000 deliveries    8 venues  2013–2025
+sa20            120 matches      52,000 deliveries    6 venues  2023–2025
+mlc              60 matches      26,000 deliveries    4 venues  2023–2025
+wpl              80 matches      35,000 deliveries    5 venues  2023–2026
+hundred         200 matches      60,000 deliveries    8 venues  2021–2025
+t20is          3200 matches   1,390,000 deliveries  220 venues  2005–2026
+odis           2400 matches   2,880,000 deliveries  220 venues  2002–2026
+tests           700 matches   2,100,000 deliveries  110 venues  2004–2026
+all_t20        8500 matches   3,700,000 deliveries  380 venues  2005–2026
+all           20000 matches   9,148,000 deliveries  450 venues  2002–2026
+```
+
+---
+
+### `describe_dataset(name)`
+
+Returns full metadata for a single dataset. Accepts the canonical key or any
+alias. Raises `ValueError` for unknown names.
+
+```python
+from midwicket.datasets import describe_dataset
+
+info = describe_dataset("ipl")
+print(info["description"])
+# Indian Premier League — the highest-profile T20 franchise competition
+
+print(info["source"])
+# https://cricsheet.org/downloads/ipl_json.zip
+
+print(info["competitions"])
+# ['Indian Premier League']
+
+print(info["date_range"])
+# 2008–2026
+
+print(info["coverage"])
+# complete
+
+print(info["statistics"])
+# {'matches': 1100, 'deliveries': 480000, 'players': 750, 'venues': 15, 'size_mb': 4.5}
+
+print(info["example_usage"])
+# from midwicket.datasets import load_dataset
+#
+# session = load_dataset("ipl")
+```
+
+Aliases are resolved automatically:
+
+```python
+info = describe_dataset("odi")   # resolves to "odis"
+print(info["name"])              # odis
+print(info["aliases"])           # ['all_odi', 'odi']
 ```

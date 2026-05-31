@@ -6,7 +6,7 @@ fantasy modeling, and scouting.
 """
 
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import pandas as pd
 
 # Internal Imports
@@ -25,16 +25,110 @@ def _get_where_clause(start_date: Optional[str] = None, end_date: Optional[str] 
     return f"{prefix} " + " AND ".join(clauses)
 
 # Registered features and their builders
-FEATURE_REGISTRY = {}
+FEATURE_REGISTRY: Dict[str, Any] = {}
 
-def register_feature(name: str):
-    """Decorator to register a feature builder."""
+# Structured metadata per registered feature
+FEATURE_METADATA_REGISTRY: Dict[str, Dict[str, Any]] = {}
+
+
+def register_feature(
+    name: str,
+    *,
+    version: str = "1.0",
+    description: str = "",
+    formula: str = "",
+    grain: str = "",
+    inputs: Optional[List[str]] = None,
+    outputs: Optional[List[str]] = None,
+    supports_date_filter: bool = False,
+    dependencies: Optional[List[str]] = None,
+):
+    """Decorator to register a feature builder with optional structured metadata.
+
+    Backward-compatible: @register_feature("name") still works without any
+    keyword arguments. All metadata fields are optional and default to safe
+    empty values derived from the decorated function's docstring where possible.
+    """
     def decorator(func):
         FEATURE_REGISTRY[name] = func
+
+        # Derive a minimal description from the docstring first line if not supplied
+        doc_first_line = ""
+        if func.__doc__:
+            for line in func.__doc__.strip().splitlines():
+                stripped = line.strip()
+                if stripped:
+                    doc_first_line = stripped
+                    break
+
+        FEATURE_METADATA_REGISTRY[name] = {
+            "name": name,
+            "version": version,
+            "description": description or doc_first_line,
+            "formula": formula,
+            "grain": grain,
+            "inputs": list(inputs) if inputs is not None else [],
+            "outputs": list(outputs) if outputs is not None else [],
+            "supports_date_filter": supports_date_filter,
+            "dependencies": list(dependencies) if dependencies is not None else [],
+        }
+
         return func
     return decorator
 
-@register_feature("pressure_index")
+
+def list_features() -> List[Dict[str, Any]]:
+    """Return a discoverable catalog of all registered features.
+
+    Each entry exposes: name, version, grain, supports_date_filter.
+
+    Returns:
+        List of dicts, one per registered feature, in registration order.
+    """
+    return [
+        {
+            "name": meta["name"],
+            "version": meta["version"],
+            "grain": meta["grain"],
+            "supports_date_filter": meta["supports_date_filter"],
+        }
+        for meta in FEATURE_METADATA_REGISTRY.values()
+    ]
+
+
+def describe_feature(name: str) -> Dict[str, Any]:
+    """Return full structured metadata for a registered feature.
+
+    Args:
+        name: Feature name (case-insensitive, whitespace-tolerant).
+
+    Returns:
+        Dict with keys: name, version, description, formula, grain, inputs,
+        outputs, supports_date_filter, dependencies.
+
+    Raises:
+        ValueError: If the feature name is not registered.
+    """
+    canonical = name.lower().strip()
+    if canonical not in FEATURE_METADATA_REGISTRY:
+        raise ValueError(
+            f"Feature '{name}' is not registered. "
+            f"Available features: {sorted(FEATURE_METADATA_REGISTRY.keys())}"
+        )
+    # Return a shallow copy so callers cannot mutate the registry
+    return dict(FEATURE_METADATA_REGISTRY[canonical])
+
+@register_feature(
+    "pressure_index",
+    version="1.0",
+    description="Per-ball measure of batting pressure derived from wickets lost and over fraction.",
+    formula="PressureIndex = Min(10, (WicketsLost * 0.7 + OverFraction * 0.2) / (WicketsRemaining + 0.1))",
+    grain="ball",
+    inputs=["match_id", "inning", "over", "ball", "batter_id", "bowler_id", "is_wicket"],
+    outputs=["match_id", "inning", "over", "ball", "batter_id", "bowler_id", "pressure_index"],
+    supports_date_filter=True,
+    dependencies=[],
+)
 def build_pressure_index(session: MidwicketSession, start_date: Optional[str] = None, end_date: Optional[str] = None) -> pd.DataFrame:
     """
     1. PRESSURE INDEX (Formula 1):
@@ -67,7 +161,17 @@ def build_pressure_index(session: MidwicketSession, start_date: Optional[str] = 
     
     return df[['match_id', 'inning', 'over', 'ball', 'batter_id', 'bowler_id', 'pressure_index']]
 
-@register_feature("bowler_quality_rating")
+@register_feature(
+    "bowler_quality_rating",
+    version="1.0",
+    description="Per-bowler aggregate quality score weighting dot-ball and wicket-taking rates.",
+    formula="BQR = (DotBallPct * 60) + (WicketPct * 400)",
+    grain="bowler",
+    inputs=["bowler_id", "runs_batter", "extras_type", "is_wicket", "wicket_type"],
+    outputs=["bowler_id", "total_balls", "dot_balls", "wickets", "bowler_quality_rating"],
+    supports_date_filter=True,
+    dependencies=[],
+)
 def build_bowler_quality_rating(session: MidwicketSession, start_date: Optional[str] = None, end_date: Optional[str] = None) -> pd.DataFrame:
     """
     2. BOWLER QUALITY RATING (Formula 2):
@@ -93,7 +197,17 @@ def build_bowler_quality_rating(session: MidwicketSession, start_date: Optional[
     df['bowler_quality_rating'] = (df['dot_ratio'] * 60.0 + df['wicket_ratio'] * 400.0).clip(0.0, 100.0).round(2)
     return df[['bowler_id', 'total_balls', 'dot_balls', 'wickets', 'bowler_quality_rating']]
 
-@register_feature("batter_intent_score")
+@register_feature(
+    "batter_intent_score",
+    version="1.0",
+    description="Per-batter aggression score weighting boundary frequency against overall run rate.",
+    formula="BIS = ((Boundaries * 1.5) + (Runs - Boundaries * 4)) / (BallsFaced + 0.1) * 100",
+    grain="batter",
+    inputs=["batter_id", "runs_batter"],
+    outputs=["batter_id", "total_balls", "total_runs", "intent_score"],
+    supports_date_filter=True,
+    dependencies=[],
+)
 def build_batter_intent_score(session: MidwicketSession, start_date: Optional[str] = None, end_date: Optional[str] = None) -> pd.DataFrame:
     """
     3. BATTER INTENT SCORE (Formula 3):
@@ -118,34 +232,50 @@ def build_batter_intent_score(session: MidwicketSession, start_date: Optional[st
     
     return df[['batter_id', 'total_balls', 'total_runs', 'intent_score']]
 
-@register_feature("match_context_score")
-def build_match_context_score(session: MidwicketSession) -> pd.DataFrame:
+@register_feature(
+    "match_context_score",
+    version="1.0",
+    description="Per-ball score capturing run-rate pressure relative to wickets in hand.",
+    formula=(
+        "Innings1: CRR * (WicketsRemaining / 10.0); "
+        "Innings2: RRR * (WicketsRemaining / 10.0)"
+    ),
+    grain="ball",
+    inputs=["match_id", "inning", "over", "ball", "batter_id", "bowler_id", "runs_batter", "runs_extras", "is_wicket"],
+    outputs=["match_id", "inning", "over", "ball", "batter_id", "bowler_id", "match_context_score"],
+    supports_date_filter=True,
+    dependencies=[],
+)
+def build_match_context_score(session: MidwicketSession, start_date: Optional[str] = None, end_date: Optional[str] = None) -> pd.DataFrame:
     """
     4. MATCH CONTEXT SCORE (Formula 4):
     First Innings: MCS = CRR * (Wickets Remaining / 10.0)
     Second Innings: MCS = (Runs Needed / (Balls Remaining + 0.1)) * (Wickets Remaining / 10.0)
     """
-    query = """
+    where_clause_and = _get_where_clause(start_date, end_date, prefix="AND")
+    where_clause = _get_where_clause(start_date, end_date)
+    query = f"""
     WITH first_inn_totals AS (
         SELECT match_id, SUM(runs_batter + runs_extras) as first_inn_total
         FROM ball_events
-        WHERE inning = 1
+        WHERE inning = 1 {where_clause_and}
         GROUP BY match_id
     )
-    SELECT 
+    SELECT
         b.match_id,
         b.inning,
         b.over,
         b.ball,
         b.batter_id,
         b.bowler_id,
-        CAST(COALESCE(SUM(b.runs_batter + b.runs_extras) 
+        CAST(COALESCE(SUM(b.runs_batter + b.runs_extras)
             OVER (PARTITION BY b.match_id, b.inning ORDER BY b.over, b.ball), 0) AS DOUBLE) as running_score,
-        CAST(COALESCE(SUM(CASE WHEN b.is_wicket THEN 1 ELSE 0 END) 
+        CAST(COALESCE(SUM(CASE WHEN b.is_wicket THEN 1 ELSE 0 END)
             OVER (PARTITION BY b.match_id, b.inning ORDER BY b.over, b.ball), 0) AS DOUBLE) as running_wickets,
         t.first_inn_total
     FROM ball_events b
     LEFT JOIN first_inn_totals t ON b.match_id = t.match_id
+    {where_clause}
     """
     df = session.engine.execute_sql(query).to_pandas()
     
@@ -179,7 +309,17 @@ def build_match_context_score(session: MidwicketSession) -> pd.DataFrame:
     df['match_context_score'] = df['match_context_score'].clip(0.0, 15.0).round(2)
     return df[['match_id', 'inning', 'over', 'ball', 'batter_id', 'bowler_id', 'match_context_score']]
 
-@register_feature("venue_bias_rating")
+@register_feature(
+    "venue_bias_rating",
+    version="1.0",
+    description="Per-venue ratio of first-innings average runs to the global first-innings average.",
+    formula="VBR = VenueFirstInningsAvgRuns / GlobalFirstInningsAvgRuns",
+    grain="venue",
+    inputs=["venue_id", "match_id", "inning", "runs_batter", "runs_extras"],
+    outputs=["venue_id", "matches", "venue_bias_rating"],
+    supports_date_filter=True,
+    dependencies=[],
+)
 def build_venue_bias_rating(session: MidwicketSession, start_date: Optional[str] = None, end_date: Optional[str] = None) -> pd.DataFrame:
     """
     5. VENUE BIAS RATING (Formula 5):
@@ -206,7 +346,17 @@ def build_venue_bias_rating(session: MidwicketSession, start_date: Optional[str]
     df['venue_bias_rating'] = df['venue_bias_rating'].round(3)
     return df[['venue_id', 'matches', 'venue_bias_rating']]
 
-@register_feature("expected_runs")
+@register_feature(
+    "expected_runs",
+    version="1.0",
+    description="Per-ball blended expected run value from batter and bowler historical averages.",
+    formula="xRuns = 0.5 * BatAvgRunsPerBall + 0.5 * BowlAvgRunsPerBall",
+    grain="ball",
+    inputs=["match_id", "inning", "over", "ball", "batter_id", "bowler_id", "runs_batter", "runs_extras"],
+    outputs=["match_id", "inning", "over", "ball", "batter_id", "bowler_id", "expected_runs"],
+    supports_date_filter=False,
+    dependencies=[],
+)
 def build_expected_runs(session: MidwicketSession) -> pd.DataFrame:
     """
     6. EXPECTED RUNS (xRuns) (Formula 6):
@@ -235,7 +385,17 @@ def build_expected_runs(session: MidwicketSession) -> pd.DataFrame:
     df['expected_runs'] = (df['bat_avg_runs'] * 0.5 + df['bowl_avg_runs'] * 0.5).round(3)
     return df[['match_id', 'inning', 'over', 'ball', 'batter_id', 'bowler_id', 'expected_runs']]
 
-@register_feature("expected_wickets")
+@register_feature(
+    "expected_wickets",
+    version="1.0",
+    description="Per-ball blended expected dismissal probability from bowler and batter baselines.",
+    formula="xWickets = 0.5 * BatDismissalPct + 0.5 * BowlWicketPct",
+    grain="ball",
+    inputs=["match_id", "inning", "over", "ball", "batter_id", "bowler_id", "is_wicket"],
+    outputs=["match_id", "inning", "over", "ball", "batter_id", "bowler_id", "expected_wickets"],
+    supports_date_filter=False,
+    dependencies=[],
+)
 def build_expected_wickets(session: MidwicketSession) -> pd.DataFrame:
     """
     7. EXPECTED WICKETS (xWickets) (Formula 7):
@@ -276,7 +436,17 @@ def build_expected_wickets(session: MidwicketSession) -> pd.DataFrame:
     df['expected_wickets'] = (df['bat_dismiss_pct'] * 0.5 + df['bowl_wicket_pct'] * 0.5).round(4)
     return df[['match_id', 'inning', 'over', 'ball', 'batter_id', 'bowler_id', 'expected_wickets']]
 
-@register_feature("batting_form")
+@register_feature(
+    "batting_form",
+    version="1.0",
+    description="Per-batter rolling average and strike rate across their five most recent matches.",
+    formula="AvgRuns = AVG(match_runs) over last 5 matches; SR = 100 * SUM(runs) / SUM(balls_faced)",
+    grain="batter",
+    inputs=["batter_id", "match_id", "date", "runs_batter", "extras_type", "player_dismissed"],
+    outputs=["batter_id", "avg_runs_last_5", "strike_rate_last_5", "dismissals_last_5"],
+    supports_date_filter=False,
+    dependencies=[],
+)
 def build_batting_form(session: MidwicketSession) -> pd.DataFrame:
     """
     Computes the running batting average and strike rate for the last 5 matches for each batter.
@@ -315,12 +485,26 @@ def build_batting_form(session: MidwicketSession) -> pd.DataFrame:
     """
     return session.engine.execute_sql(query).to_pandas()
 
-@register_feature("death_over_metrics")
-def build_death_over_metrics(session: MidwicketSession) -> pd.DataFrame:
+@register_feature(
+    "death_over_metrics",
+    version="1.0",
+    description="Per-player batting and bowling statistics restricted to death overs (over >= 15).",
+    formula="DeathSR = DeathRuns * 100 / DeathBallsFaced; DeathEconomy = DeathRunsConceded * 6 / DeathBallsBowled",
+    grain="player",
+    inputs=["batter_id", "bowler_id", "over", "runs_batter", "runs_extras", "is_wicket", "extras_type"],
+    outputs=[
+        "player_id", "death_runs", "death_balls_faced", "death_dismissals", "death_strike_rate",
+        "death_runs_conceded", "death_balls_bowled", "death_wickets", "death_economy",
+    ],
+    supports_date_filter=True,
+    dependencies=[],
+)
+def build_death_over_metrics(session: MidwicketSession, start_date: Optional[str] = None, end_date: Optional[str] = None) -> pd.DataFrame:
     """
     Extracts key metrics for batters and bowlers in death overs (overs 16-20, i.e. over >= 15).
     """
-    query_batting = """
+    where_clause_and = _get_where_clause(start_date, end_date, prefix="AND")
+    query_batting = f"""
     SELECT
         batter_id,
         SUM(runs_batter) as death_runs,
@@ -328,11 +512,11 @@ def build_death_over_metrics(session: MidwicketSession) -> pd.DataFrame:
         SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END) as death_dismissals,
         SUM(runs_batter) * 100.0 / NULLIF(SUM(CASE WHEN extras_type = 'wides' THEN 0 ELSE 1 END), 0) as death_strike_rate
     FROM ball_events
-    WHERE over >= 15
+    WHERE over >= 15 {where_clause_and}
     GROUP BY batter_id
     """
-    
-    query_bowling = """
+
+    query_bowling = f"""
     SELECT
         bowler_id,
         SUM(runs_batter + runs_extras) as death_runs_conceded,
@@ -340,7 +524,7 @@ def build_death_over_metrics(session: MidwicketSession) -> pd.DataFrame:
         SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END) as death_wickets,
         SUM(runs_batter + runs_extras) * 6.0 / NULLIF(SUM(CASE WHEN extras_type = 'wides' THEN 0 ELSE 1 END), 0) as death_economy
     FROM ball_events
-    WHERE over >= 15
+    WHERE over >= 15 {where_clause_and}
     GROUP BY bowler_id
     """
     
@@ -354,7 +538,17 @@ def build_death_over_metrics(session: MidwicketSession) -> pd.DataFrame:
     
     return merged
 
-@register_feature("venue_adjusted_form")
+@register_feature(
+    "venue_adjusted_form",
+    version="1.0",
+    description="Per-batter average run surplus above the historical venue scoring rate.",
+    formula="VenueAdjustedRating = MEAN(MatchRuns - VenueAvgRunsPerOver * 2.0)",
+    grain="batter",
+    inputs=["batter_id", "venue_id", "match_id", "runs_batter", "runs_extras"],
+    outputs=["batter_id", "venue_adjusted_rating"],
+    supports_date_filter=True,
+    dependencies=[],
+)
 def build_venue_adjusted_form(session: MidwicketSession, start_date: Optional[str] = None, end_date: Optional[str] = None) -> pd.DataFrame:
     """
     Computes a player's recent form adjusted by the historical average scoring rate at the venues they played in.

@@ -44,108 +44,138 @@ DATASETS: Dict[str, Dict[str, Any]] = {
         "description": "Indian Premier League — the highest-profile T20 franchise competition",
         "format": "T20",
         "gender": "men",
-        "est_matches": 1100,
-        "est_deliveries": 480_000,
-        "est_players": 750,
+        "est_matches": 1241,
+        "est_deliveries": 295_258,
+        "est_players": 811,
+        "est_venues": 60,
         "date_range": "2008–2026",
-        "version": "1.0",
-        "est_size_mb": 4.5,
+        "coverage": "complete",
+        "competitions": ["Indian Premier League"],
+        "version": "1.1",
+        "est_size_mb": 3.93,
     },
     "bbl": {
         "url": "https://cricsheet.org/downloads/bbl_json.zip",
         "description": "Big Bash League — Australia's premier domestic T20 competition",
         "format": "T20",
         "gender": "men",
-        "est_matches": 650,
-        "est_deliveries": 283_000,
-        "est_players": 480,
-        "date_range": "2011–2025",
-        "version": "1.0",
-        "est_size_mb": 2.5,
+        "est_matches": 662,
+        "est_deliveries": 153_250,
+        "est_players": 532,
+        "est_venues": 32,
+        "date_range": "2011/12–2025/26",
+        "coverage": "complete",
+        "competitions": ["Big Bash League"],
+        "version": "1.1",
+        "est_size_mb": 2.05,
     },
     "wbbl": {
-        "url": "https://cricsheet.org/downloads/wbbl_json.zip",
+        # Cricsheet publishes WBBL as wbb_json.zip — wbbl_json.zip returns HTTP 404.
+        "url": "https://cricsheet.org/downloads/wbb_json.zip",
         "description": "Women's Big Bash League — Australia's elite women's T20 franchise",
         "format": "T20",
         "gender": "women",
-        "est_matches": 550,
-        "est_deliveries": 239_000,
-        "est_players": 340,
-        "date_range": "2015–2025",
-        "version": "1.0",
-        "est_size_mb": 2.2,
+        "est_matches": 519,
+        "est_deliveries": 118_656,
+        "est_players": 282,
+        "est_venues": 62,
+        "date_range": "2015/16–2025/26",
+        "coverage": "complete",
+        "competitions": ["Women's Big Bash League"],
+        "version": "1.1",
+        "est_size_mb": 1.55,
     },
     "psl": {
         "url": "https://cricsheet.org/downloads/psl_json.zip",
         "description": "Pakistan Super League — Pakistan's national franchise T20 league",
         "format": "T20",
         "gender": "men",
-        "est_matches": 350,
-        "est_deliveries": 152_000,
-        "est_players": 420,
-        "date_range": "2016–2025",
-        "version": "1.0",
-        "est_size_mb": 1.5,
+        "est_matches": 357,
+        "est_deliveries": 83_799,
+        "est_players": 460,
+        "est_venues": 10,
+        "date_range": "2015/16–2026",
+        "coverage": "complete",
+        "competitions": ["Pakistan Super League"],
+        "version": "1.1",
+        "est_size_mb": 1.13,
     },
     "cpl": {
         "url": "https://cricsheet.org/downloads/cpl_json.zip",
         "description": "Caribbean Premier League — West Indies franchise T20 competition",
         "format": "T20",
         "gender": "men",
-        "est_matches": 380,
-        "est_deliveries": 165_000,
-        "est_players": 460,
+        "est_matches": 407,
+        "est_deliveries": 95_024,
+        "est_players": 419,
+        "est_venues": 17,
         "date_range": "2013–2025",
-        "version": "1.0",
-        "est_size_mb": 1.6,
+        "coverage": "complete",
+        "competitions": ["Caribbean Premier League"],
+        "version": "1.1",
+        "est_size_mb": 1.26,
     },
     "sa20": {
-        "url": "https://cricsheet.org/downloads/sa20_json.zip",
+        # Cricsheet publishes SA20 as sat_json.zip — sa20_json.zip returns HTTP 404.
+        "url": "https://cricsheet.org/downloads/sat_json.zip",
         "description": "SA20 — South Africa's franchise T20 competition (launched 2023)",
         "format": "T20",
         "gender": "men",
-        "est_matches": 120,
-        "est_deliveries": 52_000,
-        "est_players": 180,
-        "date_range": "2023–2025",
-        "version": "1.0",
-        "est_size_mb": 0.5,
+        "est_matches": 130,
+        "est_deliveries": 29_020,
+        "est_players": 213,
+        "est_venues": 6,
+        "date_range": "2022/23–2025/26",
+        "coverage": "complete",
+        "competitions": ["SA20"],
+        "version": "1.1",
+        "est_size_mb": 0.40,
     },
     "mlc": {
         "url": "https://cricsheet.org/downloads/mlc_json.zip",
         "description": "Major League Cricket — USA's inaugural professional T20 league",
         "format": "T20",
         "gender": "men",
-        "est_matches": 60,
-        "est_deliveries": 26_000,
-        "est_players": 90,
+        "est_matches": 75,
+        "est_deliveries": 17_413,
+        "est_players": 167,
+        "est_venues": 5,
         "date_range": "2023–2025",
-        "version": "1.0",
-        "est_size_mb": 0.2,
+        "coverage": "complete",
+        "competitions": ["Major League Cricket"],
+        "version": "1.1",
+        "est_size_mb": 0.23,
     },
     "wpl": {
         "url": "https://cricsheet.org/downloads/wpl_json.zip",
         "description": "Women's Premier League — India's top-tier women's franchise T20 league",
         "format": "T20",
         "gender": "women",
-        "est_matches": 80,
-        "est_deliveries": 35_000,
-        "est_players": 120,
-        "date_range": "2023–2026",
-        "version": "1.0",
-        "est_size_mb": 0.3,
+        "est_matches": 88,
+        "est_deliveries": 20_656,
+        "est_players": 136,
+        "est_venues": 7,
+        "date_range": "2022/23–2025/26",
+        "coverage": "complete",
+        "competitions": ["Women's Premier League"],
+        "version": "1.1",
+        "est_size_mb": 0.27,
     },
     "hundred": {
-        "url": "https://cricsheet.org/downloads/hundred_json.zip",
+        # Cricsheet publishes The Hundred as hnd_json.zip — hundred_json.zip returns HTTP 404.
+        "url": "https://cricsheet.org/downloads/hnd_json.zip",
         "description": "The Hundred — England & Wales 100-ball competition (men's and women's)",
         "format": "The Hundred",
         "gender": "both",
-        "est_matches": 200,
-        "est_deliveries": 60_000,
-        "est_players": 280,
+        "est_matches": 322,
+        "est_deliveries": 62_397,
+        "est_players": 439,
+        "est_venues": 8,
         "date_range": "2021–2025",
-        "version": "1.0",
-        "est_size_mb": 0.8,
+        "coverage": "complete",
+        "competitions": ["The Hundred (Men)", "The Hundred (Women)"],
+        "version": "1.1",
+        "est_size_mb": 0.93,
     },
     # ── International formats ─────────────────────────────────────────────────
     "t20is": {
@@ -153,61 +183,70 @@ DATASETS: Dict[str, Dict[str, Any]] = {
         "description": "T20 Internationals — all men's and women's T20I matches",
         "format": "T20I",
         "gender": "both",
-        "est_matches": 3200,
-        "est_deliveries": 1_390_000,
-        "est_players": 2800,
-        "date_range": "2005–2026",
-        "version": "1.0",
-        "est_size_mb": 14.5,
+        "est_matches": 5318,
+        "est_deliveries": 1_240_157,
+        "est_players": 7098,
+        "est_venues": 447,
+        "date_range": "2004/05–2026",
+        # partial: Cricsheet withholds 366 Afghanistan-related matches globally.
+        "coverage": "partial",
+        "competitions": ["Men's T20 Internationals", "Women's T20 Internationals"],
+        "version": "1.1",
+        "est_size_mb": 16.03,
     },
     "odis": {
         "url": "https://cricsheet.org/downloads/odis_json.zip",
         "description": "One Day Internationals — all men's and women's ODI matches",
         "format": "ODI",
         "gender": "both",
-        "est_matches": 2400,
-        "est_deliveries": 2_880_000,
-        "est_players": 3200,
+        "est_matches": 3134,
+        "est_deliveries": 1_688_755,
+        "est_players": 2658,
+        "est_venues": 379,
         "date_range": "2002–2026",
-        "version": "1.0",
-        "est_size_mb": 18.0,
+        # partial: Cricsheet withholds 366 Afghanistan-related matches globally.
+        "coverage": "partial",
+        "competitions": ["Men's One Day Internationals", "Women's One Day Internationals"],
+        "version": "1.1",
+        "est_size_mb": 14.58,
     },
     "tests": {
         "url": "https://cricsheet.org/downloads/tests_json.zip",
         "description": "Test matches — the pinnacle of international cricket (men's and women's)",
         "format": "Test",
         "gender": "both",
-        "est_matches": 700,
-        "est_deliveries": 2_100_000,
-        "est_players": 2400,
-        "date_range": "2004–2026",
-        "version": "1.0",
-        "est_size_mb": 25.0,
+        "est_matches": 903,
+        "est_deliveries": 1_755_413,
+        "est_players": 1205,
+        "est_venues": 184,
+        "date_range": "2001/02–2026",
+        # partial: Cricsheet withholds 366 Afghanistan-related matches globally.
+        "coverage": "partial",
+        "competitions": ["Men's Test Matches", "Women's Test Matches"],
+        "version": "1.1",
+        "est_size_mb": 10.22,
     },
     # ── Aggregates ────────────────────────────────────────────────────────────
-    "all_t20": {
-        "url": "https://cricsheet.org/downloads/all_t20_json.zip",
-        "description": "All T20 matches globally — leagues, domestics, and internationals combined",
-        "format": "T20",
-        "gender": "both",
-        "est_matches": 8500,
-        "est_deliveries": 3_700_000,
-        "est_players": 8000,
-        "date_range": "2005–2026",
-        "version": "1.0",
-        "est_size_mb": 35.0,
-    },
+    # NOTE: "all_t20" has been deliberately omitted. Cricsheet publishes no
+    # combined T20 bundle under any URL variant. all_t20_json.zip and all
+    # tested alternatives return HTTP 404. Do not re-add without a verified URL.
     "all": {
         "url": "https://cricsheet.org/downloads/all_json.zip",
         "description": "Complete Cricsheet archive — every format, every gender, every competition",
         "format": "All",
         "gender": "both",
-        "est_matches": 20000,
+        "est_matches": 21877,
+        # est_deliveries/players/venues below are carry-forward estimates:
+        # the full archive was not re-parsed during the 2026-05-31 audit (96 MB).
         "est_deliveries": 9_148_000,
         "est_players": 12000,
-        "date_range": "2002–2026",
-        "version": "1.0",
-        "est_size_mb": 85.0,
+        "est_venues": 450,
+        "date_range": "2001–2026",
+        # partial: 366 Afghanistan-related matches are explicitly withheld by Cricsheet.
+        "coverage": "partial",
+        "competitions": ["All formats and competitions (complete Cricsheet archive)"],
+        "version": "1.1",
+        "est_size_mb": 96.36,
     },
 }
 
@@ -228,22 +267,24 @@ def list_datasets() -> List[Dict[str, Any]]:
     """Return a list of all registered datasets with full metadata.
 
     Each record contains:
-        name         – key to pass to ``load_dataset()``
-        description  – human-readable competition name
-        format       – match format (T20, ODI, Test, T20I, The Hundred, All)
-        gender       – player gender scope
-        est_matches  – approximate match count
-        est_deliveries – approximate ball-event row count
-        est_players  – approximate unique players
-        date_range   – earliest–latest season covered
-        version      – registry schema version
+        name           – key to pass to ``load_dataset()`` or ``describe_dataset()``
+        description    – human-readable competition name
+        format         – match format (T20, ODI, Test, T20I, The Hundred, All)
+        gender         – player gender scope
+        matches        – approximate match count
+        deliveries     – approximate ball-event row count
+        players        – approximate unique player registry size
+        venues         – approximate unique venue count
+        coverage       – Cricsheet completeness ("complete" or "partial")
+        date_range     – earliest–latest season covered
+        version        – registry schema version
 
     Example::
 
         from midwicket.datasets import list_datasets
 
         for ds in list_datasets():
-            print(ds["name"], ds["est_matches"], ds["date_range"])
+            print(ds["name"], ds["matches"], ds["date_range"])
     """
     records: List[Dict[str, Any]] = []
     for name, meta in DATASETS.items():
@@ -253,14 +294,90 @@ def list_datasets() -> List[Dict[str, Any]]:
                 "description": meta["description"],
                 "format": meta["format"],
                 "gender": meta.get("gender", "unknown"),
-                "est_matches": meta["est_matches"],
-                "est_deliveries": meta["est_deliveries"],
-                "est_players": meta["est_players"],
+                "matches": meta["est_matches"],
+                "deliveries": meta["est_deliveries"],
+                "players": meta["est_players"],
+                "venues": meta.get("est_venues"),
+                "coverage": meta.get("coverage", "complete"),
                 "date_range": meta["date_range"],
                 "version": meta["version"],
             }
         )
     return records
+
+
+def describe_dataset(name: str) -> Dict[str, Any]:
+    """Return complete metadata for a single registered dataset.
+
+    Args:
+        name: Dataset key (e.g. ``'ipl'``, ``'bbl'``) or any accepted alias.
+
+    Returns:
+        Dict containing:
+            name          – canonical dataset key
+            description   – human-readable competition name
+            source        – Cricsheet download URL
+            schema_version – registry schema version string
+            format        – match format(s) covered
+            gender        – player gender scope
+            competitions  – list of specific competitions included
+            date_range    – earliest–latest season covered
+            coverage      – Cricsheet completeness ("complete" or "partial")
+            statistics    – dict with matches, deliveries, players, venues, size_mb
+            aliases       – list of accepted alternative keys for this dataset
+            example_usage – ready-to-run Python code snippet
+
+    Raises:
+        ValueError: If ``name`` is not a registered dataset key or alias.
+
+    Example::
+
+        from midwicket.datasets import describe_dataset
+
+        info = describe_dataset("ipl")
+        print(info["description"])
+        print(info["statistics"])
+        print(info["example_usage"])
+    """
+    canonical_name = name.lower().strip()
+    if canonical_name in _ALIASES:
+        canonical_name = _ALIASES[canonical_name]
+
+    if canonical_name not in DATASETS:
+        raise ValueError(
+            f"Dataset '{name}' is not registered. "
+            f"Available keys: {sorted(DATASETS.keys())}. "
+            f"Also accepts aliases: {sorted(_ALIASES.keys())}."
+        )
+
+    meta = DATASETS[canonical_name]
+
+    # Collect all aliases that resolve to this canonical name
+    aliases = [alias for alias, target in _ALIASES.items() if target == canonical_name]
+
+    return {
+        "name": canonical_name,
+        "description": meta["description"],
+        "source": meta["url"],
+        "schema_version": meta["version"],
+        "format": meta["format"],
+        "gender": meta.get("gender", "unknown"),
+        "competitions": meta.get("competitions", [canonical_name.upper()]),
+        "date_range": meta["date_range"],
+        "coverage": meta.get("coverage", "complete"),
+        "statistics": {
+            "matches": meta["est_matches"],
+            "deliveries": meta["est_deliveries"],
+            "players": meta["est_players"],
+            "venues": meta.get("est_venues"),
+            "size_mb": meta.get("est_size_mb"),
+        },
+        "aliases": sorted(aliases),
+        "example_usage": (
+            f"from midwicket.datasets import load_dataset\n\n"
+            f'session = load_dataset("{canonical_name}")'
+        ),
+    }
 
 
 @retry(
