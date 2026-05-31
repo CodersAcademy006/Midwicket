@@ -4,6 +4,8 @@ PDF Report Generator for Midwicket
 Generates professional scouting reports and match summaries with charts.
 """
 
+from __future__ import annotations
+
 import base64
 import io
 from pathlib import Path
@@ -11,16 +13,26 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from datetime import datetime
 
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter, A4
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle
+# reportlab and matplotlib are optional extras (declared in requirements-dev.txt
+# but not requirements.txt). Import them lazily so `import midwicket` succeeds
+# in lean environments; PDFGenerator raises with a clear install hint at use.
+try:
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import letter, A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle
 
-import matplotlib
-matplotlib.use('Agg')  # Use non-interactive backend
-import matplotlib.pyplot as plt
-from matplotlib.figure import Figure
+    import matplotlib
+    matplotlib.use('Agg')  # Use non-interactive backend
+    import matplotlib.pyplot as plt
+    from matplotlib.figure import Figure
+
+    _PDF_DEPS_AVAILABLE = True
+    _PDF_DEPS_ERROR: Optional[ImportError] = None
+except ImportError as _e:
+    _PDF_DEPS_AVAILABLE = False
+    _PDF_DEPS_ERROR = _e
 
 from ..api.session import MidwicketSession
 
@@ -52,6 +64,12 @@ class PDFGenerator:
     """Professional PDF report generator with charts."""
 
     def __init__(self, session: MidwicketSession, config: Optional[ChartConfig] = None):
+        if not _PDF_DEPS_AVAILABLE:
+            raise ImportError(
+                "PDFGenerator requires reportlab and matplotlib. "
+                "Install them with `pip install reportlab matplotlib` "
+                "or `pip install -r requirements-dev.txt`."
+            ) from _PDF_DEPS_ERROR
         self.session = session
         self.config = config or ChartConfig()
 
