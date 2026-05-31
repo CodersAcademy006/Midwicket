@@ -127,7 +127,12 @@ def canonicalize_match(match_data: Dict[str, Any], registry: IdentityRegistry, m
                 buffers['extras_type'].append(extras_type)
                 
                 wickets = delivery.get('wickets', [])
-                buffers['is_wicket'].append(len(wickets) > 0)
+                is_w = len(wickets) > 0
+                if is_w:
+                    wicket_kind = wickets[0].get('kind', 'unknown').lower()
+                    if wicket_kind in ['retired hurt', 'retired not out']:
+                        is_w = False
+                buffers['is_wicket'].append(is_w)
                 
                 # Use DismissalType enum for data integrity
                 if wickets:

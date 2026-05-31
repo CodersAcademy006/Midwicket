@@ -7,6 +7,123 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [1.1.0] - 2026-05-31
+
+Developer experience and open-source adoption release. No breaking changes.
+Feature-complete for the v1.1 public API surface.
+
+### Added
+
+#### Dataset Hub
+- `midwicket.datasets.load_dataset(name, version, cache_dir, force)` — single-call
+  loader for 12 Cricsheet competitions. Downloads, extracts, validates, and boots a
+  `MidwicketSession` automatically. Competitions: `ipl`, `t20s`, `bbl`, `psl`, `cpl`,
+  `wbbl`, `sa20`, `mlc`, `odis`, `tests`, `all_t20`, `all`.
+- `force=True` parameter forces a clean rebuild of the local dataset cache.
+- `list_datasets()` — returns the full registry of available competitions with
+  estimated match counts, format, and source URLs.
+
+#### Feature Store
+- `build_pressure_index(session, start_date, end_date)` — per-delivery situational
+  leverage score. Formula: `min(10, (wickets_lost × 0.7 + over_fraction × 0.2) /
+  (wickets_remaining + 0.1))`.
+- `build_bowler_quality_rating(session, start_date, end_date)` — BQR combining dot
+  ball % and wicket rate. Formula: `(dot% × 60) + (wicket% × 400)`, capped at 100.
+- `build_batter_intent_score(session, start_date, end_date)` — aggressive intent
+  metric combining boundary rate and dot ball avoidance.
+- `build_match_context_score(session)` — chase pressure index per delivery. 2nd
+  innings: `(runs_needed / (balls_remaining + 0.1)) × 6 × (wickets_remaining / 10)`,
+  clipped to [0, 15].
+- `build_venue_bias_rating(session, start_date, end_date)` — VBR: venue first-innings
+  run rate divided by global average. Venues with < 5 matches default to 1.0
+  (stabilised for sparse sample sizes).
+- `build_expected_runs(session)` and `build_expected_wickets(session)` — baseline
+  expected outcome models using batter and bowler historical baselines.
+- `build_batting_form(session, start_date, end_date)` — rolling recent-form metric
+  using exponential decay weighting.
+- `build_death_over_metrics(session, start_date, end_date)` — phase-specific death
+  over (overs 15+) economy and wicket rate.
+- `build_venue_adjusted_form(session, start_date, end_date)` — batter performance
+  adjusted for VBR of the venues where they batted.
+- All features support temporal scoping via `start_date` / `end_date` parameters.
+  Temporal filter correctness verified — 0 leaked rows across 4 test cutoffs.
+
+#### Scouting Reports
+- `midwicket.scouting_report(player_name)` — compiles phase splits, venue performance,
+  career batting/bowling, weakness detection, and recent form into a single dict.
+  Resolves name aliases automatically (`"V Kohli"` = `"Virat Kohli"` = `"kohli"`).
+- Case-insensitive player name resolution against both `batter` and `bowler` columns.
+
+#### Showcase Portfolio
+- 10 production-grade analytical showcases in `docs/showcases/`, each with:
+  - Two publication-quality matplotlib charts (PNG, 150 DPI)
+  - SQL query used to produce the result
+  - Key numerical finding
+  - Markdown walkthrough
+- `README_SHOWCASES.md` — gallery landing page with all 20 charts embedded.
+- Showcases cover: all-time run leaders, Kohli 19-season profile, Bumrah death-over
+  dominance, venue scoring atlas (76 grounds), phase-wise economy heatmap, powerplay
+  kings, chase specialists, wicket cluster probability, dot ball pressure, and
+  18-season scoring trends.
+
+#### Developer Documentation
+- `README.md` — complete overhaul. Hero section leads with data scale and real
+  insights. Architecture moved to bottom. Quick start works in 30 seconds.
+- `docs/getting_started.md` — 5-minute tutorial from install to scouting report.
+  Every code block is copy-paste ready with actual output shown.
+- `docs/gallery.md` — 10-showcase gallery with charts, queries, key findings, and
+  links to walkthroughs.
+- `docs/onboarding_audit.md` — four-persona first-time user audit. 2 critical, 9
+  major, 6 minor issues identified with recommended fixes ranked by adoption impact.
+
+### Fixed
+
+#### Data Reliability (carried forward from v1.0.0 audit)
+- **Retirement classification** — `RETIRED_HURT` and `RETIRED_NOT_OUT` deliveries
+  correctly marked `is_wicket=False`. `RETIRED_OUT` correctly marked `is_wicket=True`
+  (valid dismissal under MCC Laws). Verified: 0 innings with > 10 wickets across
+  1,239 matches.
+- **int16 overflow prevention** — `over` field upcasted to `int16` in `BALL_EVENT_SCHEMA`.
+  `runs_batter` and `runs_extras` upcasted to `int32` (prevents `SUM()` overflow on
+  large aggregations). Comment added explaining rationale.
+- **Temporal leakage** — date filters in all feature builders verified leak-proof.
+  SQL-level test: `WHERE date <= X` returns 0 rows with `date > X` across all tested
+  cutoffs.
+- **VBR stabilisation** — venues with fewer than 5 matches forced to `VBR = 1.0`.
+  Prevents single-match outliers from producing misleading bias ratings.
+- **Denormalised name columns** — `batter`, `bowler`, `venue` string columns added to
+  `BALL_EVENT_SCHEMA` and populated during canonicalisation. Enables SQL `WHERE batter
+  = 'V Kohli'` without registry joins.
+
+#### Ingestion
+- Fresh corpus rebuild: 1,239 IPL matches canonicalised with **100% success rate**,
+  0 failures, 294,757 deliveries loaded. (Previous production DB: 31 matches, stale
+  schema — not addressed in this release; see onboarding audit item F-01.)
+
+### Changed
+
+- `README.md` structure: hero → insights → quick start → datasets → features →
+  scouting → gallery → architecture (previously: problem → solution → architecture →
+  quick start).
+- `BALL_EVENT_SCHEMA` column order updated: denormalised name columns (`batter`,
+  `bowler`, `venue`) now follow their corresponding ID columns for readability.
+
+### Deprecated
+
+Nothing deprecated in this release.
+
+### Known Issues
+
+- Production database (`data/midwicket.duckdb`) is stale — 31 matches, pre-v1.0
+  schema. Needs full rebuild via `load_dataset("ipl", force=True)`. Tracked in
+  onboarding audit (item F-01).
+- `session.schema()` convenience accessor not yet implemented (onboarding audit M-04).
+- `list_features()` discovery function not yet implemented (onboarding audit M-05).
+- `session.info()` provenance method not yet implemented (onboarding audit R-01).
+- Dataset table missing `date_range` and `gender` columns (onboarding audit C-03).
+
+---
+
 ## [1.0.0] - 2026-05-30
 
 First stable release. All 16 documented defects resolved, 0 mypy errors, 627

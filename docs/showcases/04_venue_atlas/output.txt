@@ -1,0 +1,56 @@
+=== IPL Venue Scoring Atlas (min 5 matches) ===
+
+                                                                  venue  matches   vbr  avg_1st_inn  avg_wickets_per_match
+Maharaja Yadavindra Singh International Cricket Stadium, New Chandigarh        5 1.253        205.4                    5.2
+               Himachal Pradesh Cricket Association Stadium, Dharamsala        9 1.227        201.1                    5.1
+       Punjab Cricket Association IS Bindra Stadium, Mohali, Chandigarh        5 1.145        187.6                    4.6
+                                                  Eden Gardens, Kolkata       30 1.143        187.4                    5.6
+                   Rajiv Gandhi International Stadium, Uppal, Hyderabad       26 1.139        186.7                    5.8
+                                         Sawai Mansingh Stadium, Jaipur       21 1.134        185.9                    4.9
+                                            Arun Jaitley Stadium, Delhi       30 1.132        185.5                    5.5
+                                       M Chinnaswamy Stadium, Bengaluru       24 1.125        184.4                    5.8
+                                       Narendra Modi Stadium, Ahmedabad       40 1.094        179.4                    5.9
+                                                  M.Chinnaswamy Stadium       15 1.085        177.8                    6.1
+                                               Wankhede Stadium, Mumbai       59 1.062        174.0                    5.8
+                                                      Brabourne Stadium       10 1.057        173.2                    5.2
+                                              Brabourne Stadium, Mumbai       17 1.049        172.0                    6.0
+                                    Barsapara Cricket Stadium, Guwahati        8 1.048        171.8                    6.6
+                           Punjab Cricket Association IS Bindra Stadium       10 1.045        171.3                    5.3
+                           Himachal Pradesh Cricket Association Stadium        9 1.038        170.2                    4.7
+  Bharat Ratna Shri Atal Bihari Vajpayee Ekana Cricket Stadium, Lucknow       29 1.027        168.4                    6.1
+                                                  M Chinnaswamy Stadium       65 1.016        166.6                    5.4
+     Maharaja Yadavindra Singh International Cricket Stadium, Mullanpur       10 1.014        166.2                    7.2
+                                 Saurashtra Cricket Association Stadium       10 1.006        164.9                    5.8
+                          Maharashtra Cricket Association Stadium, Pune       13 1.006        164.9                    5.2
+                                                   Arun Jaitley Stadium       14 1.005        164.7                    5.4
+                                                       Barabati Stadium        7 1.004        164.6                    5.1
+                                     Dr DY Patil Sports Academy, Mumbai       20 0.999        163.7                    5.9
+                                Maharashtra Cricket Association Stadium       22 0.987        161.7                    5.3
+                               MA Chidambaram Stadium, Chepauk, Chennai       41 0.986        161.6                    6.6
+                   Punjab Cricket Association IS Bindra Stadium, Mohali       11 0.985        161.4                    5.5
+                             Punjab Cricket Association Stadium, Mohali       35 0.985        161.5                    5.7
+                                                       Wankhede Stadium       73 0.982        160.9                    5.5
+                                        MA Chidambaram Stadium, Chepauk       48 0.977        160.1                    4.8
+                                                 Holkar Cricket Stadium        9 0.976        160.0                    6.0
+                                                       Feroz Shah Kotla       60 0.969        158.9                    5.2
+                                           Sardar Patel Stadium, Motera       12 0.966        158.3                    5.3
+                                    Dubai International Cricket Stadium       46 0.963        157.7                    5.4
+                                                           Eden Gardens       77 0.963        157.8                    5.5
+                                     Rajiv Gandhi International Stadium       15 0.959        157.1                    5.5
+                                                   Sheikh Zayed Stadium       29 0.944        154.7                    5.3
+                                                       St George's Park        7 0.937        153.5                    4.0
+                                       Zayed Cricket Stadium, Abu Dhabi        8 0.936        153.4                    6.4
+                                                Sharjah Cricket Stadium       28 0.935        153.3                    5.8
+                    Dr. Y.S. Rajasekhara Reddy ACA-VDCA Cricket Stadium       13 0.932        152.8                    6.2
+                              Rajiv Gandhi International Stadium, Uppal       49 0.931        152.5                    5.6
+                                                 Sawai Mansingh Stadium       47 0.930        152.5                    5.1
+                                                        SuperSport Park       12 0.915        150.0                    5.3
+                                     JSCA International Stadium Complex        7 0.912        149.5                    5.0
+                                                 MA Chidambaram Stadium        9 0.905        148.4                    5.0
+                                                              Kingsmead       15 0.898        147.3                    6.3
+                                             Subrata Roy Sahara Stadium       16 0.893        146.3                    4.4
+                                                          Nehru Stadium        5 0.891        146.1                    4.6
+                                                               Newlands        7 0.879        144.1                    6.1
+                                             Dr DY Patil Sports Academy       17 0.874        143.3                    6.5
+                       Shaheed Veer Narayan Singh International Stadium        6 0.866        142.0                    5.3
+                                                  New Wanderers Stadium        8 0.848        138.9                    6.1

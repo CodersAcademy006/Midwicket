@@ -1,0 +1,40 @@
+=== Death Over Bowler Rankings (min 120 balls in overs 16-20) ===
+
+         bowler  death_balls  economy  wickets  wicket_pct  dot_pct
+      SP Narine         1128     7.26     84.0        7.45     36.6
+   DE Bollinger          242     7.36     23.0        9.50     36.4
+       A Kumble          174     7.48     17.0        9.77     33.3
+     SL Malinga         1174     7.80    108.0        9.20     29.8
+  Harmeet Singh          135     7.91     10.0        7.41     34.1
+       R Ashwin          626     7.99     36.0        5.75     28.4
+       M Kartik          155     8.01      6.0        3.87     18.7
+      RD Chahar          177     8.03     14.0        7.91     31.1
+ M Muralitharan          284     8.03     22.0        7.75     36.3
+     DL Vettori          166     8.06      7.0        4.22     29.5
+      JJ Bumrah         1481     8.07    102.0        6.89     30.0
+     Noor Ahmad          161     8.09     13.0        8.07     37.9
+       DW Steyn          662     8.11     50.0        7.55     32.9
+Harbhajan Singh          282     8.13     26.0        9.22     32.3
+        SW Tait          159     8.15     13.0        8.18     31.4
+     WD Parnell          243     8.32     17.0        7.00     31.3
+   PWH de Silva          122     8.36     12.0        9.84     36.9
+  Iqbal Abdulla          124     8.42      6.0        4.84     31.5
+  Kuldeep Yadav          387     8.43     30.0        7.75     30.0
+      KH Pandya          222     8.49     17.0        7.66     33.3
+
+=== Bumrah Season Evolution ===
+
+ season  runs_conceded  balls  economy  wickets
+   2013           74.0     45     9.87      3.0
+   2014          307.0    246     7.49      5.0
+   2015          184.0     98    11.27      3.0
+   2016          413.0    322     7.70     15.0
+   2017          455.0    373     7.32     20.0
+   2018          383.0    333     6.90     17.0
+   2019          433.0    382     6.80     20.0
+   2020          436.0    384     6.81     29.0
+   2021          422.0    347     7.30     21.0
+   2022          392.0    327     7.19     15.0
+   2024          341.0    328     6.24     20.0
+   2025          322.0    289     6.69     18.0
+   2026          420.0    318     7.92      4.0

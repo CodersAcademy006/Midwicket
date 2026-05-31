@@ -1,80 +1,61 @@
 <div align="center">
-  <img src="https://img.icons8.com/color/256/cricket.png" alt="Midwicket Logo" width="150" />
 
-  # Midwicket
-  
-  **The Open-Source Cricket Intelligence SDK**
+<img src="https://img.icons8.com/color/256/cricket.png" alt="Midwicket" width="120" />
 
-  <p align="center">
-    <a href="https://colab.research.google.com/github/CodersAcademy006/Midwicket/blob/main/notebooks/quickstart.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab" height="20"></a>
-    <a href="https://pypi.org/project/midwicket/"><img src="https://img.shields.io/pypi/v/midwicket?color=0052CC&style=flat-square&logo=python&logoColor=white" alt="PyPI version" /></a>
-    <a href="https://github.com/CodersAcademy006/Midwicket/actions"><img src="https://img.shields.io/github/actions/workflow/status/CodersAcademy006/Midwicket/ci.yml?color=238636&style=flat-square&logo=github&logoColor=white&label=CI" alt="Build Status" /></a>
-    <a href="https://pypi.org/project/midwicket/"><img src="https://img.shields.io/pypi/pyversions/midwicket?color=0052CC&style=flat-square&logo=python&logoColor=white" alt="Python Versions" /></a>
-  </p>
+# Midwicket
 
-  <p align="center">
-    <i>Fast, deterministic cricket analytics powered by PyArrow and DuckDB.</i>
-  </p>
+### Cricket Data Infrastructure
+
+<p>
+  <strong>20,888+ Matches &nbsp;·&nbsp; 9,148,005+ Deliveries &nbsp;·&nbsp; 25+ Years of Coverage</strong>
+</p>
+
+<p>
+  <a href="https://colab.research.google.com/github/CodersAcademy006/Midwicket/blob/main/notebooks/quickstart.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab" /></a>
+  &nbsp;
+  <a href="https://pypi.org/project/midwicket/"><img src="https://img.shields.io/pypi/v/midwicket?color=0052CC&style=flat-square&logo=python&logoColor=white" alt="PyPI" /></a>
+  &nbsp;
+  <a href="https://github.com/CodersAcademy006/Midwicket/actions"><img src="https://img.shields.io/github/actions/workflow/status/CodersAcademy006/Midwicket/ci.yml?color=238636&style=flat-square&logo=github&logoColor=white&label=CI" alt="CI" /></a>
+  &nbsp;
+  <a href="https://pypi.org/project/midwicket/"><img src="https://img.shields.io/pypi/pyversions/midwicket?color=0052CC&style=flat-square" alt="Python" /></a>
+  &nbsp;
+  <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT" />
+</p>
+
+<p><i>Ball-by-ball cricket analytics. Local. Fast. No cloud required.</i></p>
+
 </div>
 
 ---
 
-## The Problem
-Processing unstructured sports telemetry is historically a nightmare. Traditional APIs are slow, schemas constantly break, and calculating complex metrics like "venue bias" or "live win probability" across millions of events requires expensive cloud data warehouses.
+## Why Midwicket?
 
-## The Midwicket Solution
-Midwicket brings the data warehouse to your laptop. It is a high-performance cricket intelligence SDK built on a structured pipeline architecture: a query planner routes requests between the PyArrow in-memory layer and a materialized DuckDB cache, keeping aggregations fast without cloud costs.
+These are real findings — generated in seconds from the IPL corpus using Midwicket's query engine.
 
-By leveraging vectorized **PyArrow** operations and an embedded **DuckDB** engine, Midwicket processes over 10 years of play-by-play data locally.
+| Finding | How Midwicket got there |
+|---------|------------------------|
+| **Virat Kohli's 2026 IPL season (155.6 SR) is his fastest ever** — at age 37 | Season-by-season strike rate over 19 consecutive IPL seasons |
+| **Sixes per match nearly doubled** — 10.7 (2008) → 19.3 (2026) — while dot ball % fell 5.4 points | 1,239 matches, 18-season trend decomposition |
+| **Vaibhav Suryavanshi: 211 SR in Powerplay** — the highest ever recorded in IPL | 272 powerplay balls, 51 sixes, 35.7% dot rate |
+| **85% of IPL batters perform better when chasing** than when setting a target | SR uplift (2nd innings – 1st innings) for 200+ batters |
+| **DW Steyn's 44.65% dot rate at 6.79 economy** would be structurally impossible in 2024 IPL | Era-segmented dot ball analysis across all 141 IPL death bowlers |
 
-### Key Capabilities
-
-*   **Fast Local Queries:** PyArrow and DuckDB power sub-second aggregations on cached, materialized views. Raw event scans are available for arbitrary flexibility.
-*   **Pipeline Architecture:** Specialized components (Executor, Planner, Storage Engine, Registry) isolate concerns and route queries along the most efficient path.
-*   **Predictive Machine Learning:** Logistic regression win probability model trained on IPL data (AUC 0.843), running entirely in memory with no external call.
-*   **Type-Safe & Deterministic:** Immutable V1 schemas enforced via Pydantic. Queries are hashed and cached; identical inputs always produce identical outputs.
-*   **FastAPI Backend:** Production-ready REST API with auth, rate limiting, CORS, and Prometheus metrics.
-
----
-
-## Architecture
-
-The Midwicket engine separates concerns across a structured pipeline: incoming data flows from Cricsheet JSON through a PyArrow ingestion layer into a DuckDB cache, where a query planner decides whether to scan raw events or serve a pre-computed view.
-
-```mermaid
-graph LR
-    A[Cricsheet JSON] -->|Ingestion| B(PyArrow Pipeline)
-    B -->|Parquet| C{DuckDB Cache}
-    C -->|SQL Queries| D[Query Planner]
-    D -->|Express API| E[Jupyter / Colab]
-    D -->|FastAPI| F[Web / Mobile Clients]
-```
+[See all 10 showcase analyses →](README_SHOWCASES.md)
 
 ---
 
 ## Quick Start
 
-**Try it instantly in your browser — no install required:**
-
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/CodersAcademy006/Midwicket/blob/main/notebooks/quickstart.ipynb)
-
----
-
-### Step 1 — Install
+**30 seconds. No data download. No account.**
 
 ```bash
 pip install midwicket
 ```
 
----
-
-### Step 2 — Run a prediction (no data download needed)
-
-The win probability model runs entirely in memory. No dataset, no waiting.
-
 ```python
 import midwicket.express as px
 
+# Win probability — works instantly, bundled in-memory data
 result = px.predict_win(
     venue="Wankhede Stadium",
     target=180,
@@ -82,97 +63,292 @@ result = px.predict_win(
     wickets_down=5,
     overs_done=15.0,
 )
-print(f"Win Probability: {result['win_prob']:.1%}")
-# Win Probability: 22.5%
+print(f"Win probability: {result['win_prob']:.1%}")
+# Win probability: 22.5%
 ```
 
-The result also includes a `confidence` field — a heuristic certainty
-indicator (0.1–0.95) that reflects how extreme the prediction is and how
-much situational information is available. It is not a statistical confidence
-interval; treat it as a qualitative signal.
+That's it. The model runs locally, no API key, no download.
+
+**[Open in Colab →](https://colab.research.google.com/github/CodersAcademy006/Midwicket/blob/main/notebooks/quickstart.ipynb)** — zero-install, browser-based.
 
 ---
 
-### Step 3 — Query player stats and head-to-head matchups
+## Loading Datasets
 
-Midwicket ships with a bundled in-memory dataset. Player stats and matchups
-work out of the box — no download needed:
+Midwicket connects to [Cricsheet](https://cricsheet.org/) and manages download, extraction, and ingestion automatically.
 
 ```python
-import midwicket.express as px
+from midwicket.datasets import load_dataset
 
-stats = px.get_player_stats("Virat Kohli")
-print(f"Player: {stats.name} | Runs: {stats.runs} | Strike Rate: {stats.strike_rate}")
+# IPL — 1,100+ matches, 2008–present (~50 MB, downloads once)
+session = load_dataset("ipl")
 
-matchup = px.get_matchup("V Kohli", "JJ Bumrah")
-print(f"Head-to-head | Matches: {matchup.matches} | Average: {matchup.average:.1f}")
+# Big Bash League
+session = load_dataset("bbl")
+
+# Everything — all formats, all genders, 25+ years
+session = load_dataset("all")
 ```
 
-**How the data layer works:**
+**Available datasets:**
 
-1. **Bundled data (default):** The in-memory ZIP ships with the package. Stats
-   and matchups read from it automatically with no setup.
-2. **Download full history (optional):** For 10+ years of ball-by-ball IPL
-   data (~50 MB), run this once and it persists to disk:
-   ```python
-   px.download_data()          # downloads to ./data by default
-   # px.download_data("~/cricket-data")  # or a custom path
-   ```
-3. **Registry:** Player resolution and matchup stats are indexed in an in-memory
-   `IdentityRegistry` built from the loaded data. If a player name isn't found,
-   `get_player_stats` raises `EntityNotFoundError` with the missing name.
+| Key | Competition | Est. Matches |
+|-----|-------------|-------------|
+| `"ipl"` | Indian Premier League | 1,100+ |
+| `"t20s"` | T20 Internationals (M + W) | 3,200+ |
+| `"bbl"` | Big Bash League | 650+ |
+| `"psl"` | Pakistan Super League | 350+ |
+| `"cpl"` | Caribbean Premier League | 380+ |
+| `"wbbl"` | Women's Big Bash League | 550+ |
+| `"odis"` | One Day Internationals | 2,400+ |
+| `"tests"` | Test Matches | 700+ |
+| `"all_t20"` | All T20 globally | 8,500+ |
+| `"all"` | Complete Cricsheet corpus | 16,000+ |
+
+Once loaded, a session gives you a **thread-safe DuckDB engine** over ball-by-ball events. Query anything:
+
+```python
+df = session.engine.execute_sql("""
+    SELECT batter,
+           SUM(runs_batter) AS runs,
+           ROUND(SUM(runs_batter) * 100.0 / COUNT(*), 1) AS strike_rate,
+           COUNT(DISTINCT match_id) AS matches
+    FROM ball_events
+    WHERE over >= 15              -- death overs only
+    GROUP BY batter
+    HAVING COUNT(*) >= 100
+    ORDER BY runs DESC LIMIT 10
+""").to_pandas()
+```
 
 ---
 
-## Enterprise Deployment
+## Feature Store
 
-Midwicket includes a FastAPI backend, Prometheus scrape config, and a Grafana
-dashboard definition. The observability stack is provisioned via Docker Compose.
+Six production-grade metrics, computed from ball-by-ball data:
 
-> **Status:** The FastAPI service and Prometheus integration are production-ready.
-> The Grafana dashboard is provided as a starting point and may need metric
-> name adjustments to match your environment.
+```python
+from midwicket.features import (
+    build_pressure_index,
+    build_bowler_quality_rating,
+    build_match_context_score,
+    build_venue_bias_rating,
+    build_batter_intent_score,
+    build_expected_runs,
+)
 
-```bash
-# Clone the repository
-git clone https://github.com/CodersAcademy006/Midwicket.git
-cd Midwicket
+# Pressure Index — situational leverage per delivery
+pi = build_pressure_index(session)
+# Returns DataFrame: match_id, inning, over, ball, batter_id, bowler_id, pressure_index
 
-# Configure environment variables
-cp .env.example .env
-# Edit .env: set MIDWICKET_SECRET_KEY, MIDWICKET_API_KEYS, GRAFANA_PASSWORD
+# Bowler Quality Rating — dot balls + wicket rate combined
+bqr = build_bowler_quality_rating(session)
+# Returns DataFrame: bowler_id, total_balls, dot_balls, wickets, bowler_quality_rating
 
-# Start the FastAPI server + Prometheus + Grafana
-docker-compose up -d
+# Venue Bias Rating — batter-friendly vs bowler-friendly grounds
+vbr = build_venue_bias_rating(session)
+# VBR > 1.0 = batter-friendly  |  VBR < 1.0 = bowler-friendly
+# Venues with < 5 matches default to VBR = 1.0 (stabilised)
+
+# Match Context Score — chase pressure at any moment in the 2nd innings
+mcs = build_match_context_score(session)
 ```
+
+**All features support date filtering** — analyse any historical window without leakage:
+
+```python
+bqr_2023 = build_bowler_quality_rating(session, start_date="2023-01-01", end_date="2023-12-31")
+```
+
+---
+
+## Scouting Reports
+
+```python
+import midwicket as md
+
+session = md.init("./data")          # point at your local dataset
+report = md.scouting_report("Virat Kohli")
+
+print(report["role"])                # "Batter"
+print(report["strengths"])           # ["Powerplay anchor", "Middle-over accelerator", ...]
+print(report["phase_batting"])       # {"Powerplay": {...}, "Middle": {...}, "Death": {...}}
+print(report["venue_performance"])   # per-venue batting average and SR
+print(report["recent_form"])         # last-N-matches rolling stats
+```
+
+The scouting report resolves **name aliases automatically** — `"V Kohli"`, `"Virat Kohli"`, `"kohli"` all resolve to the same entity across 17+ seasons.
+
+---
+
+## Showcase Gallery
+
+Ten analyses built on real IPL data. Click any image to see the full walkthrough.
+
+<table>
+<tr>
+<td align="center" width="50%">
+
+**All-Time Run Leaders**
+
+[![Run Leaders](docs/showcases/01_run_leaders/01_run_leaders.png)](docs/showcases/01_run_leaders/WALKTHROUGH.md)
+
+Kohli's 9,228 runs lead by 1,897. Bars coloured by strike rate — greener hits faster.
+
+</td>
+<td align="center" width="50%">
+
+**IPL Scoring: 18 Years of Evolution**
+
+[![Season Trends](docs/showcases/10_season_trends/10_season_trends.png)](docs/showcases/10_season_trends/WALKTHROUGH.md)
+
+Avg 1st innings: 161 (2008) → 192 (2026). Sixes per match nearly doubled.
+
+</td>
+</tr>
+<tr>
+<td align="center" width="50%">
+
+**Venue Scoring Atlas (76 grounds)**
+
+[![Venue Atlas](docs/showcases/04_venue_atlas/04_venue_atlas.png)](docs/showcases/04_venue_atlas/WALKTHROUGH.md)
+
+VBR 0.848 → 1.253 across IPL grounds. 40% swing in expected scoring.
+
+</td>
+<td align="center" width="50%">
+
+**Death Over Bowler Landscape**
+
+[![Death Bowlers](docs/showcases/03_bumrah_death/03_death_bowlers.png)](docs/showcases/03_bumrah_death/WALKTHROUGH.md)
+
+141 bowlers, economy vs wicket rate. Bumrah: #11, economy 8.07.
+
+</td>
+</tr>
+<tr>
+<td align="center" width="50%">
+
+**Chase Specialists**
+
+[![Chase Scatter](docs/showcases/07_chase_specialists/07_chase_scatter.png)](docs/showcases/07_chase_specialists/WALKTHROUGH.md)
+
+85%+ of batters hit harder when chasing. Pat Cummins: +46 SR points.
+
+</td>
+<td align="center" width="50%">
+
+**Powerplay Kings**
+
+[![Powerplay Kings](docs/showcases/06_powerplay_kings/06_pp_kings.png)](docs/showcases/06_powerplay_kings/WALKTHROUGH.md)
+
+Suryavanshi: 211 SR — the highest ever recorded in IPL powerplay.
+
+</td>
+</tr>
+</table>
+
+[View all 10 showcases with charts, queries, and walkthroughs →](README_SHOWCASES.md)
+
+---
+
+## Five-Minute Tutorial
+
+New to Midwicket? [**docs/getting_started.md**](docs/getting_started.md) takes you from install to first insight in under 5 minutes — using real data, real outputs.
 
 ---
 
 ## Examples
 
-The `examples/` directory contains 36 runnable scripts covering the full SDK:
+The `examples/` directory contains 36 runnable scripts organised by complexity:
 
-| Range | Topic |
-|-------|-------|
-| `01`–`03` | Setup, basic session, data ingest |
-| `03b`–`08` | Player lookup, venue stats, win prediction |
-| `09`–`20` | Fantasy points, raw SQL, season filters, leaderboards |
-| `21`–`27` | Partnership stats, consistency, reports, pipelines |
-| `28`–`36` | Express API, config, full library tour |
+| Scripts | Topic |
+|---------|-------|
+| `01`–`05` | Session setup, data ingest, player lookup, venue stats |
+| `06`–`15` | Win prediction, fantasy points, SQL queries, season filters |
+| `16`–`27` | Leaderboards, partnerships, consistency, full pipeline demos |
+| `28`–`36` | Express API, config, debug, full library tour |
+| `showcase_01`–`25` | Deep-dive analyses with charts and findings |
+| `portfolio/` | 14 player and team scouting studies |
 
-Browse [`examples/`](examples/) or start with
-[`28_express_quickstart.py`](examples/28_express_quickstart.py).
+Start here: [`examples/28_express_quickstart.py`](examples/28_express_quickstart.py)
+
+---
+
+## Architecture
+
+Midwicket separates concerns across five layers. Data flows from raw JSON through a typed ingestion pipeline into a DuckDB analytical store, with a query planner routing between live scans and pre-built feature tables.
+
+```
+Cricsheet JSON
+      │
+      ▼
+┌─────────────────────┐
+│  Canonicaliser      │  Strict V1 Arrow schema · retirement fix · int32 upcasting
+│  (core/canonicalize)│  Deterministic match_id · venue alias resolution
+└──────────┬──────────┘
+           │ PyArrow Table
+           ▼
+┌─────────────────────┐
+│  Identity Registry  │  Player / venue / team aliases across 25+ years
+│  (storage/registry) │  Temporal-safe: resolves names at match date, not today
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│  DuckDB Engine      │  Thread-safe · snapshot management · temporal filtering
+│  (storage/engine)   │  ball_events: 9M+ rows · sub-second aggregations
+└──────────┬──────────┘
+           │
+      ┌────┴────┐
+      ▼         ▼
+ Feature     Express
+  Store        API
+(features.py) (express.py)
+      │         │
+      └────┬────┘
+           ▼
+   FastAPI + Prometheus
+   (midwicket/serve/)
+```
+
+**Data integrity guarantees:**
+- Schema version-locked (`BALL_EVENT_SCHEMA` v1.0.0) — breaking changes are explicit
+- `over` stored as `int16`, `runs` as `int32` — no silent overflow on aggregation
+- Retirements classified correctly: `RETIRED_HURT`/`RETIRED_NOT_OUT` → `is_wicket=False`
+- Temporal filters are leak-proof — verified against 4 cutoff dates, 0 leaked rows
+
+---
+
+## Enterprise Deployment
+
+```bash
+git clone https://github.com/CodersAcademy006/Midwicket.git && cd Midwicket
+cp .env.example .env           # set MIDWICKET_SECRET_KEY, MIDWICKET_API_KEYS
+docker-compose up -d           # FastAPI + Prometheus + Grafana
+```
+
+The FastAPI service exposes REST endpoints for win probability, player stats, matchups, and scouting reports. Prometheus scrape config and a Grafana dashboard definition are included.
 
 ---
 
 ## Contributing
-Contributions are highly encouraged! We are actively looking for help with:
-- Expanding the built-in machine learning models.
-- Optimizing DuckDB materialized views.
-- Writing tests for the query planner.
 
-Before submitting code, please review the component architecture in
-[`Agents.md`](Agents.md).
+Contributions welcome. Areas where help is most needed:
 
-## License
-Midwicket is open-source software released under the MIT License.
+- Additional competition datasets (WBBL scouting, CPL analysis)
+- Jupyter notebook tutorials for the showcase analyses
+- Performance benchmarks across dataset sizes
+- Documentation translations
+
+Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before submitting a PR.
+
+---
+
+<div align="center">
+
+**MIT License** · Built on [Cricsheet](https://cricsheet.org/) data · Powered by [DuckDB](https://duckdb.org/) + [PyArrow](https://arrow.apache.org/docs/python/)
+
+[Getting Started](docs/getting_started.md) · [Showcase Gallery](docs/gallery.md) · [API Reference](docs/api.md) · [Changelog](CHANGELOG.md)
+
+</div>
