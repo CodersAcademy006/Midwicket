@@ -90,20 +90,40 @@ session = load_dataset("bbl")
 session = load_dataset("all")
 ```
 
+**Browse the registry:**
+
+```python
+from midwicket.datasets import list_datasets, describe_dataset
+
+# See every registered dataset at a glance
+for ds in list_datasets():
+    print(f"{ds['name']:10s}  {ds['matches']:5d} matches  {ds['date_range']}")
+
+# Full metadata for one dataset
+info = describe_dataset("ipl")
+print(info["description"])        # Indian Premier League — ...
+print(info["statistics"])         # {'matches': 1100, 'deliveries': 480000, ...}
+print(info["competitions"])       # ['Indian Premier League']
+print(info["coverage"])           # complete
+print(info["example_usage"])      # from midwicket.datasets import load_dataset ...
+```
+
 **Available datasets:**
 
-| Key | Competition | Est. Matches |
-|-----|-------------|-------------|
-| `"ipl"` | Indian Premier League | 1,100+ |
-| `"t20s"` | T20 Internationals (M + W) | 3,200+ |
-| `"bbl"` | Big Bash League | 650+ |
-| `"psl"` | Pakistan Super League | 350+ |
-| `"cpl"` | Caribbean Premier League | 380+ |
-| `"wbbl"` | Women's Big Bash League | 550+ |
-| `"odis"` | One Day Internationals | 2,400+ |
-| `"tests"` | Test Matches | 700+ |
-| `"all_t20"` | All T20 globally | 8,500+ |
-| `"all"` | Complete Cricsheet corpus | 16,000+ |
+| Key | Competition | Matches | Venues | Range |
+|-----|-------------|---------|--------|-------|
+| `"ipl"` | Indian Premier League | 1,100+ | 15 | 2008–2026 |
+| `"t20is"` | T20 Internationals (M + W) | 3,200+ | 220 | 2005–2026 |
+| `"bbl"` | Big Bash League | 650+ | 8 | 2011–2025 |
+| `"psl"` | Pakistan Super League | 350+ | 8 | 2016–2025 |
+| `"cpl"` | Caribbean Premier League | 380+ | 8 | 2013–2025 |
+| `"wbbl"` | Women's Big Bash League | 550+ | 8 | 2015–2025 |
+| `"odis"` | One Day Internationals | 2,400+ | 220 | 2002–2026 |
+| `"tests"` | Test Matches | 700+ | 110 | 2004–2026 |
+| `"all_t20"` | All T20 globally | 8,500+ | 380 | 2005–2026 |
+| `"all"` | Complete Cricsheet corpus | 20,000+ | 450 | 2002–2026 |
+
+Full catalog: [`docs/datasets.md`](docs/datasets.md)
 
 Once loaded, a session gives you a **thread-safe DuckDB engine** over ball-by-ball events. Query anything:
 
