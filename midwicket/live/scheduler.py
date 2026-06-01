@@ -9,13 +9,25 @@ Manages scheduled tasks for data pipeline execution, including:
 
 import logging
 import asyncio
-from typing import Optional, Callable
+from typing import Optional, Callable, Any, TYPE_CHECKING
 from datetime import datetime, timedelta
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
-from apscheduler.job import Job
+
+if TYPE_CHECKING:
+    from apscheduler.job import Job
 
 logger = logging.getLogger(__name__)
+
+
+def _require_apscheduler():
+    try:
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        from apscheduler.triggers.cron import CronTrigger
+    except ImportError as exc:
+        raise ImportError(
+            "apscheduler is required for the scheduler module. "
+            "Install with: pip install 'midwicket[serve]' or pip install apscheduler"
+        ) from exc
+    return AsyncIOScheduler, CronTrigger
 
 
 class DataIngestionScheduler:
@@ -35,8 +47,9 @@ class DataIngestionScheduler:
         Args:
             timezone: Timezone for cron scheduling (default: UTC)
         """
+        AsyncIOScheduler, _CronTrigger = _require_apscheduler()
         self.scheduler = AsyncIOScheduler(timezone=timezone)
-        self._jobs: dict[str, Job] = {}
+        self._jobs: dict[str, Any] = {}
         self._is_running = False
         self._last_run_status: dict[str, dict] = {}
 
@@ -58,6 +71,7 @@ class DataIngestionScheduler:
             minute: Minute to run (default: 0)
             max_instances: Max concurrent instances (default: 1)
         """
+        _AsyncIOScheduler, CronTrigger = _require_apscheduler()
         trigger = CronTrigger(
             day_of_week=day_of_week,
             hour=hour,

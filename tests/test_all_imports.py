@@ -23,6 +23,7 @@ def test_all_imports():
     # gracefully when the extras are not installed.
     OPTIONAL_PACKAGES = frozenset({
         "plotly", "matplotlib", "reportlab", "sklearn", "scikit-learn",
+        "apscheduler",
     })
 
     failed_imports: list[tuple[str, str]] = []
