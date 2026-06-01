@@ -119,11 +119,48 @@ class MidwicketAPI:
                 "Use only for local development/testing."
             )
 
+        def _should_init_scheduler() -> bool:
+            """Check if scheduler should be initialized based on config."""
+            enabled = os.getenv("MIDWICKET_ENABLE_SCHEDULER", "").lower() in ("1", "true", "yes")
+            return enabled
+
+        def _get_scheduler_config() -> Dict[str, Any]:
+            """Get scheduler configuration from environment variables."""
+            return {
+                "day_of_week": int(os.getenv("MIDWICKET_SCHEDULER_DAY", "0")),
+                "hour": int(os.getenv("MIDWICKET_SCHEDULER_HOUR", "2")),
+                "minute": int(os.getenv("MIDWICKET_SCHEDULER_MINUTE", "0")),
+                "timezone": os.getenv("MIDWICKET_SCHEDULER_TIMEZONE", "UTC"),
+            }
+
         @asynccontextmanager
         async def _lifespan(_app: FastAPI):
+            # Startup: initialize scheduler if enabled
+            scheduler = None
             try:
+                if _should_init_scheduler():
+                    from midwicket.live.scheduler import initialize_scheduler
+                    from midwicket.data.pipeline import build_registry_stats
+
+                    scheduler_config = _get_scheduler_config()
+                    scheduler = await initialize_scheduler(
+                        task_func=build_registry_stats,
+                        config=scheduler_config,
+                    )
+                    await scheduler.start()
+                    logger.info("Data ingestion scheduler initialized and started")
+
                 yield
+
             finally:
+                # Shutdown: stop scheduler and close app
+                if scheduler:
+                    try:
+                        await scheduler.stop()
+                        logger.info("Data ingestion scheduler stopped")
+                    except Exception as e:
+                        logger.error(f"Error stopping scheduler: {e}")
+
                 self.close()
 
         self.app = FastAPI(
