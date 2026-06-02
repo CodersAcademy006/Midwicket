@@ -4,7 +4,7 @@
 
 # Midwicket
 
-### Cricket Data Infrastructure
+### Cricket Analytics for Python
 
 <p>
   <strong>20,888+ Matches &nbsp;·&nbsp; 9,148,005+ Deliveries &nbsp;·&nbsp; 25+ Years of Coverage</strong>
@@ -30,15 +30,15 @@
 
 ## Why Midwicket?
 
-These are real findings — generated in seconds from the IPL corpus using Midwicket's query engine.
+Real findings from the IPL corpus:
 
-| Finding | How Midwicket got there |
-|---------|------------------------|
-| **Virat Kohli's 2026 IPL season (155.6 SR) is his fastest ever** — at age 37 | Season-by-season strike rate over 19 consecutive IPL seasons |
-| **Sixes per match nearly doubled** — 10.7 (2008) → 19.3 (2026) — while dot ball % fell 5.4 points | 1,239 matches, 18-season trend decomposition |
-| **Vaibhav Suryavanshi: 211 SR in Powerplay** — the highest ever recorded in IPL | 272 powerplay balls, 51 sixes, 35.7% dot rate |
-| **85% of IPL batters perform better when chasing** than when setting a target | SR uplift (2nd innings – 1st innings) for 200+ batters |
-| **DW Steyn's 44.65% dot rate at 6.79 economy** would be structurally impossible in 2024 IPL | Era-segmented dot ball analysis across all 141 IPL death bowlers |
+| Finding |
+|---------|
+| **Virat Kohli's 2026 IPL season (155.6 SR) is his fastest ever** — at age 37 |
+| **Sixes per match nearly doubled** — 10.7 (2008) → 19.3 (2026) — while dot ball % fell 5.4 points |
+| **Vaibhav Suryavanshi: 211 SR in Powerplay** — the highest ever recorded in IPL |
+| **85% of IPL batters perform better when chasing** than when setting a target |
+| **DW Steyn's 44.65% dot rate at 6.79 economy** would be structurally impossible in 2024 IPL |
 
 [See all 10 showcase analyses →](README_SHOWCASES.md)
 
@@ -55,7 +55,7 @@ pip install midwicket
 ```python
 import midwicket.express as px
 
-# Win probability — works instantly, bundled in-memory data
+# Win probability — works instantly
 result = px.predict_win(
     venue="Wankhede Stadium",
     target=180,
@@ -67,7 +67,7 @@ print(f"Win probability: {result['win_prob']:.1%}")
 # Win probability: 22.5%
 ```
 
-That's it. The model runs locally, no API key, no download.
+That's it. No API key, no download.
 
 **[Open in Colab →](https://colab.research.google.com/github/CodersAcademy006/Midwicket/blob/main/notebooks/quickstart.ipynb)** — zero-install, browser-based.
 
@@ -75,7 +75,7 @@ That's it. The model runs locally, no API key, no download.
 
 ## Loading Datasets
 
-Midwicket connects to [Cricsheet](https://cricsheet.org/) and manages download, extraction, and ingestion automatically.
+Load any major cricket dataset in one line.
 
 ```python
 from midwicket.datasets import load_dataset
@@ -121,11 +121,11 @@ print(info["example_usage"])      # from midwicket.datasets import load_dataset 
 | `"odis"` | One Day Internationals | 2,400+ | 220 | 2002–2026 |
 | `"tests"` | Test Matches | 700+ | 110 | 2004–2026 |
 | `"all_t20"` | All T20 globally | 8,500+ | 380 | 2005–2026 |
-| `"all"` | Complete Cricsheet corpus | 20,000+ | 450 | 2002–2026 |
+| `"all"` | Complete corpus | 20,000+ | 450 | 2002–2026 |
 
 Full catalog: [`docs/datasets.md`](docs/datasets.md)
 
-Once loaded, a session gives you a **thread-safe DuckDB engine** over ball-by-ball events. Query anything:
+Once loaded, query ball-by-ball events with SQL:
 
 ```python
 df = session.engine.execute_sql("""
@@ -145,7 +145,7 @@ df = session.engine.execute_sql("""
 
 ## Feature Store
 
-Six production-grade metrics, computed from ball-by-ball data:
+Six production-grade metrics:
 
 ```python
 from midwicket.features import (
@@ -168,13 +168,12 @@ bqr = build_bowler_quality_rating(session)
 # Venue Bias Rating — batter-friendly vs bowler-friendly grounds
 vbr = build_venue_bias_rating(session)
 # VBR > 1.0 = batter-friendly  |  VBR < 1.0 = bowler-friendly
-# Venues with < 5 matches default to VBR = 1.0 (stabilised)
 
 # Match Context Score — chase pressure at any moment in the 2nd innings
 mcs = build_match_context_score(session)
 ```
 
-**All features support date filtering** — analyse any historical window without leakage:
+**All features support date filtering:**
 
 ```python
 bqr_2023 = build_bowler_quality_rating(session, start_date="2023-01-01", end_date="2023-12-31")
@@ -197,7 +196,7 @@ print(report["venue_performance"])   # per-venue batting average and SR
 print(report["recent_form"])         # last-N-matches rolling stats
 ```
 
-The scouting report resolves **name aliases automatically** — `"V Kohli"`, `"Virat Kohli"`, `"kohli"` all resolve to the same entity across 17+ seasons.
+Names work in any form — `"V Kohli"`, `"Virat Kohli"`, `"kohli"` all return the same report.
 
 ---
 
@@ -295,18 +294,6 @@ Start here: [`examples/28_express_quickstart.py`](examples/28_express_quickstart
 
 ---
 
-## Enterprise Deployment
-
-```bash
-git clone https://github.com/CodersAcademy006/Midwicket.git && cd Midwicket
-cp .env.example .env           # set MIDWICKET_SECRET_KEY, MIDWICKET_API_KEYS
-docker-compose up -d           # FastAPI + Prometheus + Grafana
-```
-
-The FastAPI service exposes REST endpoints for win probability, player stats, matchups, and scouting reports. Prometheus scrape config and a Grafana dashboard definition are included.
-
----
-
 ## Contributing
 
 Contributions welcome. Areas where help is most needed:
@@ -322,7 +309,7 @@ Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before submitting a PR.
 
 <div align="center">
 
-**MIT License** · Built on [Cricsheet](https://cricsheet.org/) data · Powered by [DuckDB](https://duckdb.org/) + [PyArrow](https://arrow.apache.org/docs/python/)
+**MIT License** · Built on [Cricsheet](https://cricsheet.org/) data
 
 [Getting Started](docs/getting_started.md) · [Showcase Gallery](docs/gallery.md) · [API Reference](docs/api.md) · [Changelog](CHANGELOG.md)
 
