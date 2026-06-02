@@ -295,51 +295,6 @@ Start here: [`examples/28_express_quickstart.py`](examples/28_express_quickstart
 
 ---
 
-## Architecture
-
-Midwicket separates concerns across five layers. Data flows from raw JSON through a typed ingestion pipeline into a DuckDB analytical store, with a query planner routing between live scans and pre-built feature tables.
-
-```
-Cricsheet JSON
-      │
-      ▼
-┌─────────────────────┐
-│  Canonicaliser      │  Strict V1 Arrow schema · retirement fix · int32 upcasting
-│  (core/canonicalize)│  Deterministic match_id · venue alias resolution
-└──────────┬──────────┘
-           │ PyArrow Table
-           ▼
-┌─────────────────────┐
-│  Identity Registry  │  Player / venue / team aliases across 25+ years
-│  (storage/registry) │  Temporal-safe: resolves names at match date, not today
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│  DuckDB Engine      │  Thread-safe · snapshot management · temporal filtering
-│  (storage/engine)   │  ball_events: 9M+ rows · sub-second aggregations
-└──────────┬──────────┘
-           │
-      ┌────┴────┐
-      ▼         ▼
- Feature     Express
-  Store        API
-(features.py) (express.py)
-      │         │
-      └────┬────┘
-           ▼
-   FastAPI + Prometheus
-   (midwicket/serve/)
-```
-
-**Data integrity guarantees:**
-- Schema version-locked (`BALL_EVENT_SCHEMA` v1.0.0) — breaking changes are explicit
-- `over` stored as `int16`, `runs` as `int32` — no silent overflow on aggregation
-- Retirements classified correctly: `RETIRED_HURT`/`RETIRED_NOT_OUT` → `is_wicket=False`
-- Temporal filters are leak-proof — verified against 4 cutoff dates, 0 leaked rows
-
----
-
 ## Enterprise Deployment
 
 ```bash
@@ -370,5 +325,7 @@ Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before submitting a PR.
 **MIT License** · Built on [Cricsheet](https://cricsheet.org/) data · Powered by [DuckDB](https://duckdb.org/) + [PyArrow](https://arrow.apache.org/docs/python/)
 
 [Getting Started](docs/getting_started.md) · [Showcase Gallery](docs/gallery.md) · [API Reference](docs/api.md) · [Changelog](CHANGELOG.md)
+
+<sub>Built by Srijan Upadhyay with ❤️</sub>
 
 </div>
