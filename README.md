@@ -159,11 +159,11 @@ from midwicket.features import (
 
 # Pressure Index — situational leverage per delivery
 pi = build_pressure_index(session)
-# Returns a DataFrame, one row per delivery
+# Returns DataFrame: match_id, inning, over, ball, batter_id, bowler_id, pressure_index
 
 # Bowler Quality Rating — dot balls + wicket rate combined
 bqr = build_bowler_quality_rating(session)
-# Returns a DataFrame, one row per bowler
+# Returns DataFrame: bowler_id, total_balls, dot_balls, wickets, bowler_quality_rating
 
 # Venue Bias Rating — batter-friendly vs bowler-friendly grounds
 vbr = build_venue_bias_rating(session)
