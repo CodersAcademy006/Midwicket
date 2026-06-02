@@ -326,6 +326,6 @@ Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before submitting a PR.
 
 [Getting Started](docs/getting_started.md) · [Showcase Gallery](docs/gallery.md) · [API Reference](docs/api.md) · [Changelog](CHANGELOG.md)
 
-<sub>Built by Srijan Upadhyay with ❤️</sub>
+**Built by Srijan Upadhyay with ❤️**
 
 </div>
