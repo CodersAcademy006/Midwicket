@@ -1,59 +1,18 @@
-"""
-03_ingest_world.py
+"""Download dataset and populate the registry. Run once before name-based queries."""
 
-Downloads IPL data from Cricsheet and populates the registry.
-Run this once before using examples that query players or venues.
-"""
-import sys
-import os
-
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
+from datetime import date
 import midwicket as md
 from midwicket.data.loader import DataLoader
 from midwicket.data.pipeline import build_registry_stats
 
+DataLoader("./data").download()
+session = md.init(source="./data")
+build_registry_stats(session.loader, session.registry)
 
-def main():
-    print("Starting data ingestion...")
-
-    data_dir = "./data"
-
-    # 1. Download IPL JSON files (~50 MB) from Cricsheet
-    loader = DataLoader(data_dir)
+today = date.today()
+for name in ("V Kohli", "JJ Bumrah", "Wankhede Stadium"):
     try:
-        loader.download()
-        print("Download complete.")
-    except Exception as e:
-        print(f"Download failed: {e}")
-        return
-
-    # 2. Initialize session
-    session = md.init(source=data_dir)
-
-    # 3. Populate registry (player/venue identity resolution)
-    print("Building registry from raw match data...")
-    try:
-        build_registry_stats(session.loader, session.registry)
-        print("Registry built successfully.")
-    except Exception as e:
-        print(f"Registry build failed: {e}")
-        return
-
-    # 4. Verify
-    print("\nVerifying Registry...")
-    from datetime import date
-    for name in ["V Kohli", "JJ Bumrah", "Wankhede Stadium"]:
-        try:
-            eid = session.registry.resolve_player(name, date.today())
-            print(f"  Player '{name}' -> ID {eid}")
-        except Exception:
-            try:
-                eid = session.registry.resolve_venue(name, date.today())
-                print(f"  Venue  '{name}' -> ID {eid}")
-            except Exception as e:
-                print(f"  Not found: {name} ({e})")
-
-
-if __name__ == "__main__":
-    main()
+        print("player", name, "->", session.registry.resolve_player(name, today))
+    except Exception:
+        try:    print("venue ", name, "->", session.registry.resolve_venue(name, today))
+        except Exception as e: print("not found:", name, e)

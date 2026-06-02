@@ -1,26 +1,6 @@
-"""
-04_venue_lookup.py
-
-This script demonstrates how to resolve venue names to IDs.
-"""
+"""Resolve a venue name to an ID."""
 
 from datetime import date
 from midwicket.api.session import get_registry
 
-def main():
-    registry = get_registry()
-    
-    venue_name = "M Chinnaswamy Stadium"
-    today = date.today()
-    
-    try:
-        venue_id = registry.resolve_venue(venue_name, match_date=today)
-        print(f"Venue: {venue_name}")
-        print(f"ID: {venue_id}")
-
-    except Exception as e:
-        print(f"Venue '{venue_name}' not found: {e}")
-        print("Run 03_ingest_world.py first to populate the registry.")
-
-if __name__ == "__main__":
-    main()
+print("M Chinnaswamy Stadium ->", get_registry().resolve_venue("M Chinnaswamy Stadium", date.today()))
