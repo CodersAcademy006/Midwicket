@@ -309,7 +309,7 @@ Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before submitting a PR.
 
 <div align="center">
 
-**MIT License** · Built on [Cricsheet](https://cricsheet.org/) data
+**MIT License** · Built on [Cricsheet](https://cricsheet.org/) data · Powered by [DuckDB](https://duckdb.org/) + [PyArrow](https://arrow.apache.org/docs/python/)
 
 [Getting Started](docs/getting_started.md) · [Showcase Gallery](docs/gallery.md) · [API Reference](docs/api.md) · [Changelog](CHANGELOG.md)
 
