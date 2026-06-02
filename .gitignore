@@ -193,3 +193,28 @@ examples/27_full_pipeline_demo.ipynb
 *.xls
 *.docx
 *.pptx
+
+# Personal status, audit, validation, and strategy reports
+# (kept local only — never committed)
+/*_REPORT.md
+/*_report.md
+/*_STATUS.md
+/*_status.md
+/*_audit*.md
+/*_AUDIT*.md
+/*_readiness*.md
+/*_READINESS*.md
+/*_validation*.md
+/*_VALIDATION*.md
+/*_strategy*.md
+/*_STRATEGY*.md
+/*_remaining*.md
+/*_REMAINING*.md
+/PRODUCTION_*.md
+/REMAINING_*.md
+/ACTUAL_*.md
+/TODO*.txt
+/TODO*.md
+/actual_stats.json
+reports/
+**/figma_architecture*.md
