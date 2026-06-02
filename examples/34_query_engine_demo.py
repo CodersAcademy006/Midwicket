@@ -1,135 +1,57 @@
-"""
-34_query_engine_demo.py — QueryEngine, Schema & Execution Pipeline
+"""Midwicket query engine - Schema V1 ingest, raw SQL, executor + cache, schema enforcement."""
 
-Shows the full stack from Arrow table creation through schema validation,
-ingest, and SQL execution — all in-memory, no downloads required.
-
-Layers demonstrated:
-  Schema V1 → QueryEngine.ingest_events() → execute_sql() → Arrow Table
-
-Usage:
-    python examples/34_query_engine_demo.py
-"""
-
-import pyarrow as pa
 from datetime import date
-from midwicket.schema.v1 import BALL_EVENT_SCHEMA
-from midwicket.storage.engine import QueryEngine
-from midwicket.runtime.executor import RuntimeExecutor
-from midwicket.runtime.cache import CacheInterface
-from midwicket.runtime.planner import QueryPlanner
-from midwicket.compute.derived import DerivedStore
-from midwicket.query.base import MatchupQuery
+import pyarrow as pa
+from midwicket.schema.v1         import BALL_EVENT_SCHEMA
+from midwicket.storage.engine    import QueryEngine
+from midwicket.runtime.executor  import RuntimeExecutor
+from midwicket.runtime.cache     import CacheInterface
+from midwicket.query.base        import MatchupQuery
 
 
-# ---------------------------------------------------------------------------
-# Minimal in-memory cache (satisfies the CacheInterface protocol)
-# ---------------------------------------------------------------------------
 class MemoryCache(CacheInterface):
-    def __init__(self):
-        self._store = {}
-
-    def get(self, key: str):
-        return self._store.get(key)
-
-    def set(self, key: str, value, ttl: int = 3600) -> None:
-        self._store[key] = value
-
-    def delete(self, key: str) -> None:
-        self._store.pop(key, None)
-
-    def clear(self) -> None:
-        self._store.clear()
-
-    def close(self) -> None:
-        pass
+    def __init__(self):            self.s = {}
+    def get(self, k):              return self.s.get(k)
+    def set(self, k, v, ttl=3600): self.s[k] = v
+    def delete(self, k):           self.s.pop(k, None)
+    def clear(self):               self.s.clear()
+    def close(self):               pass
 
 
-def make_sample_table() -> pa.Table:
-    """Build a tiny Schema V1-conformant table with 10 ball events."""
-    n = 10
-    return pa.table(
-        {
-            "match_id":        pa.array(["m001"] * n, type=pa.string()),
-            "date":            pa.array([date(2023, 1, 1)] * n, type=pa.date32()),
-            "inning":          pa.array([1] * n, type=pa.int8()),
-            "over":            pa.array(list(range(n)), type=pa.int8()),
-            "ball":            pa.array([1] * n, type=pa.int8()),
-            "batter_id":       pa.array([1] * n, type=pa.int32()),
-            "non_striker_id":  pa.array([3] * n, type=pa.int32()),
-            "bowler_id":       pa.array([2] * n, type=pa.int32()),
-            "batting_team_id": pa.array([100] * n, type=pa.int16()),
-            "bowling_team_id": pa.array([200] * n, type=pa.int16()),
-            "venue_id":        pa.array([10] * n, type=pa.int32()),
-            "runs_batter":     pa.array([4, 0, 6, 1, 2, 0, 1, 4, 6, 0], type=pa.int8()),
-            "runs_extras":     pa.array([0] * n, type=pa.int8()),
-            "is_wicket":       pa.array([False] * 9 + [True], type=pa.bool_()),
-            "wicket_type":     pa.array([""] * 9 + ["caught"], type=pa.dictionary(pa.int8(), pa.string())),
-            "phase":           pa.array(["Powerplay"] * n, type=pa.dictionary(pa.int8(), pa.string())),
-        },
-        schema=BALL_EVENT_SCHEMA,
-    )
+n = 10
+table = pa.table({
+    "match_id":        pa.array(["m001"] * n,              pa.string()),
+    "date":            pa.array([date(2023, 1, 1)] * n,    pa.date32()),
+    "inning":          pa.array([1] * n,                   pa.int8()),
+    "over":            pa.array(range(n),                  pa.int8()),
+    "ball":            pa.array([1] * n,                   pa.int8()),
+    "batter_id":       pa.array([1] * n,                   pa.int32()),
+    "non_striker_id":  pa.array([3] * n,                   pa.int32()),
+    "bowler_id":       pa.array([2] * n,                   pa.int32()),
+    "batting_team_id": pa.array([100] * n,                 pa.int16()),
+    "bowling_team_id": pa.array([200] * n,                 pa.int16()),
+    "venue_id":        pa.array([10] * n,                  pa.int32()),
+    "runs_batter":     pa.array([4, 0, 6, 1, 2, 0, 1, 4, 6, 0], pa.int8()),
+    "runs_extras":     pa.array([0] * n,                   pa.int8()),
+    "is_wicket":       pa.array([False] * 9 + [True],      pa.bool_()),
+    "wicket_type":     pa.array([""] * 9 + ["caught"],     pa.dictionary(pa.int8(), pa.string())),
+    "phase":           pa.array(["Powerplay"] * n,         pa.dictionary(pa.int8(), pa.string())),
+}, schema=BALL_EVENT_SCHEMA)
 
+engine = QueryEngine(db_path=":memory:")
+engine.ingest_events(table, snapshot_tag="demo_2023", append=False)
+print(engine.execute_sql(
+    "SELECT SUM(runs_batter) runs, SUM(is_wicket::INT) wkts FROM ball_events"
+).to_pandas())
 
-def main() -> None:
-    print("Midwicket Query Engine Demo — in-memory")
-    print("=" * 50)
+executor = RuntimeExecutor(cache=MemoryCache(), engine=engine)
+q = MatchupQuery(batter_id="1", bowler_id="2")
+r1, r2 = executor.execute(q), executor.execute(q)
+print(f"sources: {r1.meta.source} -> {r2.meta.source} (second hits cache)")
 
-    # ------------------------------------------------------------------
-    # 1. Build engine and ingest sample data
-    # ------------------------------------------------------------------
-    engine = QueryEngine(db_path=":memory:")
-    table  = make_sample_table()
+try:
+    engine.ingest_events(pa.table({"col_a": [1, 2, 3]}), snapshot_tag="bad")
+except ValueError as e:
+    print("schema enforced:", e)
 
-    print(f"\n[1] Ingesting {table.num_rows} ball events…")
-    engine.ingest_events(table, snapshot_tag="demo_2023", append=False)
-    print("  Ingestion complete.")
-
-    # ------------------------------------------------------------------
-    # 2. Raw SQL query
-    # ------------------------------------------------------------------
-    print("\n[2] Raw SQL: total runs and wickets")
-    result = engine.execute_sql(
-        "SELECT SUM(runs_batter) AS total_runs, SUM(CASE WHEN is_wicket THEN 1 ELSE 0 END) AS wickets FROM ball_events"
-    )
-    row = result.to_pandas().iloc[0]
-    print(f"  Total runs : {row['total_runs']}")
-    print(f"  Wickets    : {row['wickets']}")
-
-    # ------------------------------------------------------------------
-    # 3. Executor with cache
-    # ------------------------------------------------------------------
-    print("\n[3] RuntimeExecutor with in-memory cache")
-    cache    = MemoryCache()
-    executor = RuntimeExecutor(cache=cache, engine=engine)
-
-    q = MatchupQuery(batter_id="1", bowler_id="2")
-    res = executor.execute(q)
-
-    df = res.data.to_pandas() if hasattr(res.data, "to_pandas") else res.data
-    print(f"  Query hash     : {res.meta.query_hash[:16]}…")
-    print(f"  Source         : {res.meta.source}")
-    print(f"  Exec time (ms) : {res.meta.execution_time_ms:.2f}")
-    if hasattr(df, "to_string"):
-        print(f"  Result:\n{df.to_string(index=False)}")
-
-    # Second call — should come from cache
-    res2 = executor.execute(q)
-    print(f"\n  Re-run source  : {res2.meta.source}  (expected: cache)")
-
-    # ------------------------------------------------------------------
-    # 4. Schema validation — expect rejection on bad schema
-    # ------------------------------------------------------------------
-    print("\n[4] Schema enforcement")
-    bad_table = pa.table({"col_a": [1, 2, 3]})
-    try:
-        engine.ingest_events(bad_table, snapshot_tag="bad")
-    except ValueError as exc:
-        print(f"  Bad schema correctly rejected: {exc}")
-
-    engine.close()
-    print("\nDone.")
-
-
-if __name__ == "__main__":
-    main()
+engine.close()

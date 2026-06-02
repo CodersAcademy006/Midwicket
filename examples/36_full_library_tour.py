@@ -1,190 +1,72 @@
-"""
-36_full_library_tour.py — Complete Midwicket Library Tour
+"""Midwicket - complete capability tour, all in-memory."""
 
-A single script that walks through every major capability of Midwicket.
-Designed to be the canonical "show me what this library does" script.
-
-No server, no downloads needed for sections 1–4.
-Sections 5–6 need data (run 01_setup_data.py first).
-
-Usage:
-    python examples/36_full_library_tour.py
-"""
-
-import sys
-import os
-import pyarrow as pa
 from datetime import date
-
-os.environ.setdefault("MIDWICKET_ENV", "development")
-
-# Ensure UTF-8 stdout on Windows (CP1252 crashes on non-ASCII output)
-if sys.platform == "win32":
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
-
-
-# ── helpers ──────────────────────────────────────────────────────────────────
-
-def banner(title: str) -> None:
-    print(f"\n{'─' * 60}")
-    print(f"  {title}")
-    print("─" * 60)
-
-
-# ═══════════════════════════════════════════════════════════════════
-# SECTION 1 — Package metadata & version
-# ═══════════════════════════════════════════════════════════════════
-banner("1 · Package metadata")
+import logging
+import pyarrow as pa
 
 import midwicket as md
-print(f"  midwicket v{md.__version__}  |  author: {md.__author__}")
-print(f"  Public API: {', '.join(md.__all__[:8])} …")
-
-
-# ═══════════════════════════════════════════════════════════════════
-# SECTION 2 — Pure compute metrics (no DB)
-# ═══════════════════════════════════════════════════════════════════
-banner("2 · Pure compute metrics (no database)")
-
+import midwicket.express as px
 from midwicket.compute.metrics.batting import calculate_strike_rate
-from midwicket.compute.metrics.bowling import calculate_economy, calculate_pressure_index
+from midwicket.compute.metrics.bowling import calculate_economy
 from midwicket.compute.metrics.team    import calculate_team_win_rate
+from midwicket.compute.winprob          import win_probability
+from midwicket.schema.v1                import BALL_EVENT_SCHEMA
+from midwicket.storage.engine           import QueryEngine
+from midwicket.storage.registry         import IdentityRegistry
+from midwicket.logging_config           import setup_logging
 
-runs  = pa.array([68, 45, 30], type=pa.int64())
-balls = pa.array([42, 38, 28], type=pa.int64())
-sr    = calculate_strike_rate(runs, balls)
-print("  Strike rates:", [round(sr[i].as_py(), 1) for i in range(3)])
+print("midwicket", md.__version__, "by", md.__author__, "|", ", ".join(md.__all__[:8]), "...")
 
-r_con   = pa.array([28, 32, 22], type=pa.int64())
-lb      = pa.array([24, 24, 24], type=pa.int64())
-econ    = calculate_economy(r_con, lb)
-print("  Economy rates:", [round(econ[i].as_py(), 2) for i in range(3)])
+# 1. Pure compute metrics
+print("SR  :", calculate_strike_rate(pa.array([68, 45, 30]), pa.array([42, 38, 28])).to_pylist())
+print("Econ:", calculate_economy(pa.array([28, 32, 22]), pa.array([24, 24, 24])).to_pylist())
+print("Win%:", calculate_team_win_rate(pa.array([9, 10, 7]), pa.array([14, 14, 14])).to_pylist())
 
-wins    = pa.array([9, 10, 7], type=pa.int64())
-matches = pa.array([14, 14, 14], type=pa.int64())
-wr      = calculate_team_win_rate(wins, matches)
-print("  Win rates (%):", [round(wr[i].as_py(), 1) for i in range(3)])
+# 2. Win probability across three scenarios
+for kw in [dict(target=180, current_score=100, wickets_down=2, overs_done=10.0),
+           dict(target=180, current_score=100, wickets_down=5, overs_done=14.0),
+           dict(target=180, current_score=170, wickets_down=2, overs_done=19.0)]:
+    print(win_probability(**kw, venue=None))
 
-
-# ═══════════════════════════════════════════════════════════════════
-# SECTION 3 — Win probability model
-# ═══════════════════════════════════════════════════════════════════
-banner("3 · Win probability model")
-
-from midwicket.compute.winprob import win_probability
-
-scenarios = [
-    ("Easy chase",   dict(target=180, current_runs=100, wickets_down=2, overs_done=10.0)),
-    ("Tight game",   dict(target=180, current_runs=100, wickets_down=5, overs_done=14.0)),
-    ("Near certain", dict(target=180, current_runs=170, wickets_down=2, overs_done=19.0)),
-]
-for label, kw in scenarios:
-    p = win_probability(**kw, venue=None)
-    print(f"  {label:<18}  win_prob = {p.get('win_prob', 'N/A')}")
-
-
-# ═══════════════════════════════════════════════════════════════════
-# SECTION 4 — In-memory query engine + schema validation
-# ═══════════════════════════════════════════════════════════════════
-banner("4 · QueryEngine — in-memory schema + SQL")
-
-from midwicket.schema.v1 import BALL_EVENT_SCHEMA
-from midwicket.storage.engine import QueryEngine
-
+# 3. In-memory QueryEngine + Schema V1 + SQL
 n = 8
-sample = pa.table(
-    {
-        "match_id":         pa.array(["m1"] * n,               type=pa.string()),
-        "date":             pa.array([date(2023, 4, 1)] * n,        type=pa.date32()),
-        "venue_id":         pa.array([10] * n,                  type=pa.int32()),
-        "inning":           pa.array([1] * n,                   type=pa.int8()),
-        "over":             pa.array(list(range(n)),             type=pa.int8()),
-        "ball":             pa.array([1] * n,                   type=pa.int8()),
-        "batter_id":        pa.array([1, 1, 1, 2, 2, 2, 1, 1], type=pa.int32()),
-        "bowler_id":        pa.array([3] * n,                   type=pa.int32()),
-        "non_striker_id":   pa.array([2] * n,                   type=pa.int32()),
-        "batting_team_id":  pa.array([1] * n,                   type=pa.int16()),
-        "bowling_team_id":  pa.array([2] * n,                   type=pa.int16()),
-        "runs_batter":      pa.array([4, 0, 6, 1, 2, 0, 1, 4], type=pa.int8()),
-        "runs_extras":      pa.array([0] * n,                   type=pa.int8()),
-        "is_wicket":        pa.array([False] * 7 + [True],      type=pa.bool_()),
-        "wicket_type":      pa.array([""] * 7 + ["bowled"],     type=pa.dictionary(pa.int8(), pa.string())),
-        "phase":            pa.array(["Powerplay"] * n,         type=pa.dictionary(pa.int8(), pa.string())),
-    },
-    schema=BALL_EVENT_SCHEMA,
-)
+sample = pa.table({
+    "match_id":        pa.array(["m1"] * n,                pa.string()),
+    "date":            pa.array([date(2023, 4, 1)] * n,    pa.date32()),
+    "venue_id":        pa.array([10] * n,                  pa.int32()),
+    "inning":          pa.array([1] * n,                   pa.int8()),
+    "over":            pa.array(range(n),                  pa.int8()),
+    "ball":            pa.array([1] * n,                   pa.int8()),
+    "batter_id":       pa.array([1, 1, 1, 2, 2, 2, 1, 1], pa.int32()),
+    "bowler_id":       pa.array([3] * n,                   pa.int32()),
+    "non_striker_id":  pa.array([2] * n,                   pa.int32()),
+    "batting_team_id": pa.array([1] * n,                   pa.int16()),
+    "bowling_team_id": pa.array([2] * n,                   pa.int16()),
+    "runs_batter":     pa.array([4, 0, 6, 1, 2, 0, 1, 4], pa.int8()),
+    "runs_extras":     pa.array([0] * n,                   pa.int8()),
+    "is_wicket":       pa.array([False] * 7 + [True],      pa.bool_()),
+    "wicket_type":     pa.array([""] * 7 + ["bowled"],     pa.dictionary(pa.int8(), pa.string())),
+    "phase":           pa.array(["Powerplay"] * n,         pa.dictionary(pa.int8(), pa.string())),
+}, schema=BALL_EVENT_SCHEMA)
+eng = QueryEngine(db_path=":memory:")
+eng.ingest_events(sample, snapshot_tag="tour")
+print(eng.execute_sql(
+    "SELECT batter_id, SUM(runs_batter) runs FROM ball_events GROUP BY batter_id ORDER BY runs DESC"
+).to_pandas())
+eng.close()
 
-engine = QueryEngine(":memory:")
-engine.ingest_events(sample, snapshot_tag="tour")
-
-res = engine.execute_sql(
-    "SELECT batter_id, SUM(runs_batter) AS runs, COUNT(*) AS balls "
-    "FROM ball_events GROUP BY batter_id ORDER BY runs DESC"
-)
-print("  Batter summary:")
-for row in res.to_pandas().itertuples(index=False):
-    print(f"    batter_id={row.batter_id}  runs={row.runs}  balls={row.balls}")
-
-engine.close()
-
-
-# ═══════════════════════════════════════════════════════════════════
-# SECTION 5 — Registry (in-memory)
-# ═══════════════════════════════════════════════════════════════════
-banner("5 · IdentityRegistry — name ↔ integer ID")
-
-from datetime import date
-from midwicket.storage.registry import IdentityRegistry
-
-reg = IdentityRegistry(":memory:")
-d   = date(2024, 4, 1)
-kid = reg.resolve_player("V Kohli",  d, auto_ingest=True)
-bid = reg.resolve_player("JJ Bumrah", d, auto_ingest=True)
-wid = reg.resolve_venue("Wankhede Stadium", d, auto_ingest=True)
-print(f"  V Kohli     → {kid}")
-print(f"  JJ Bumrah   → {bid}")
-print(f"  Wankhede    → {wid}")
-
-reg.upsert_player_stats({kid: {"matches":237,"runs":7263,"balls_faced":5268,
-                               "wickets":4,"balls_bowled":156,"runs_conceded":231}})
-stats = reg.get_player_stats(kid)
-print(f"  Kohli stats : {stats}")
+# 4. IdentityRegistry
+reg = IdentityRegistry(db_path=":memory:")
+kid = reg.resolve_player("V Kohli", date(2024, 4, 1), auto_ingest=True)
+reg.upsert_player_stats({kid: {"matches": 237, "runs": 7263, "balls_faced": 5268,
+                               "wickets": 4, "balls_bowled": 156, "runs_conceded": 231}})
+print("Kohli:", reg.get_player_stats(kid))
 reg.close()
 
-
-# ═══════════════════════════════════════════════════════════════════
-# SECTION 6 — Express API (requires downloaded data)
-# ═══════════════════════════════════════════════════════════════════
-banner("6 · Express API (requires 01_setup_data.py)")
-
+# 5. Express API + debug mode + logging
+setup_logging(level=logging.WARNING)
 try:
-    import midwicket.express as px
-    stats = px.get_player_stats("V Kohli")
-    if stats:
-        print(f"  V Kohli: {stats.runs} runs in {stats.matches} matches")
-        print(f"  SR: {stats.strike_rate:.1f}  Economy: {stats.economy:.2f}" if stats.economy else "")
-    else:
-        print("  (no data — registry empty. Run 01_setup_data.py first)")
-except Exception as exc:
-    print(f"  Skipped: {exc}")
-
-
-# ═══════════════════════════════════════════════════════════════════
-# SECTION 7 — Debug & logging
-# ═══════════════════════════════════════════════════════════════════
-banner("7 · Debug mode & structured logging")
-
-from midwicket.logging_config import setup_logging, get_logger
-import logging
-
-setup_logging(level=logging.WARNING)  # suppress noise for demo
-logger = get_logger(__name__)
-
-md.set_debug_mode(True)
-logger.warning("Debug mode enabled — eager execution active")
-md.set_debug_mode(False)
-print("  Logging + debug mode: OK")
-
-print("\n" + "═" * 60)
-print("  Tour complete. Midwicket is ready to deploy.")
-print("═" * 60)
+    print(px.get_player_stats("V Kohli"))
+except Exception as e:
+    print("(express skipped:", e, ")")
+md.set_debug_mode(True); md.set_debug_mode(False)
