@@ -201,7 +201,7 @@ def build_bowler_quality_rating(session: MidwicketSession, start_date: Optional[
     "batter_intent_score",
     version="1.0",
     description="Per-batter aggression score weighting boundary frequency against overall run rate.",
-    formula="BIS = ((Boundaries * 1.5) + (Runs - Boundaries * 4)) / (BallsFaced + 0.1) * 100",
+    formula="BIS = ((Boundaries * 1.5) + (Runs - (Fours * 4 + Sixes * 6))) / (BallsFaced + 0.1) * 100",
     grain="batter",
     inputs=["batter_id", "runs_batter"],
     outputs=["batter_id", "total_balls", "total_runs", "intent_score"],
@@ -211,14 +211,14 @@ def build_bowler_quality_rating(session: MidwicketSession, start_date: Optional[
 def build_batter_intent_score(session: MidwicketSession, start_date: Optional[str] = None, end_date: Optional[str] = None) -> pd.DataFrame:
     """
     3. BATTER INTENT SCORE (Formula 3):
-    BIS = ((Boundaries * 1.5) + (Runs - Boundaries)) / (Balls Faced + 0.1) * 100
+    BIS = ((Boundaries * 1.5) + (Runs - (Fours * 4 + Sixes * 6))) / (Balls Faced + 0.1) * 100
     """
     where_clause = _get_where_clause(start_date, end_date)
     query = f"""
     SELECT
         batter_id,
         COUNT(*) as total_balls,
-        CAST(SUM(CASE WHEN runs_batter = 4 OR runs_batter = 6 THEN 1 ELSE 0 END) AS DOUBLE) as boundaries,
+        CAST(SUM(CASE WHEN runs_batter = 4 THEN 1 ELSE 0 END) AS DOUBLE) as fours, CAST(SUM(CASE WHEN runs_batter = 6 THEN 1 ELSE 0 END) AS DOUBLE) as sixes, CAST(SUM(CASE WHEN runs_batter = 4 OR runs_batter = 6 THEN 1 ELSE 0 END) AS DOUBLE) as boundaries,
         CAST(SUM(runs_batter) AS DOUBLE) as total_runs
     FROM ball_events
     {where_clause}
@@ -227,7 +227,7 @@ def build_batter_intent_score(session: MidwicketSession, start_date: Optional[st
     """
     df = session.engine.execute_sql(query).to_pandas()
     
-    boundary_runs = df['boundaries'] * 4.0 # approximate boundary runs
+    boundary_runs = df['fours'] * 4.0 + df['sixes'] * 6.0 # exact boundary runs
     df['intent_score'] = (((df['boundaries'] * 1.5) + (df['total_runs'] - boundary_runs)) / (df['total_balls'].astype(float) + 0.1) * 100.0).clip(0.0, 200.0).round(2)
     
     return df[['batter_id', 'total_balls', 'total_runs', 'intent_score']]
