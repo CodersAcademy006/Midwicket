@@ -1,0 +1,75 @@
+# Midwicket API with Redis-backed rate limiting
+# Usage: docker-compose -f docs/deployment/docker-compose.redis.yml up -d
+#
+# Required environment variables (export before running):
+#   MIDWICKET_API_KEYS=key1,key2,key3
+#   MIDWICKET_SECRET_KEY=<32+ char random string>
+#   MIDWICKET_CORS_ORIGINS=https://yourdomain.com
+
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: midwicket-redis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"  # bind to loopback only
+    volumes:
+      - redis_data:/data
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --tcp-keepalive 300
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - midwicket-net
+
+  midwicket-api:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    container_name: midwicket-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      MIDWICKET_ENV: production
+      MIDWICKET_RATE_LIMIT_BACKEND: redis
+      MIDWICKET_REDIS_URL: redis://redis:6379/0
+      MIDWICKET_RATE_LIMIT_REQUESTS_PER_MINUTE: "120"
+      MIDWICKET_API_KEYS: ${MIDWICKET_API_KEYS}
+      MIDWICKET_API_KEY_REQUIRED: "true"
+      MIDWICKET_SECRET_KEY: ${MIDWICKET_SECRET_KEY}
+      MIDWICKET_CORS_ORIGINS: ${MIDWICKET_CORS_ORIGINS:-}
+      MIDWICKET_ALLOWED_HOSTS: ${MIDWICKET_ALLOWED_HOSTS:-localhost}
+      # Optional scheduler config
+      MIDWICKET_ENABLE_SCHEDULER: "true"
+      MIDWICKET_SCHEDULER_DAY: "0"
+      MIDWICKET_SCHEDULER_HOUR: "2"
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: uvicorn midwicket.serve.main:app --host 0.0.0.0 --port 8000 --workers 4
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - midwicket-net
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  midwicket-net:
+    driver: bridge

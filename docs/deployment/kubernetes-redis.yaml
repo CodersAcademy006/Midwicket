@@ -1,0 +1,208 @@
+# Midwicket Kubernetes deployment with Redis-backed rate limiting
+#
+# Apply with:
+#   kubectl apply -f docs/deployment/kubernetes-redis.yaml
+#
+# Before applying, create the secret:
+#   kubectl create secret generic midwicket-secrets \
+#     --from-literal=api-keys='key1,key2,key3' \
+#     --from-literal=secret-key='<random-32-char-string>'
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: midwicket
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: midwicket-redis-pvc
+  namespace: midwicket
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: midwicket-redis
+  namespace: midwicket
+  labels:
+    app: midwicket-redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: midwicket-redis
+  template:
+    metadata:
+      labels:
+        app: midwicket-redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+          name: redis
+        args:
+          - --appendonly
+          - "yes"
+          - --maxmemory
+          - "256mb"
+          - --maxmemory-policy
+          - allkeys-lru
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "50m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          exec:
+            command: ["redis-cli", "ping"]
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command: ["redis-cli", "ping"]
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+      volumes:
+      - name: redis-data
+        persistentVolumeClaim:
+          claimName: midwicket-redis-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: midwicket-redis
+  namespace: midwicket
+spec:
+  selector:
+    app: midwicket-redis
+  ports:
+  - port: 6379
+    targetPort: 6379
+    name: redis
+  type: ClusterIP
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: midwicket-api
+  namespace: midwicket
+  labels:
+    app: midwicket-api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: midwicket-api
+  template:
+    metadata:
+      labels:
+        app: midwicket-api
+    spec:
+      containers:
+      - name: api
+        image: midwicket-api:latest
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: MIDWICKET_ENV
+          value: production
+        - name: MIDWICKET_RATE_LIMIT_BACKEND
+          value: redis
+        - name: MIDWICKET_REDIS_URL
+          value: redis://midwicket-redis:6379/0
+        - name: MIDWICKET_RATE_LIMIT_REQUESTS_PER_MINUTE
+          value: "120"
+        - name: MIDWICKET_API_KEYS
+          valueFrom:
+            secretKeyRef:
+              name: midwicket-secrets
+              key: api-keys
+        - name: MIDWICKET_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: midwicket-secrets
+              key: secret-key
+        - name: MIDWICKET_CORS_ORIGINS
+          value: "https://yourdomain.com"
+        - name: MIDWICKET_ALLOWED_HOSTS
+          value: "yourdomain.com,api.yourdomain.com"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: midwicket-api
+  namespace: midwicket
+spec:
+  selector:
+    app: midwicket-api
+  ports:
+  - port: 80
+    targetPort: 8000
+    name: http
+  type: LoadBalancer
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: midwicket-api-hpa
+  namespace: midwicket
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: midwicket-api
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
