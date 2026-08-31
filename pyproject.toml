@@ -49,6 +49,7 @@ serve = [
     "passlib[bcrypt]>=1.7.0",
     "python-jose[cryptography]>=3.3.0",
     "slowapi>=0.1.0",
+    "apscheduler>=3.10.0",
 ]
 viz = [
     "matplotlib>=3.5.0",
